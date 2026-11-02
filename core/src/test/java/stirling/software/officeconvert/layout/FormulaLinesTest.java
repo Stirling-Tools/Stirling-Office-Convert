@@ -252,4 +252,41 @@ class FormulaLinesTest {
         String math = math(FormulaLines.rebuild(in, List.of(new Rule(true, 98, 100, 113, 0.5f, 0)), List.of()).glyphs());
         assertTrue(math.chars().noneMatch(c -> Character.isSurrogate((char) c) || c == 0xFFFE), math);
     }
+
+    private static List<Glyph> word(String letters, float x, float y) {
+        List<Glyph> out = new ArrayList<>();
+        for (int k = 0; k < letters.length(); k++) {
+            g(out, String.valueOf(letters.charAt(k)), x + 4 * k, 4, y, 7.8f, ITALIC);
+        }
+        return out;
+    }
+
+    @Test
+    void wordsTypedWithoutSpacesAreSeparated() {
+        List<Glyph> in = word("qwithq", 100, 100);
+        in.addAll(word("ifXandYindependent", 100, 130));
+        in.addAll(word("Uniform", 100, 160));
+        List<Glyph> out = FormulaLines.rebuild(in, List.of(), List.of()).glyphs();
+        String byLine = out.stream().sorted(Comparator.comparingDouble((Glyph x) -> x.baseline).thenComparingDouble(x -> x.x))
+                .map(x -> x.text).collect(Collectors.joining());
+        assertTrue(byLine.contains("q with q"), byLine);
+        assertTrue(byLine.contains("if X and Y independent"), byLine);
+        assertTrue(byLine.contains("Uniform"), "a word that only contains a connector stays whole: " + byLine);
+    }
+
+    @Test
+    void aSubscriptInsideASuperscriptKeepsItsPlace() {
+        List<Glyph> in = new ArrayList<>();
+        g(in, "\u222B", 100, 6, 104, 7.8f, LARGE);
+        g(in, "x", 106.5f, 3, 95.5f, 5.5f, ITALIC);
+        g(in, "0", 109.5f, 2.5f, 97, 3.9f, MAIN);
+        g(in, "a", 106.5f, 3, 108, 5.5f, ITALIC);
+        g(in, "f", 113, 4, 100, 7.8f, ITALIC);
+        List<Glyph> out = FormulaLines.rebuild(in, List.of(), List.of()).glyphs();
+        String math = math(out);
+        assertTrue(math.contains("<m:sup><m:sSub><m:e>") && math.contains(">0</m:t></m:r></m:sub></m:sSub></m:sup>"),
+                "x0 is x with subscript 0 inside the upper limit: " + math);
+        assertTrue(out.stream().filter(x -> x.text.equals("0")).allMatch(x -> x.vertAlign == 1),
+                "the one-line text keeps it raised with the rest of the limit");
+    }
 }

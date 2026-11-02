@@ -12,7 +12,7 @@ final class OmmlWriter {
     private static final String BINDING = "+-−=<>≤≥≠∈→,";
 
     private static final Set<String> WORDS = Set.of("and", "or", "for", "if", "else", "with", "where", "otherwise",
-            "then", "when");
+            "then", "when", "independent", "dependent");
 
     private static final float SIZE = 0.9f;
 
@@ -195,6 +195,12 @@ final class OmmlWriter {
     }
 
     private static int scriptSide(int level, int base) {
+        if (base == 0) {
+            return Integer.signum(level);
+        }
+        if (level == 3 * base) {
+            return -Integer.signum(base);
+        }
         return level < base || level == base && level < 0 ? -1 : 1;
     }
 

@@ -37,6 +37,8 @@ final class FormulaLines {
     private static final float MIN_SQUEEZE = 0.35f;
     private static final float AXIS = 0.25f;
     private static final float STACK_GAP = 0.9f;
+    private static final List<String> GLUED_WORDS = List.of("and", "or", "for", "if", "with", "where", "then", "else",
+            "when", "otherwise", "independent", "dependent");
     private static final float STACKED_ROWS = 1.45f;
     private static final float SCRIPT_SHARE = 0.6f;
     private static final float OPERAND_GAP = 1.6f;
@@ -94,7 +96,7 @@ final class FormulaLines {
             if (cluster.size() > MAX_CLUSTER || cluster.stream().filter(i -> i.glyph != null && !i.space()).count() < 2) {
                 continue;
             }
-            List<MathToken> toks = spacedWords(row(cluster, 0));
+            List<MathToken> toks = spacedWords(gluedWords(row(cluster, 0)));
             List<Glyph> line = emit(cluster, toks);
             if (line.isEmpty()) {
                 continue;
@@ -536,7 +538,7 @@ final class FormulaLines {
         if (inner == 0) {
             return outer;
         }
-        return Integer.signum(inner) == outer ? 2 * outer : -outer;
+        return Integer.signum(inner) == outer ? 2 * outer : 3 * outer;
     }
 
     private static List<MathToken> nested(List<MathToken> toks) {
@@ -578,6 +580,8 @@ final class FormulaLines {
                 int deeper = shift > 0.15f * largest ? 1 : shift < -0.08f * largest ? -1 : 0;
                 if (deeper == Integer.signum(t.level())) {
                     out.set(k, t.withLevel(2 * t.level()));
+                } else if (deeper == -Integer.signum(t.level())) {
+                    out.set(k, t.withLevel(3 * t.level()));
                 }
             }
             i = end;
@@ -1310,6 +1314,91 @@ final class FormulaLines {
             out.add(MathToken.marker(MathToken.Kind.LIM_CLOSE, main[1]));
         }
         return out;
+    }
+
+    private static List<MathToken> gluedWords(List<MathToken> toks) {
+        List<MathToken> out = new ArrayList<>(toks.size() + 8);
+        int i = 0;
+        while (i < toks.size()) {
+            int end = i;
+            while (end < toks.size() && letter(toks.get(end))) {
+                end++;
+            }
+            if (end - i < 2) {
+                out.add(toks.get(i++));
+                continue;
+            }
+            StringBuilder run = new StringBuilder();
+            for (int k = i; k < end; k++) {
+                run.append(toks.get(k).text());
+            }
+            boolean[] spaceBefore = new boolean[end - i + 1];
+            int at = 0;
+            int lastEnd = -1;
+            while (at < run.length()) {
+                String word = wordAt(run, at, lastEnd);
+                if (word == null) {
+                    at++;
+                    continue;
+                }
+                spaceBefore[at] = true;
+                spaceBefore[at + word.length()] = true;
+                at += word.length();
+                lastEnd = at;
+            }
+            float size = toks.get(i).size();
+            if (spaceBefore[0] && !out.isEmpty() && separates(out.getLast())) {
+                out.add(space(size));
+            }
+            for (int k = i; k < end; k++) {
+                if (spaceBefore[k - i] && k > i) {
+                    out.add(space(size));
+                }
+                out.add(toks.get(k));
+            }
+            if (spaceBefore[end - i] && end < toks.size() && separates(toks.get(end))) {
+                out.add(space(size));
+            }
+            i = end;
+        }
+        return out;
+    }
+
+    private static boolean letter(MathToken t) {
+        return !t.marker() && t.level() == 0 && t.source() != null && t.text().length() == 1
+                && Character.isLetter(t.text().charAt(0));
+    }
+
+    private static String wordAt(CharSequence run, int at, int lastEnd) {
+        String best = null;
+        for (String w : GLUED_WORDS) {
+            if (at + w.length() <= run.length() && run.subSequence(at, at + w.length()).toString().equals(w)
+                    && (best == null || w.length() > best.length()) && boundary(run, at, w.length(), lastEnd)) {
+                best = w;
+            }
+        }
+        return best;
+    }
+
+    private static boolean separates(MathToken t) {
+        return !t.marker() && !t.space() && !t.linear() && t.level() == 0 && !opening(t.text()) && !closing(t);
+    }
+
+    private static boolean boundary(CharSequence run, int at, int length, int lastEnd) {
+        int end = at + length;
+        boolean beforeOk = at == 0 || at == 1 || at == lastEnd || Character.isUpperCase(run.charAt(at - 1));
+        boolean afterOk = end == run.length() || end == run.length() - 1 || Character.isUpperCase(run.charAt(end))
+                || followedByWord(run, end);
+        return beforeOk && afterOk;
+    }
+
+    private static boolean followedByWord(CharSequence run, int at) {
+        for (String w : GLUED_WORDS) {
+            if (at + w.length() <= run.length() && run.subSequence(at, at + w.length()).toString().equals(w)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static List<MathToken> spacedWords(List<MathToken> toks) {
