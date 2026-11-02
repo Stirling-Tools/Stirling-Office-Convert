@@ -216,4 +216,73 @@ class ConvertHandlerTest {
         assertEquals("timeout", header(r, "X-Error"));
         assertTrue(new String(r.body()).startsWith("This document took longer than the 1 seconds"));
     }
+
+    @Test
+    void picturesAreReadInAnyCase() throws Exception {
+        String url = start(300);
+        for (String value : new String[] {"Lossless", "COMPACT", "%20lossless%20"}) {
+            HttpResponse<byte[]> r = post(url + "?format=docx&pictures=" + value, Fixtures.pdf("Pictures"));
+            assertEquals(200, r.statusCode(), () -> value + ": " + new String(r.body()));
+        }
+        HttpResponse<byte[]> bad = post(url + "?format=docx&pictures=huge", Fixtures.pdf("Pictures"));
+        assertEquals(422, bad.statusCode());
+        assertEquals("pictures", header(bad, "X-Error"));
+    }
+
+    @Test
+    void pageRangesTakeAsManyDigitsAsTheCli() throws Exception {
+        String url = start(300);
+        HttpResponse<byte[]> r = post(url + "?format=txt&pages=1-123456789", Fixtures.pdf("Long range"));
+        assertEquals(200, r.statusCode(), () -> new String(r.body()));
+        assertTrue(new String(r.body(), java.nio.charset.StandardCharsets.UTF_8).contains("Long range"));
+        HttpResponse<byte[]> tooLong = post(url + "?format=txt&pages=1-1234567890", Fixtures.pdf("Long range"));
+        assertEquals(422, tooLong.statusCode());
+        assertEquals("pages", header(tooLong, "X-Error"));
+    }
+
+    @Test
+    void convertsToEveryFormatTheCliWrites() throws Exception {
+        String url = start(300);
+        String[][] formats = {{"fodt", "office:document"}, {"doc", "{\\rtf"}, {"html", "<html"}, {"json", "{"},
+            {"md", "Every format"}, {"epub", "PK"}, {"azw3", "BOOKMOBI"}, {"ppt", null}};
+        for (String[] f : formats) {
+            HttpResponse<byte[]> r = post(url + "?format=" + f[0], Fixtures.pdf("Every format"));
+            assertEquals(200, r.statusCode(), () -> f[0] + ": " + new String(r.body()));
+            assertEquals("attachment; filename=\"converted." + f[0] + "\"", header(r, "Content-Disposition"));
+            String body = new String(r.body(), java.nio.charset.StandardCharsets.ISO_8859_1);
+            if (f[1] != null) {
+                assertTrue(body.contains(f[1]), () -> f[0] + " lacks " + f[1]);
+            }
+        }
+    }
+
+    @Test
+    void formatsAreReadInAnyCaseWithOrWithoutADot() throws Exception {
+        String url = start(300);
+        for (String format : new String[] {"DOCX", ".docx", ".Xlsx"}) {
+            HttpResponse<byte[]> r = post(url + "?format=" + format, Fixtures.pdf("Any case"));
+            assertEquals(200, r.statusCode(), () -> format + ": " + new String(r.body()));
+            assertEquals('P', r.body()[0]);
+        }
+        HttpResponse<byte[]> pdf = post(url + "?format=PDF", Fixtures.pdf("x"));
+        assertEquals(422, pdf.statusCode());
+        assertTrue(new String(pdf.body()).startsWith("This file is a PDF already"));
+    }
+
+    @Test
+    void sheetsChoosesHowPagesSplitIntoWorksheets() throws Exception {
+        String url = start(300);
+        assertEquals(3, sheets(post(url + "?format=xlsx", Fixtures.pdf("Sheet text", 3))));
+        assertEquals(1, sheets(post(url + "?format=xlsx&sheets=Single", Fixtures.pdf("Sheet text", 3))));
+        HttpResponse<byte[]> bad = post(url + "?format=xlsx&sheets=many", Fixtures.pdf("Sheet text"));
+        assertEquals(422, bad.statusCode());
+        assertEquals("sheets", header(bad, "X-Error"));
+    }
+
+    private static int sheets(HttpResponse<byte[]> r) throws IOException {
+        assertEquals(200, r.statusCode(), () -> new String(r.body()));
+        try (var book = new org.apache.poi.xssf.usermodel.XSSFWorkbook(new java.io.ByteArrayInputStream(r.body()))) {
+            return book.getNumberOfSheets();
+        }
+    }
 }

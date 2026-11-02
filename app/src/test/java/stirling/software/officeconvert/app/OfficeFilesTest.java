@@ -135,4 +135,11 @@ class OfficeFilesTest {
         assertEquals("xlsx", OfficeFiles.family("xlsb"));
         assertThrows(IllegalArgumentException.class, () -> OfficeFiles.family("wpd"));
     }
+
+    @Test
+    void aPackageWithSeveralMainPartsIsAlwaysReadAsTheSameKind() throws Exception {
+        byte[] zip = Fixtures.zip("xl/workbook.xml", "<workbook/>", "ppt/presentation.xml", "<presentation/>",
+                "word/document.xml", "<document/>");
+        assertEquals("docx", OfficeFiles.extension(write(zip)));
+    }
 }

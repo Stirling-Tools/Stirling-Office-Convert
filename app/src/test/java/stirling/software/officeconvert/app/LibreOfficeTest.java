@@ -11,6 +11,8 @@ import java.nio.file.Path;
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 class LibreOfficeTest {
@@ -80,5 +82,38 @@ class LibreOfficeTest {
         assertTrue(LibreOffice.converts("docx"));
         assertFalse(LibreOffice.converts("xlsx"));
         assertTrue(LibreOffice.formats().contains("pdf"));
+    }
+
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    void aProfileItCannotDeleteIsLogged() throws IOException {
+        Path locked = Files.createDirectories(dir.resolve("profile/locked"));
+        Files.writeString(locked.resolve("file"), "x");
+        assertTrue(locked.toFile().setWritable(false));
+        java.io.PrintStream original = System.out;
+        java.io.ByteArrayOutputStream log = new java.io.ByteArrayOutputStream();
+        Path loose = Files.writeString(dir.resolve("profile/loose"), "x");
+        try {
+            Path probe = locked.resolve("probe");
+            boolean writable;
+            try {
+                Files.createFile(probe);
+                Files.delete(probe);
+                writable = true;
+            } catch (IOException e) {
+                writable = false;
+            }
+            org.junit.jupiter.api.Assumptions.assumeFalse(writable, "the process can write to a read-only directory");
+            System.setOut(new java.io.PrintStream(log, true, StandardCharsets.UTF_8));
+            LibreOffice.delete(dir.resolve("profile"));
+        } finally {
+            System.setOut(original);
+            locked.toFile().setWritable(true);
+        }
+        String out = log.toString(StandardCharsets.UTF_8);
+        assertTrue(out.matches("Could not delete \\d+ LibreOffice profile entries \\(\\w+\\)\\R"), out);
+        assertFalse(out.contains(dir.toString()), out);
+        assertTrue(Files.exists(locked.resolve("file")));
+        assertFalse(Files.exists(loose), "the rest of the profile is still deleted");
     }
 }

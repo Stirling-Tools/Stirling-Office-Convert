@@ -46,8 +46,8 @@ final class OfficeFiles {
             new Kind("application/vnd.ms-visio.stencil.main+xml", "vssx"),
             new Kind("application/vnd.ms-visio.template.main+xml", "vstx"));
 
-    private static final Map<String, String> MAIN_PARTS = Map.of(
-            "word/document.xml", "docx", "ppt/presentation.xml", "pptx", "xl/workbook.xml", "xlsx");
+    private static final List<Map.Entry<String, String>> MAIN_PARTS = List.of(Map.entry("word/document.xml", "docx"),
+            Map.entry("ppt/presentation.xml", "pptx"), Map.entry("xl/workbook.xml", "xlsx"));
 
     private static final int MAX_TYPES_BYTES = 1 << 20;
 
@@ -158,7 +158,7 @@ final class OfficeFiles {
                     return k.extension();
                 }
             }
-            for (Map.Entry<String, String> part : MAIN_PARTS.entrySet()) {
+            for (Map.Entry<String, String> part : MAIN_PARTS) {
                 if (file.getEntry(part.getKey()) != null) {
                     return part.getValue();
                 }

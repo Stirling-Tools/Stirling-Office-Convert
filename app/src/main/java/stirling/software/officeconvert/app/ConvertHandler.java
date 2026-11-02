@@ -15,6 +15,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
@@ -34,7 +35,13 @@ import com.sun.net.httpserver.HttpHandler;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.encryption.InvalidPasswordException;
 
+import stirling.software.officeconvert.EbookOptions;
+import stirling.software.officeconvert.PdfToAzw3;
 import stirling.software.officeconvert.PdfToDocx;
+import stirling.software.officeconvert.PdfToEpub;
+import stirling.software.officeconvert.PdfToHtml;
+import stirling.software.officeconvert.PdfToJson;
+import stirling.software.officeconvert.PdfToMarkdown;
 import stirling.software.officeconvert.PdfToOdp;
 import stirling.software.officeconvert.PdfToOdt;
 import stirling.software.officeconvert.PdfToPptx;
@@ -43,6 +50,7 @@ import stirling.software.officeconvert.PdfToText;
 import stirling.software.officeconvert.PdfToXlsx;
 import stirling.software.officeconvert.Pictures;
 import stirling.software.officeconvert.extract.PdfFiles;
+import stirling.software.officeconvert.legacy.PdfToPpt;
 import stirling.software.officeconvert.memory.Admission;
 import stirling.software.officeconvert.topdf.OfficeToPdf;
 import stirling.software.officeconvert.topdf.crypt.Passwords;
@@ -53,8 +61,10 @@ final class ConvertHandler implements HttpHandler {
 
     @FunctionalInterface
     private interface Converter {
-        void convert(Path pdf, Path out, PdfToDocx.Options options) throws IOException;
+        void convert(Path pdf, Path out, Choices choices) throws IOException;
     }
+
+    private record Choices(PdfToDocx.Options options, PdfToXlsx.Sheets sheets) {}
 
     private record Target(String type, Converter converter) {}
 
@@ -71,29 +81,47 @@ final class ConvertHandler implements HttpHandler {
 
     private static final int MAX_WARNINGS = 20;
 
-    private static final Map<String, Target> TARGETS = Map.of(
-            "docx", new Target(DOCX, PdfToDocx::convert),
-            "odt", new Target("application/vnd.oasis.opendocument.text", PdfToOdt::convert),
-            "rtf", new Target("application/rtf", PdfToRtf::convert),
-            "txt", new Target("text/plain; charset=utf-8", PdfToText::convert),
-            "xml", new Target("application/xml", PdfToOdt::convertFlat),
-            "pptx", new Target("application/vnd.openxmlformats-officedocument.presentationml.presentation",
-                    (pdf, out, o) -> PdfToPptx.convert(pdf, out, slides(o))),
-            "odp", new Target("application/vnd.oasis.opendocument.presentation",
-                    (pdf, out, o) -> PdfToOdp.convert(pdf, out, slides(o))),
-            "xlsx", new Target("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    (pdf, out, o) -> PdfToXlsx.convert(pdf, out, sheets(o))),
-            "ods", new Target("application/vnd.oasis.opendocument.spreadsheet",
-                    (pdf, out, o) -> PdfToXlsx.convert(pdf, out, sheets(o))));
+    private static final String FORMATS = "docx, odt, fodt, xml, rtf, doc, txt, html, json, md, epub, azw3, pptx, odp, ppt,"
+            + " xlsx or ods";
+
+    private static final Map<String, Target> TARGETS = Map.ofEntries(
+            Map.entry("docx", new Target(DOCX, (pdf, out, c) -> PdfToDocx.convert(pdf, out, c.options()))),
+            Map.entry("odt", new Target("application/vnd.oasis.opendocument.text",
+                    (pdf, out, c) -> PdfToOdt.convert(pdf, out, c.options()))),
+            Map.entry("fodt", new Target("application/vnd.oasis.opendocument.text-flat-xml",
+                    (pdf, out, c) -> PdfToOdt.convertFlat(pdf, out, c.options()))),
+            Map.entry("xml", new Target("application/xml", (pdf, out, c) -> PdfToOdt.convertFlat(pdf, out, c.options()))),
+            Map.entry("rtf", new Target("application/rtf", (pdf, out, c) -> PdfToRtf.convert(pdf, out, c.options()))),
+            Map.entry("doc", new Target("application/msword", (pdf, out, c) -> PdfToRtf.convert(pdf, out, c.options()))),
+            Map.entry("txt", new Target("text/plain; charset=utf-8", (pdf, out, c) -> PdfToText.convert(pdf, out, c.options()))),
+            Map.entry("html", new Target("text/html; charset=utf-8", (pdf, out, c) -> PdfToHtml.convert(pdf, out, c.options()))),
+            Map.entry("json", new Target("application/json", (pdf, out, c) -> PdfToJson.convert(pdf, out, c.options()))),
+            Map.entry("md", new Target("text/markdown; charset=utf-8",
+                    (pdf, out, c) -> PdfToMarkdown.convert(pdf, out, c.options()))),
+            Map.entry("epub", new Target("application/epub+zip",
+                    (pdf, out, c) -> PdfToEpub.convert(pdf, out, c.options(), EbookOptions.defaults()))),
+            Map.entry("azw3", new Target("application/vnd.amazon.ebook",
+                    (pdf, out, c) -> PdfToAzw3.convert(pdf, out, c.options(), EbookOptions.defaults()))),
+            Map.entry("pptx", new Target("application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                    (pdf, out, c) -> PdfToPptx.convert(pdf, out, slides(c.options())))),
+            Map.entry("odp", new Target("application/vnd.oasis.opendocument.presentation",
+                    (pdf, out, c) -> PdfToOdp.convert(pdf, out, slides(c.options())))),
+            Map.entry("ppt", new Target("application/vnd.ms-powerpoint",
+                    (pdf, out, c) -> PdfToPpt.convert(pdf, out, slides(c.options())))),
+            Map.entry("xlsx", new Target("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    (pdf, out, c) -> PdfToXlsx.convert(pdf, out, sheets(c)))),
+            Map.entry("ods", new Target("application/vnd.oasis.opendocument.spreadsheet",
+                    (pdf, out, c) -> PdfToXlsx.convert(pdf, out, sheets(c)))));
 
     private static PdfToPptx.Options slides(PdfToDocx.Options o) {
         return new PdfToPptx.Options(o.firstPage(), o.lastPage(), o.tables(), o.figureDpi(), o.password(), o.pictureFallback(),
                 o.pictures());
     }
 
-    private static PdfToXlsx.Options sheets(PdfToDocx.Options o) {
+    private static PdfToXlsx.Options sheets(Choices c) {
+        PdfToDocx.Options o = c.options();
         return PdfToXlsx.Options.defaults().withPages(o.firstPage(), o.lastPage()).withTables(o.tables())
-                .withPassword(o.password()).withTextFallback(o.pictureFallback());
+                .withPassword(o.password()).withSheets(c.sheets()).withTextFallback(o.pictureFallback());
     }
 
     private static final long STOP_WAIT_MILLIS = 5_000;
@@ -223,10 +251,10 @@ final class ConvertHandler implements HttpHandler {
             String outcome = "ok";
             try {
                 Map<String, String> q = query(ex);
-                String format = q.get("format");
+                String format = format(q.get("format"));
                 if (format != null && !"pdf".equals(format) && !TARGETS.containsKey(format)) {
-                    throw new Refusal(422, "format", "This demo converts a PDF to docx, odt, rtf, txt, xml, pptx, odp, xlsx or"
-                            + " ods, and a Word, PowerPoint or Excel document to pdf.");
+                    throw new Refusal(422, "format", "This demo converts a PDF to " + FORMATS
+                            + ", and a Word, PowerPoint or Excel document to pdf.");
                 }
                 boolean office = office(q.getOrDefault("engine", "ours"));
                 declaredSize(ex.getRequestHeaders());
@@ -240,8 +268,7 @@ final class ConvertHandler implements HttpHandler {
                 if (input == Input.PDF) {
                     String target = format == null ? "docx" : format;
                     if ("pdf".equals(target)) {
-                        throw new Refusal(422, "format", "This file is a PDF already. Pick docx, odt, rtf, txt, xml, pptx, odp,"
-                                + " xlsx or ods.");
+                        throw new Refusal(422, "format", "This file is a PDF already. Pick " + FORMATS + ".");
                     }
                     supported(office, target);
                     current.input = Files.move(current.upload, current.dir.resolve("in.pdf"));
@@ -286,6 +313,10 @@ final class ConvertHandler implements HttpHandler {
                 log(start, size, outcome);
             }
         }
+    }
+
+    private static String format(String value) {
+        return value == null ? null : value.toLowerCase(Locale.ROOT).replaceFirst("^\\.", "");
     }
 
     private static String uploadName(String name) throws Refusal {
@@ -386,10 +417,11 @@ final class ConvertHandler implements HttpHandler {
             throws IOException, Refusal {
         String[] note = new String[1];
         PdfToDocx.Options options = options(job.input, q, password, note);
+        PdfToXlsx.Sheets sheets = sheets(q.getOrDefault("sheets", "page"));
         if (office) {
             convertWithLibreOffice(job, out, format, options);
         } else {
-            TARGETS.get(format).converter().convert(job.input, out, options);
+            TARGETS.get(format).converter().convert(job.input, out, new Choices(options, sheets));
         }
         return new Done(note[0], 0, List.of());
     }
@@ -512,7 +544,7 @@ final class ConvertHandler implements HttpHandler {
         int last = 0;
         String pages = q.getOrDefault("pages", "").strip();
         if (!pages.isEmpty()) {
-            if (!pages.matches("\\d{0,6}\\s*(-\\s*\\d{0,6})?")) {
+            if (!pages.matches("\\d{0,9}\\s*(-\\s*\\d{0,9})?")) {
                 throw new Refusal(422, "pages", "Pages should be a range like 2-5, or a single page like 3.");
             }
             String[] ab = pages.split("-", -1);
@@ -539,11 +571,19 @@ final class ConvertHandler implements HttpHandler {
     }
 
     private static Pictures pictures(String value) throws Refusal {
-        return switch (value) {
-            case "compact" -> Pictures.COMPACT;
-            case "lossless" -> Pictures.LOSSLESS;
-            default -> throw new Refusal(422, "pictures", "Pictures are compact or lossless.");
-        };
+        try {
+            return Pictures.valueOf(value.strip().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            throw new Refusal(422, "pictures", "Pictures are compact or lossless.");
+        }
+    }
+
+    private static PdfToXlsx.Sheets sheets(String value) throws Refusal {
+        try {
+            return PdfToXlsx.Sheets.valueOf(value.strip().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            throw new Refusal(422, "sheets", "Sheets are page, table or single.");
+        }
     }
 
     private void convertWithLibreOffice(Job job, Path out, String format, PdfToDocx.Options options) throws IOException {
