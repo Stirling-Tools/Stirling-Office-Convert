@@ -26,7 +26,8 @@ final class TextWidth {
 
     private TextWidth() {}
 
-    static float of(String text, float size, boolean bold) {
+    static float of(String marked, float size, boolean bold) {
+        String text = ScriptMarks.strip(marked);
         int ppem = Math.round(Math.max(size, SMALLEST) * 4f / 3f);
         int widest = 0;
         int line = 0;
@@ -43,7 +44,8 @@ final class TextWidth {
         return widest * 0.75f * MARGIN;
     }
 
-    static float ofValue(String text, float size, boolean bold) {
+    static float ofValue(String marked, float size, boolean bold) {
+        String text = ScriptMarks.strip(marked);
         int ppem = Math.round(size * 4f / 3f);
         int measured = ppem <= 9 ? (bold ? 13 : 11) : ppem == 10 ? (bold ? 15 : 13) : ppem;
         int px = 0;
@@ -56,7 +58,8 @@ final class TextWidth {
         return (px * MARGIN + letters) * 0.75f + Math.max(6.75f, 0.4f * size);
     }
 
-    static int lines(String text, float size, boolean bold, float width) {
+    static int lines(String marked, float size, boolean bold, float width) {
+        String text = ScriptMarks.strip(marked);
         int total = 0;
         for (String part : text.split("\n", -1)) {
             total += Math.max(1, (int) Math.ceil(of(part, size, bold) / Math.max(1f, width)));

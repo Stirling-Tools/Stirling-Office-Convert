@@ -16,6 +16,9 @@ import stirling.software.officeconvert.sink.Links;
 
 final class BodyXml {
 
+    private static final String MATH_NS = "http://schemas.openxmlformats.org/officeDocument/2006/math";
+
+
     private static final int MAX_TABS = 64;
 
     private static final String EMPTY_CELL_PARAGRAPH = "<w:p><w:pPr><w:spacing w:before=\"0\" w:after=\"0\" w:line=\"20\""
@@ -119,7 +122,8 @@ final class BodyXml {
         sb.append("<w:spacing w:before=\"").append(clampTwips(p.spaceBefore))
                 .append("\" w:after=\"").append(clampTwips(p.spaceAfter)).append('"');
         switch (p.lineRule) {
-            case EXACT -> sb.append(" w:line=\"").append(Math.max(20, Xml.twips(p.lineHeight))).append("\" w:lineRule=\"exact\"");
+            case EXACT -> sb.append(" w:line=\"").append(Math.max(20, Xml.twips(p.lineHeight)))
+                    .append(hasMath(p) ? "\" w:lineRule=\"atLeast\"" : "\" w:lineRule=\"exact\"");
             case AT_LEAST -> sb.append(" w:line=\"").append(Math.max(20, Xml.twips(p.lineHeight))).append("\" w:lineRule=\"atLeast\"");
             default -> sb.append(" w:line=\"240\" w:lineRule=\"auto\"");
         }
@@ -222,9 +226,51 @@ final class BodyXml {
                 .append("\"/><w:bookmarkEnd w:id=\"").append(id).append("\"/>");
     }
 
+    private void trailingSpace(StringBuilder sb, Inline.Text last, RunStyle base) {
+        String text = last.text();
+        String tail = text.substring(text.stripTrailing().length());
+        if (!tail.isEmpty()) {
+            runs.textRun(sb, tail, last.style().withMath(null), base);
+        }
+    }
+
+    private static boolean hasMath(Paragraph p) {
+        for (Inline in : p.inlines) {
+            if (in instanceof Inline.Text t && t.style() != null && t.style().math() != null) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private void inlines(StringBuilder sb, List<Inline> inlines, RunStyle base) {
         String openLink = null;
+        String openMath = null;
+        Inline.Text afterMath = null;
         for (Inline in : inlines) {
+            String math = in instanceof Inline.Text t && t.style() != null ? t.style().math() : null;
+            if (afterMath != null && !Objects.equals(math, openMath)) {
+                trailingSpace(sb, afterMath, base);
+                afterMath = null;
+            }
+            if (math != null) {
+                Inline.Text t = (Inline.Text) in;
+                if (!math.equals(openMath)) {
+                    if (openLink != null) {
+                        sb.append("</w:hyperlink>");
+                        openLink = null;
+                    }
+                    String lead = t.text().substring(0, t.text().length() - t.text().stripLeading().length());
+                    if (!lead.isEmpty()) {
+                        runs.textRun(sb, lead, t.style().withMath(null), base);
+                    }
+                    sb.append("<m:oMath xmlns:m=\"").append(MATH_NS).append("\">").append(math).append("</m:oMath>");
+                    openMath = math;
+                }
+                afterMath = t;
+                continue;
+            }
+            openMath = null;
             String link = in instanceof Inline.Text t ? Links.target(t) : null;
             if (!Objects.equals(link, openLink)) {
                 if (openLink != null) {
@@ -285,6 +331,9 @@ final class BodyXml {
                 case Inline.TextBox box -> drawings.textBox(sb, box);
                 case Inline.FormControl f -> drawings.formControl(sb, f);
             }
+        }
+        if (afterMath != null) {
+            trailingSpace(sb, afterMath, base);
         }
         if (openLink != null) {
             sb.append("</w:hyperlink>");
