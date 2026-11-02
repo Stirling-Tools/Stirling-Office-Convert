@@ -10,6 +10,9 @@ import java.nio.file.Path;
 import java.util.Map;
 
 import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.cos.COSArray;
+import org.apache.pdfbox.cos.COSBase;
+import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDDocumentNameDictionary;
 import org.apache.pdfbox.pdmodel.PDEmbeddedFilesNameTreeNode;
@@ -17,6 +20,7 @@ import org.apache.pdfbox.pdmodel.common.filespecification.PDComplexFileSpecifica
 import org.apache.pdfbox.pdmodel.common.filespecification.PDEmbeddedFile;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.EnumSource;
 
 class AttachedPdfAValidationTest {
@@ -101,6 +105,44 @@ class AttachedPdfAValidationTest {
         assertThrows(java.io.IOException.class,
                 () -> PdfToPdfA.convert(input, output, PdfToPdfA.Options.defaults().level(level)));
         assertArrayEquals(original, Files.readAllBytes(output));
+    }
+
+    @ParameterizedTest
+    @CsvSource({"A2B,raw", "A2B,flate", "A2B,chained", "A4,raw", "A4,flate", "A4,chained"})
+    void oversizedNonPdfAttachmentsAreRejectedBeforeThePdfVerificationBudget(PdfALevel level, String encoding)
+            throws Exception {
+        Path input = Hostile.write(dir, "large-non-pdf", doc -> {
+            Hostile.plainPage(doc);
+            PDComplexFileSpecification spec = new PDComplexFileSpecification();
+            spec.setFile("large.bin");
+            PDEmbeddedFile file = new PDEmbeddedFile(doc);
+            COSBase filter = null;
+            if (encoding.equals("flate")) {
+                filter = COSName.FLATE_DECODE;
+            } else if (encoding.equals("chained")) {
+                var filters = new COSArray();
+                filters.add(COSName.FLATE_DECODE);
+                filters.add(COSName.ASCII_HEX_DECODE);
+                filter = filters;
+            }
+            try (var out = file.getCOSObject().createOutputStream(filter)) {
+                out.write(new byte[(int) AttachedPdfA.MAX_BYTES + 1]);
+            }
+            spec.setEmbeddedFile(file);
+            PDEmbeddedFilesNameTreeNode tree = new PDEmbeddedFilesNameTreeNode();
+            tree.setNames(Map.of("large.bin", spec));
+            PDDocumentNameDictionary names = new PDDocumentNameDictionary(doc.getDocumentCatalog());
+            names.setEmbeddedFiles(tree);
+            doc.getDocumentCatalog().setNames(names);
+        });
+        Path output = dir.resolve("without-incompatible.pdf");
+        var result = PdfToPdfA.convert(input, output, PdfToPdfA.Options.defaults().level(level));
+        VeraPdf.assertCompliant(output, level);
+        assertTrue(result.warnings().stream().anyMatch(w -> w.contains("embedded")), result.warnings().toString());
+        try (PDDocument doc = Loader.loadPDF(output.toFile())) {
+            var files = doc.getDocumentCatalog().getNames().getEmbeddedFiles().getNames();
+            assertTrue(files == null || files.isEmpty());
+        }
     }
 
     @ParameterizedTest

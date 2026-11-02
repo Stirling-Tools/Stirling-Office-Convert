@@ -41,15 +41,15 @@ final class AttachedPdfA {
     private static boolean check(COSStream file, int depth, boolean partFour) throws IOException {
         byte[] data;
         try {
+            if (!new String(Decoded.prefix(file, 5), StandardCharsets.ISO_8859_1).equals("%PDF-")) {
+                return false;
+            }
             data = Decoded.bytes(file, MAX_BYTES, "An attachment");
         } catch (IOException | RuntimeException e) {
             if (e instanceof IOException io) {
                 rethrowBudget(io);
             }
             PdfFiles.stopIfInterrupted();
-            return false;
-        }
-        if (data.length < 5 || !new String(data, 0, 5, StandardCharsets.ISO_8859_1).equals("%PDF-")) {
             return false;
         }
         try (RandomAccessReadBuffer source = new RandomAccessReadBuffer(data)) {

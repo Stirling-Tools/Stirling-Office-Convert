@@ -772,7 +772,8 @@ that instance. Prefer the file-based overload for documents that need a strict t
   date, an `AFRelationship` and the catalog's `AF` array. Eligible files are listed in the embedded-file name tree
   before annotations or associations are removed. Duplicate filenames get distinct tree entries, legacy DOS, Mac
   and Unix streams gain standard references, and retained attachment bytes are not rewritten. Incompatible variants
-  are removed with warnings without discarding other eligible variants of the same file. Attachment checks allow up to
+  are removed with warnings without discarding other eligible variants of the same file. A bounded prefix check rejects
+  non-PDF variants before applying the PDF verification limit. Attachment checks allow up to
   16 MiB of PDF bytes, 100,000 parsed values, 64 levels of object nesting and 8 MiB of decoded object and cross-reference
   streams. Exceeding a verification budget, or failing to decode a retained attachment for lossless recompression,
   fails the conversion instead of silently dropping or emptying its data. The path-based API leaves an existing
