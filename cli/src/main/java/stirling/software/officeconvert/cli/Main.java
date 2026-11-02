@@ -7,10 +7,8 @@ import java.lang.management.MemoryPoolMXBean;
 import java.lang.management.MemoryType;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.nio.file.InvalidPathException;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -20,392 +18,325 @@ import java.util.stream.Stream;
 
 import org.apache.pdfbox.pdmodel.encryption.InvalidPasswordException;
 
-import stirling.software.officeconvert.EbookOptions;
 import stirling.software.officeconvert.OfficeConvert;
-import stirling.software.officeconvert.PdfToAzw3;
 import stirling.software.officeconvert.PdfToDocx;
-import stirling.software.officeconvert.PdfToEpub;
-import stirling.software.officeconvert.PdfToHtml;
-import stirling.software.officeconvert.PdfToJson;
-import stirling.software.officeconvert.PdfToOdp;
-import stirling.software.officeconvert.PdfToOdt;
 import stirling.software.officeconvert.PdfToPptx;
-import stirling.software.officeconvert.PdfToRtf;
-import stirling.software.officeconvert.PdfToMarkdown;
-import stirling.software.officeconvert.PdfToText;
 import stirling.software.officeconvert.PdfToXlsx;
-import stirling.software.officeconvert.Pictures;
-import stirling.software.officeconvert.legacy.PdfToPpt;
 import stirling.software.officeconvert.lineart.LineArt;
 import stirling.software.officeconvert.optimize.PdfOptimizer;
-import stirling.software.officeconvert.pdfa.PdfALevel;
 import stirling.software.officeconvert.pdfa.PdfToPdfA;
 import stirling.software.officeconvert.topdf.HtmlAssets;
 import stirling.software.officeconvert.topdf.OfficeToPdf;
 import stirling.software.officeconvert.topdf.UnsupportedFormats;
 import stirling.software.officeconvert.topdf.WebAssets;
 import stirling.software.officeconvert.topdf.crypt.Passwords;
-import stirling.software.officeconvert.topdf.font.FontSet;
 import stirling.software.officeconvert.topdf.io.PoiXml;
 import stirling.software.officeconvert.topdf.text.TextFormats;
 
 public final class Main {
 
-    private static final Set<String> FORMATS = Set.of("docx", "odt", "fodt", "xml", "rtf", "doc", "txt", "html", "json", "md", "epub", "azw3", "pptx",
-            "odp", "ppt", "xlsx", "ods", "pdf");
+    private static final String PDF = OutputFormat.PDF;
 
     private Main() {}
 
-    private static final class Usage extends Exception {
-        Usage(String message) {
-            super(message, null, false, false);
-        }
+    private record Batch(Args args, Mode mode, OutputFormat.Settings settings) {}
+
+    private record Outcome(List<String> warnings, List<String> notes) {}
+
+    @FunctionalInterface
+    private interface Conversion {
+        Outcome convert(Path in, Path target) throws IOException;
     }
 
     public static void main(String[] args) {
         System.exit(run(args));
     }
 
-    static int run(String[] args) {
-        if (args.length > 0 && SplitPhotos.COMMAND.equals(args[0])) {
-            return SplitPhotos.run(Arrays.copyOfRange(args, 1, args.length));
+    static int run(String[] argv) {
+        if (argv.length > 0 && SplitPhotos.COMMAND.equals(argv[0])) {
+            return SplitPhotos.run(Arrays.copyOfRange(argv, 1, argv.length));
         }
-        List<Path> inputs = new ArrayList<>();
-        List<String> urls = new ArrayList<>();
-        WebAssets.Access web = WebAssets.Access.none();
-        Path output = null;
-        int first = 0;
-        int last = 0;
-        boolean tables = true;
-        boolean pictureFallback = false;
-        float dpi = 150f;
-        String password = null;
-        boolean quiet = false;
-        boolean overwrite = false;
-        boolean localFiles = false;
-        String format = "docx";
-        boolean formatGiven = false;
-        boolean pagesGiven = false;
-        OfficeToPdf.Options office = OfficeToPdf.Options.defaults();
-        List<Path> fontDirs = new ArrayList<>();
-        FontSet.Builder fontSet = FontSet.builder();
-        PdfToXlsx.Sheets sheets = PdfToXlsx.Sheets.PAGE;
-        Pictures pictures = Pictures.COMPACT;
-        EbookOptions ebook = EbookOptions.defaults();
-        PdfToDocx.Options options;
-        PdfToPptx.Options slides;
-        PdfToXlsx.Options books;
-        PdfALevel pdfa = null;
-        LineArt.Method lineArtMethod = null;
-        LineArt.Options lineArt = LineArt.Options.defaults();
-        boolean lineArtTuned = false;
-        boolean optimize = false;
-        PdfOptimizer.Effort effort = null;
-        boolean keepPrivateData = false;
-        FontSet fonts;
+        Batch batch;
         try {
-            for (int i = 0; i < args.length; i++) {
-                String a = args[i];
-                switch (a) {
-                    case "-o", "--output" -> output = path(value(args, ++i, a));
-                    case "--pages" -> {
-                        int[] range = pages(value(args, ++i, a));
-                        first = range[0];
-                        last = range[1];
-                        pagesGiven = true;
-                    }
-                    case "--no-tables" -> tables = false;
-                    case "--dpi" -> dpi = number(value(args, ++i, a), a);
-                    case "--password" -> password = value(args, ++i, a);
-                    case "--picture-fallback" -> pictureFallback = true;
-                    case "--format" -> {
-                        format = known(value(args, ++i, a).toLowerCase(Locale.ROOT).replaceFirst("^\\.", ""));
-                        formatGiven = true;
-                    }
-                    case "--timeout" -> office = office.timeout(Duration.ofMillis((long) Math.ceil(seconds(value(args, ++i, a),
-                            a) * 1000)));
-                    case "--max-pages" -> office = office.maxPages(count(value(args, ++i, a), a));
-                    case "--fonts" -> fontDirs.add(folder(value(args, ++i, a), a));
-                    case "--font-map" -> {
-                        String[] pair = pair(value(args, ++i, a), a);
-                        fontSet.substitute(pair[0], pair[1]);
-                    }
-                    case "--font-width" -> {
-                        String[] pair = pair(value(args, ++i, a), a);
-                        fontSet.widthScale(pair[0], number(pair[1], a));
-                    }
-                    case "--no-system-fonts" -> fontSet.systemFonts(false);
-                    case "--sheets" -> sheets = sheets(value(args, ++i, a));
-                    case "--pdfa" -> pdfa = level(value(args, ++i, a));
-                    case "--line-art" -> lineArtMethod = lineArtMethod(value(args, ++i, a));
-                    case "--threshold" -> {
-                        lineArt = lineArt.threshold(number(value(args, ++i, a), a));
-                        lineArtTuned = true;
-                    }
-                    case "--edge-level" -> {
-                        lineArt = lineArt.edgeLevel(count(value(args, ++i, a), a));
-                        lineArtTuned = true;
-                    }
-                    case "--window" -> {
-                        lineArt = lineArt.window(count(value(args, ++i, a), a));
-                        lineArtTuned = true;
-                    }
-                    case "--sauvola-k" -> {
-                        lineArt = lineArt.k(number(value(args, ++i, a), a));
-                        lineArtTuned = true;
-                    }
-                    case "--codec" -> {
-                        lineArt = lineArt.codec(codec(value(args, ++i, a)));
-                        lineArtTuned = true;
-                    }
-                    case "--ink-colour", "--ink-color" -> {
-                        lineArt = lineArt.inkColour(true);
-                        lineArtTuned = true;
-                    }
-                    case "--optimize" -> optimize = true;
-                    case "--effort" -> effort = effort(value(args, ++i, a));
-                    case "--keep-private-data" -> keepPrivateData = true;
-                    case "--pictures" -> pictures = pictures(value(args, ++i, a));
-                    case "--no-chapters" -> ebook = ebook.chapters(false);
-                    case "--device" -> ebook = ebook.device(device(value(args, ++i, a)));
-                    case "-q", "--quiet" -> quiet = true;
-                    case "--overwrite" -> overwrite = true;
-                    case "--allow-packages" -> office = office.allowPackages(true);
-                    case "--toc" -> office = office.tableOfContents(true);
-                    case "--page-numbers" -> office = office.pageNumbers(true);
-                    case "--allow-local-files" -> localFiles = true;
-                    case "--allow-network" -> web = web.network(true);
-                    case "--follow-redirects" -> web = web.redirects(true);
-                    case "--allow-cookies" -> web = web.cookies(true);
-                    case "--allow-private-addresses" -> web = web.privateAddresses(true);
-                    case "--fetch-linked" -> web = web.linkedFromFiles(true);
-                    case "-h", "--help" -> {
-                        usage();
-                        return 0;
-                    }
-                    default -> {
-                        if (a.startsWith("-") && a.length() > 1) {
-                            throw new Usage("unknown option " + a);
-                        }
-                        if (a.regionMatches(true, 0, "http://", 0, 7) || a.regionMatches(true, 0, "https://", 0, 8)) {
-                            urls.add(a);
-                        } else {
-                            inputs.add(path(a));
-                        }
-                    }
-                }
+            Args args = Args.parse(argv);
+            if (args == null) {
+                usage();
+                return 0;
             }
-            if (inputs.isEmpty() && urls.isEmpty()) {
-                throw new Usage("no PDF or Office document given");
+            if (!args.urls().isEmpty()) {
+                checkUrl(args);
+                return url(args.urls().get(0), args.output(), args.office(), args.web(), args.overwrite(), args.quiet());
             }
-            fonts = fontSet.directories(fontDirs).build();
-            office = office.fonts(fonts).password(password);
-            if (!urls.isEmpty()) {
-                if (pdfa != null || lineArtMethod != null || lineArtTuned || optimize || effort != null || keepPrivateData) {
-                    throw new Usage("--pdfa, --line-art and --optimize rewrite PDF input; a URL converts to PDF without them");
-                }
-                if (urls.size() > 1 || !inputs.isEmpty() || output == null || !"pdf".equals(extension(output))
-                        || pagesGiven || formatGiven && !"pdf".equals(format)) {
-                    throw new Usage("a URL converts on its own to the PDF named by -o out.pdf");
-                }
-                if (!web.network()) {
-                    throw new Usage("a URL is fetched only with --allow-network");
-                }
-                return url(urls.get(0), output, office, web, overwrite, quiet);
-            }
-            if (web.linkedFromFiles() && !web.network()) {
-                throw new Usage("--fetch-linked fetches only with --allow-network");
-            }
-            boolean anyOffice = false;
-            boolean anyPdf = false;
-            for (Path in : inputs) {
-                if (Files.isDirectory(in)) {
-                    anyOffice |= formatGiven && "pdf".equals(format);
-                    anyPdf |= formatGiven && !"pdf".equals(format);
-                    continue;
-                }
-                boolean officeInput = officeOrPage(in);
-                String unsupported = officeInput ? null : UnsupportedFormats.byExtension(extension(in));
-                if (unsupported != null) {
-                    throw new Usage(in.getFileName() + ": " + unsupported);
-                }
-                anyOffice |= officeInput;
-                anyPdf |= !officeInput;
-            }
-            if (lineArtTuned && lineArtMethod == null) {
-                throw new Usage("--threshold, --edge-level, --window, --sauvola-k, --codec and --ink-colour go with --line-art");
-            }
-            if (lineArtMethod != null && pdfa != null) {
-                throw new Usage("--line-art and --pdfa are separate runs; give one of them");
-            }
-            if (optimize && lineArtMethod != null) {
-                throw new Usage("--optimize and --line-art are separate passes; give one of them");
-            }
-            if ((effort != null || keepPrivateData) && !optimize) {
-                throw new Usage("--effort and --keep-private-data go with --optimize");
-            }
-            if (optimize && pdfa != null) {
-                throw new Usage("--optimize and --pdfa are separate passes; give one of them");
-            }
-            if (optimize && (anyOffice || formatGiven && !"pdf".equals(format) || pagesGiven)) {
-                throw new Usage("--optimize rewrites whole PDFs; give it PDF input without --pages or --format");
-            }
-            if (pdfa != null && (anyOffice || formatGiven && !"pdf".equals(format) || pagesGiven)) {
-                throw new Usage("--pdfa converts whole PDFs to PDF/A; give it PDF input without --pages or --format");
-            }
-            if (lineArtMethod != null && (anyOffice || formatGiven && !"pdf".equals(format) || pagesGiven)) {
-                throw new Usage("--line-art rewrites the pictures of whole PDFs; give it PDF input without --pages or --format");
-            }
-            if (anyOffice && pagesGiven) {
-                throw new Usage("--pages is for PDF input; Office documents convert whole (--max-pages n limits them)");
-            }
-            if (anyOffice && formatGiven && !"pdf".equals(format)) {
-                throw new Usage("Office documents convert to PDF only; use --format pdf or leave it out");
-            }
-            if (anyPdf && "pdf".equals(format) && pdfa == null && lineArtMethod == null && !optimize) {
-                throw new Usage("PDF input converts to an Office format, not pdf");
-            }
-            options = new PdfToDocx.Options(first, last, tables, dpi, password, pictureFallback, pictures);
-            slides = new PdfToPptx.Options(first, last, tables, dpi, password, pictureFallback, pictures);
-            books = PdfToXlsx.Options.defaults().withPages(first, last).withTables(tables).withPassword(password)
-                    .withSheets(sheets).withTextFallback(pictureFallback);
-            if ((pdfa != null || lineArtMethod != null || optimize) && output != null && !Files.isDirectory(output) && inputs.size() == 1
-                    && !Files.isDirectory(inputs.get(0)) && !"pdf".equals(extension(output))) {
-                throw new Usage((pdfa != null ? "--pdfa" : lineArtMethod != null ? "--line-art" : "--optimize")
-                        + " writes a PDF; name the output .pdf");
-            }
-            if (pdfa == null && lineArtMethod == null && !optimize && output != null && !Files.isDirectory(output) && inputs.size() == 1
-                    && !Files.isDirectory(inputs.get(0))) {
-                String ext = known(extension(output));
-                boolean officeInput = officeOrPage(inputs.get(0));
-                if (officeInput != "pdf".equals(ext)) {
-                    throw new Usage(officeInput ? "an Office document converts to PDF; name the output .pdf"
-                            : "PDF input converts to an Office format; the output cannot be .pdf");
-                }
-            }
+            batch = validate(args);
         } catch (Usage | IllegalArgumentException e) {
             System.err.println("office-convert: " + e.getMessage());
             System.err.println("Run office-convert --help for the options.");
             return 2;
         }
-        List<Path> pdfs = new ArrayList<>();
-        String pdfSuffix = pdfa != null ? "pdfa.pdf" : lineArtMethod != null ? "lineart.pdf"
-                : optimize ? "optimized.pdf" : null;
-        boolean archive = pdfSuffix != null;
-        boolean officeFolder = !archive && (!formatGiven || "pdf".equals(format));
-        boolean pdfFolder = archive || !formatGiven || !"pdf".equals(format);
-        boolean textFolder = formatGiven;
-        boolean packages = office.allowPackages();
-        int failures = 0;
-        for (Path in : inputs) {
-            if (Files.isDirectory(in)) {
-                int before = pdfs.size();
-                try (Stream<Path> s = Files.list(in)) {
-                    s.filter(p -> Files.isRegularFile(p) && !lockFile(p) && (officeFolder && folderDocument(p, packages)
-                            && (textFolder || !plainSource(p))
-                            || pdfFolder && p.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".pdf")
-                            && !(archive && p.getFileName().toString().toLowerCase(Locale.ROOT).endsWith("." + pdfSuffix))))
-                            .sorted().forEach(pdfs::add);
-                } catch (IOException e) {
-                    System.err.println("office-convert: cannot list " + in + ": " + e.getMessage());
-                    return 1;
-                }
-                if (pdfs.size() == before) {
-                    failures++;
-                    System.err.println("office-convert: nothing to convert in " + in);
-                }
-            } else {
-                pdfs.add(in);
-            }
+        return convert(batch);
+    }
+
+    private static void checkUrl(Args a) throws Usage {
+        if (!a.rewrites().isEmpty() || a.lineArtTuned() || a.effort() != null || a.keepPrivateData()) {
+            throw new Usage("--pdfa, --line-art and --optimize rewrite PDF input; a URL converts to PDF without them");
         }
-        if (!quiet && (pdfa != null || pdfs.stream().anyMatch(Main::officeOrPage))) {
-            for (String problem : fonts.problems()) {
+        if (a.urls().size() > 1 || !a.inputs().isEmpty() || a.output() == null || !PDF.equals(extension(a.output()))
+                || a.pagesGiven() || a.asksForOfficeFormat()) {
+            throw new Usage("a URL converts on its own to the PDF named by -o out.pdf");
+        }
+        if (!a.web().network()) {
+            throw new Usage("a URL is fetched only with --allow-network");
+        }
+    }
+
+    private static Batch validate(Args a) throws Usage {
+        if (a.web().linkedFromFiles() && !a.web().network()) {
+            throw new Usage("--fetch-linked fetches only with --allow-network");
+        }
+        boolean anyOffice = false;
+        boolean anyPdf = false;
+        for (Path in : a.inputs()) {
+            if (Files.isDirectory(in)) {
+                anyOffice |= a.asksForPdf();
+                anyPdf |= a.asksForOfficeFormat();
+                continue;
+            }
+            boolean officeInput = officeOrPage(in);
+            String unsupported = officeInput ? null : UnsupportedFormats.byExtension(extension(in));
+            if (unsupported != null) {
+                throw new Usage(in.getFileName() + ": " + unsupported);
+            }
+            anyOffice |= officeInput;
+            anyPdf |= !officeInput;
+        }
+        if (a.lineArtTuned() && !a.rewrites().contains(Mode.LINE_ART)) {
+            throw new Usage("--threshold, --edge-level, --window, --sauvola-k, --codec and --ink-colour go with --line-art");
+        }
+        Mode mode = mode(a.rewrites());
+        if ((a.effort() != null || a.keepPrivateData()) && mode != Mode.OPTIMIZE) {
+            throw new Usage("--effort and --keep-private-data go with --optimize");
+        }
+        if (mode.rewritesPdf() && (anyOffice || a.asksForOfficeFormat() || a.pagesGiven())) {
+            throw new Usage(mode.flag() + " " + mode.purpose() + "; give it PDF input without --pages or --format");
+        }
+        if (anyOffice && a.pagesGiven()) {
+            throw new Usage("--pages is for PDF input; Office documents convert whole (--max-pages n limits them)");
+        }
+        if (anyOffice && a.asksForOfficeFormat()) {
+            throw new Usage("Office documents convert to PDF only; use --format pdf or leave it out");
+        }
+        if (anyPdf && a.asksForPdf() && !mode.rewritesPdf()) {
+            throw new Usage("PDF input converts to an Office format, not pdf");
+        }
+        OutputFormat.Settings settings = settings(a);
+        if (namesOneFile(a)) {
+            checkOutputName(a, mode);
+        }
+        return new Batch(a, mode, settings);
+    }
+
+    private static Mode mode(Set<Mode> rewrites) throws Usage {
+        if (rewrites.contains(Mode.LINE_ART) && rewrites.contains(Mode.PDFA)) {
+            throw new Usage("--line-art and --pdfa are separate runs; give one of them");
+        }
+        if (rewrites.contains(Mode.OPTIMIZE) && rewrites.contains(Mode.LINE_ART)) {
+            throw new Usage("--optimize and --line-art are separate passes; give one of them");
+        }
+        if (rewrites.contains(Mode.OPTIMIZE) && rewrites.contains(Mode.PDFA)) {
+            throw new Usage("--optimize and --pdfa are separate passes; give one of them");
+        }
+        return rewrites.isEmpty() ? Mode.CONVERT : rewrites.iterator().next();
+    }
+
+    private static OutputFormat.Settings settings(Args a) {
+        PdfToDocx.Options document = new PdfToDocx.Options(a.first(), a.last(), a.tables(), a.dpi(), a.password(),
+                a.pictureFallback(), a.pictures());
+        PdfToPptx.Options slides = new PdfToPptx.Options(a.first(), a.last(), a.tables(), a.dpi(), a.password(),
+                a.pictureFallback(), a.pictures());
+        PdfToXlsx.Options books = PdfToXlsx.Options.defaults().withPages(a.first(), a.last()).withTables(a.tables())
+                .withPassword(a.password()).withSheets(a.sheets()).withTextFallback(a.pictureFallback());
+        return new OutputFormat.Settings(document, slides, books, a.ebook());
+    }
+
+    private static boolean namesOneFile(Args a) {
+        return a.output() != null && !Files.isDirectory(a.output()) && a.inputs().size() == 1
+                && !Files.isDirectory(a.inputs().get(0));
+    }
+
+    private static void checkOutputName(Args a, Mode mode) throws Usage {
+        if (mode.rewritesPdf()) {
+            if (!PDF.equals(extension(a.output()))) {
+                throw new Usage(mode.flag() + " writes a PDF; name the output .pdf");
+            }
+            return;
+        }
+        String ext = OutputFormat.known(extension(a.output()));
+        boolean officeInput = officeOrPage(a.inputs().get(0));
+        if (officeInput != PDF.equals(ext)) {
+            throw new Usage(officeInput ? "an Office document converts to PDF; name the output .pdf"
+                    : "PDF input converts to an Office format; the output cannot be .pdf");
+        }
+    }
+
+    private static int convert(Batch batch) {
+        Args a = batch.args();
+        List<Path> files = new ArrayList<>();
+        int failures = expand(batch, files);
+        if (failures < 0) {
+            return 1;
+        }
+        if (!a.quiet() && (batch.mode() == Mode.PDFA || files.stream().anyMatch(Main::officeOrPage))) {
+            for (String problem : a.fonts().problems()) {
                 System.err.println("warning: fonts: " + oneLine(problem));
             }
         }
-        warmUp(pdfs);
-        List<Path> targets = Targets.of(pdfs, output, archive ? pdfSuffix : format,
-                inputs.stream().anyMatch(Files::isDirectory));
-        Guard guard = new Guard(pdfs, overwrite);
-        PdfToPdfA.Options archival = pdfa == null ? null : PdfToPdfA.Options.defaults().level(pdfa).password(password)
-                .timeout(office.timeout()).maxPages(office.maxPages()).fonts(fonts);
-        LineArt.Options bilevel = lineArtMethod == null ? null : lineArt.method(lineArtMethod).password(password);
-        PdfOptimizer.Options shrink = !optimize ? null : PdfOptimizer.Options.defaults().password(password)
-                .timeout(office.timeout()).effort(effort == null ? PdfOptimizer.Effort.DEFAULT : effort)
-                .keepPrivateData(keepPrivateData);
-        for (int k = 0; k < pdfs.size(); k++) {
-            Path pdf = pdfs.get(k);
-            boolean officeInput = officeOrPage(pdf);
+        warmUp(files);
+        List<Path> targets = Targets.of(files, a.output(), batch.mode().rewritesPdf() ? batch.mode().suffix() : a.format(),
+                a.inputs().stream().anyMatch(Files::isDirectory));
+        Guard guard = new Guard(files, a.overwrite());
+        Conversion conversion = conversion(batch);
+        for (int k = 0; k < files.size(); k++) {
+            Path in = files.get(k);
             Path target = targets.get(k);
-            String refusal = guard.refusal(pdf, target);
+            String refusal = guard.refusal(in, target);
             if (refusal != null) {
                 failures++;
-                System.err.println("SKIP " + pdf + ": " + oneLine(refusal));
+                System.err.println("SKIP " + in + ": " + oneLine(refusal));
                 continue;
             }
-            resetPeaks();
-            long start = System.nanoTime();
-            try {
-                if (target.getParent() != null) {
-                    Files.createDirectories(target.getParent());
-                }
-                OfficeToPdf.Result result = null;
-                List<String> notes = List.of();
-                if (shrink != null) {
-                    PdfOptimizer.Result r = PdfOptimizer.optimize(pdf, target, shrink);
-                    List<String> lines = new ArrayList<>(r.warnings());
-                    if (r.rewritten()) {
-                        lines.add(String.format(Locale.ROOT, "%d -> %d bytes (%.1f%% %s)", r.inputBytes(),
-                                r.outputBytes(), 100.0 * Math.abs((double) r.inputBytes() - r.outputBytes())
-                                        / Math.max(1, r.inputBytes()),
-                                r.outputBytes() <= r.inputBytes() ? "smaller" : "larger"));
-                    } else if (r.warnings().isEmpty()) {
-                        lines.add("already as small as the rewrite; copied unchanged; any private data is retained");
-                    }
-                    notes = lines;
-                } else if (archival != null) {
-                    notes = PdfToPdfA.convert(pdf, target, archival).warnings();
-                } else if (bilevel != null) {
-                    LineArt.Result art = LineArt.convert(pdf, target, bilevel);
-                    notes = new ArrayList<>(art.warnings());
-                    notes.add(art.converted() + " of " + art.images() + " pictures made 1-bit, " + art.bytesBefore() + " -> "
-                            + art.bytesAfter() + " bytes");
-                } else if (officeInput) {
-                    result = officeToPdf(pdf, target, page(pdf) ? office.htmlAssets(assets(pdf, localFiles, web))
-                            : office);
-                } else {
-                    EbookOptions book = ebook;
-                    OfficeConvert.run(office.timeout(), () -> {
-                        convert(pdf, target, options, slides, books, book);
-                        return null;
-                    });
-                }
-                guard.wrote(target);
-                long ms = (System.nanoTime() - start) / 1_000_000;
-                if (!quiet) {
-                    Runtime rt = Runtime.getRuntime();
-                    long usedMb = (rt.totalMemory() - rt.freeMemory()) / (1024 * 1024);
-                    System.out.printf("OK %s -> %s (%d ms, heap %d MB, peak %d MB)%n", pdf, target, ms, usedMb,
-                            peakMb());
-                    if (result != null) {
-                        for (String w : result.warnings()) {
-                            System.err.println("warning: " + pdf.getFileName() + ": " + oneLine(w));
-                        }
-                    }
-                    for (String w : notes) {
-                        System.err.println("note: " + pdf.getFileName() + ": " + oneLine(w));
-                    }
-                }
-            } catch (IOException e) {
+            if (!convertOne(in, target, conversion, guard, a.quiet())) {
                 failures++;
-                System.err.println("FAIL " + pdf + ": " + oneLine(describe(e)));
-            } catch (RuntimeException | OutOfMemoryError e) {
-                failures++;
-                System.err.println("FAIL " + pdf + ": unexpected " + e);
-                e.printStackTrace();
             }
         }
         return failures == 0 ? 0 : 1;
+    }
+
+    private static int expand(Batch batch, List<Path> files) {
+        Mode mode = batch.mode();
+        Args a = batch.args();
+        boolean officeFolder = !mode.rewritesPdf() && !a.asksForOfficeFormat();
+        boolean pdfFolder = mode.rewritesPdf() || !a.asksForPdf();
+        boolean textFolder = a.formatGiven();
+        boolean packages = a.office().allowPackages();
+        int failures = 0;
+        for (Path in : a.inputs()) {
+            if (!Files.isDirectory(in)) {
+                files.add(in);
+                continue;
+            }
+            int before = files.size();
+            try (Stream<Path> s = Files.list(in)) {
+                s.filter(p -> Files.isRegularFile(p) && !lockFile(p) && (officeFolder && folderDocument(p, packages)
+                        && (textFolder || !plainSource(p))
+                        || pdfFolder && p.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".pdf")
+                        && !(mode.rewritesPdf()
+                                && p.getFileName().toString().toLowerCase(Locale.ROOT).endsWith("." + mode.suffix()))))
+                        .sorted().forEach(files::add);
+            } catch (IOException e) {
+                System.err.println("office-convert: cannot list " + in + ": " + e.getMessage());
+                return -1;
+            }
+            if (files.size() == before) {
+                failures++;
+                System.err.println("office-convert: nothing to convert in " + in);
+            }
+        }
+        return failures;
+    }
+
+    private static Conversion conversion(Batch batch) {
+        Args a = batch.args();
+        OfficeToPdf.Options office = a.office();
+        return switch (batch.mode()) {
+            case PDFA -> {
+                PdfToPdfA.Options archival = PdfToPdfA.Options.defaults().level(a.pdfaLevel()).password(a.password())
+                        .timeout(office.timeout()).maxPages(office.maxPages()).fonts(a.fonts());
+                yield (in, target) -> notes(PdfToPdfA.convert(in, target, archival).warnings());
+            }
+            case LINE_ART -> {
+                LineArt.Options bilevel = a.lineArt().password(a.password());
+                yield (in, target) -> lineArtNotes(LineArt.convert(in, target, bilevel));
+            }
+            case OPTIMIZE -> {
+                PdfOptimizer.Options shrink = PdfOptimizer.Options.defaults().password(a.password())
+                        .timeout(office.timeout()).effort(a.effort() == null ? PdfOptimizer.Effort.DEFAULT : a.effort())
+                        .keepPrivateData(a.keepPrivateData());
+                yield (in, target) -> optimizeNotes(PdfOptimizer.optimize(in, target, shrink));
+            }
+            case CONVERT -> (in, target) -> {
+                if (officeOrPage(in)) {
+                    OfficeToPdf.Options page = page(in) ? office.htmlAssets(assets(in, a.localFiles(), a.web())) : office;
+                    return new Outcome(officeToPdf(in, target, page).warnings(), List.of());
+                }
+                OfficeConvert.run(office.timeout(), () -> {
+                    pdfToOffice(in, target, batch.settings());
+                    return null;
+                });
+                return notes(List.of());
+            };
+        };
+    }
+
+    private static Outcome notes(List<String> notes) {
+        return new Outcome(List.of(), notes);
+    }
+
+    private static Outcome lineArtNotes(LineArt.Result art) {
+        List<String> notes = new ArrayList<>(art.warnings());
+        notes.add(art.converted() + " of " + art.images() + " pictures made 1-bit, " + art.bytesBefore() + " -> "
+                + art.bytesAfter() + " bytes");
+        return notes(notes);
+    }
+
+    private static Outcome optimizeNotes(PdfOptimizer.Result r) {
+        List<String> notes = new ArrayList<>(r.warnings());
+        if (r.rewritten()) {
+            notes.add(String.format(Locale.ROOT, "%d -> %d bytes (%.1f%% %s)", r.inputBytes(), r.outputBytes(),
+                    100.0 * Math.abs((double) r.inputBytes() - r.outputBytes()) / Math.max(1, r.inputBytes()),
+                    r.outputBytes() <= r.inputBytes() ? "smaller" : "larger"));
+        } else if (r.warnings().isEmpty()) {
+            notes.add("already as small as the rewrite; copied unchanged; any private data is retained");
+        }
+        return notes(notes);
+    }
+
+    private static void pdfToOffice(Path pdf, Path target, OutputFormat.Settings settings) throws IOException {
+        OutputFormat format = OutputFormat.of(extension(target));
+        if (format == null) {
+            throw new IOException("unknown output format ." + extension(target));
+        }
+        format.convert(pdf, target, settings);
+    }
+
+    private static boolean convertOne(Path in, Path target, Conversion conversion, Guard guard, boolean quiet) {
+        resetPeaks();
+        long start = System.nanoTime();
+        try {
+            if (target.getParent() != null) {
+                Files.createDirectories(target.getParent());
+            }
+            Outcome outcome = conversion.convert(in, target);
+            guard.wrote(target);
+            long ms = (System.nanoTime() - start) / 1_000_000;
+            if (!quiet) {
+                Runtime rt = Runtime.getRuntime();
+                long usedMb = (rt.totalMemory() - rt.freeMemory()) / (1024 * 1024);
+                System.out.printf("OK %s -> %s (%d ms, heap %d MB, peak %d MB)%n", in, target, ms, usedMb, peakMb());
+                for (String w : outcome.warnings()) {
+                    System.err.println("warning: " + in.getFileName() + ": " + oneLine(w));
+                }
+                for (String w : outcome.notes()) {
+                    System.err.println("note: " + in.getFileName() + ": " + oneLine(w));
+                }
+            }
+            return true;
+        } catch (IOException e) {
+            System.err.println("FAIL " + in + ": " + oneLine(describe(e)));
+        } catch (RuntimeException | OutOfMemoryError e) {
+            System.err.println("FAIL " + in + ": unexpected " + e);
+            e.printStackTrace();
+        }
+        return false;
     }
 
     private static void resetPeaks() {
@@ -457,27 +388,6 @@ public final class Main {
             return "no such file or folder: " + missing.getFile() + (missing.getReason() == null ? "" : " (" + missing.getReason() + ")");
         }
         return e.getMessage() == null ? e.toString() : e.getMessage();
-    }
-
-    private static void convert(Path pdf, Path target, PdfToDocx.Options options, PdfToPptx.Options slides,
-            PdfToXlsx.Options books, EbookOptions ebook) throws IOException {
-        switch (extension(target)) {
-            case "odt" -> PdfToOdt.convert(pdf, target, options);
-            case "fodt", "xml" -> PdfToOdt.convertFlat(pdf, target, options);
-            case "rtf", "doc" -> PdfToRtf.convert(pdf, target, options);
-            case "txt" -> PdfToText.convert(pdf, target, options);
-            case "html" -> PdfToHtml.convert(pdf, target, options);
-            case "json" -> PdfToJson.convert(pdf, target, options);
-            case "md" -> PdfToMarkdown.convert(pdf, target, options);
-            case "epub" -> PdfToEpub.convert(pdf, target, options, ebook);
-            case "azw3" -> PdfToAzw3.convert(pdf, target, options, ebook);
-            case "pptx" -> PdfToPptx.convert(pdf, target, slides);
-            case "odp" -> PdfToOdp.convert(pdf, target, slides);
-            case "ppt" -> PdfToPpt.convert(pdf, target, slides);
-            case "xlsx", "ods" -> PdfToXlsx.convert(pdf, target, books);
-            case "docx" -> PdfToDocx.convert(pdf, target, options);
-            default -> throw new IOException("unknown output format ." + extension(target));
-        }
     }
 
     private static HtmlAssets assets(Path page, boolean localFiles, WebAssets.Access web) throws IOException {
@@ -581,145 +491,10 @@ public final class Main {
         return TextFormats.kind(file) != null || page(file) || "json".equals(extension(file));
     }
 
-    private static float seconds(String s, String option) throws Usage {
-        float v = number(s, option);
-        if (!(v >= 0 && v <= 86_400)) {
-            throw new Usage(option + " needs seconds from 0 (no limit) to 86400, not '" + s + "'");
-        }
-        return v;
-    }
-
-    private static int count(String s, String option) throws Usage {
-        try {
-            int v = Integer.parseInt(s.strip());
-            if (v < 0) {
-                throw new NumberFormatException();
-            }
-            return v;
-        } catch (NumberFormatException e) {
-            throw new Usage(option + " needs a whole number of 0 or more, not '" + s + "'");
-        }
-    }
-
     private static String extension(Path file) {
         String name = file.getFileName().toString().toLowerCase(Locale.ROOT);
         int dot = name.lastIndexOf('.');
         return dot < 0 ? "" : name.substring(dot + 1);
-    }
-
-    private static String known(String format) throws Usage {
-        if (!FORMATS.contains(format)) {
-            throw new Usage("unknown output format '" + format
-                    + "': use docx, odt, fodt, xml, rtf, doc, txt, html, json, md, epub, azw3, pptx, odp, ppt, xlsx or ods (pdf for Office input)");
-        }
-        return format;
-    }
-
-    private static String value(String[] args, int i, String option) throws Usage {
-        if (i >= args.length) {
-            throw new Usage(option + " needs a value");
-        }
-        return args[i];
-    }
-
-    private static String[] pair(String s, String option) throws Usage {
-        int eq = s.lastIndexOf('=');
-        if (eq <= 0 || eq == s.length() - 1 || s.substring(0, eq).isBlank() || s.substring(eq + 1).isBlank()) {
-            throw new Usage(option + " needs Family=value, was " + s);
-        }
-        return new String[] {s.substring(0, eq).strip(), s.substring(eq + 1).strip()};
-    }
-
-    private static Path folder(String s, String option) throws Usage {
-        Path p = path(s);
-        if (!Files.isDirectory(p)) {
-            throw new Usage(option + " needs a folder of fonts; " + s + " is not a folder");
-        }
-        return p;
-    }
-
-    private static Path path(String s) throws Usage {
-        try {
-            return Path.of(s);
-        } catch (InvalidPathException e) {
-            throw new Usage("not a valid path: " + s);
-        }
-    }
-
-    private static float number(String s, String option) throws Usage {
-        try {
-            return Float.parseFloat(s.strip());
-        } catch (NumberFormatException e) {
-            throw new Usage(option + " needs a number, not '" + s + "'");
-        }
-    }
-
-    private static int[] pages(String s) throws Usage {
-        if (!s.strip().matches("\\d{0,9}\\s*(-\\s*\\d{0,9})?") || s.isBlank()) {
-            throw new Usage("--pages needs a range like 2-5, 3, 2- or -5, not '" + s + "'");
-        }
-        String[] ab = s.strip().split("-", -1);
-        int first = ab[0].isBlank() ? 0 : Integer.parseInt(ab[0].strip());
-        int last = ab.length < 2 ? first : ab[1].isBlank() ? 0 : Integer.parseInt(ab[1].strip());
-        return new int[] {first, last};
-    }
-
-    private static PdfToXlsx.Sheets sheets(String s) throws Usage {
-        try {
-            return PdfToXlsx.Sheets.valueOf(s.strip().toUpperCase(Locale.ROOT));
-        } catch (IllegalArgumentException e) {
-            throw new Usage("--sheets is page, table or single, not '" + s + "'");
-        }
-    }
-
-    private static PdfALevel level(String s) throws Usage {
-        try {
-            return PdfALevel.parse(s);
-        } catch (IllegalArgumentException e) {
-            throw new Usage("--pdfa: " + e.getMessage());
-        }
-    }
-
-    private static EbookOptions.Device device(String s) throws Usage {
-        return switch (s.toLowerCase(Locale.ROOT)) {
-            case "tablet" -> EbookOptions.Device.TABLET;
-            case "kindle" -> EbookOptions.Device.KINDLE;
-            default -> throw new Usage("--device is tablet or kindle, not '" + s + "'");
-        };
-    }
-
-    private static LineArt.Method lineArtMethod(String s) throws Usage {
-        try {
-            return LineArt.Method.valueOf(s.strip().toUpperCase(Locale.ROOT));
-        } catch (IllegalArgumentException e) {
-            throw new Usage("--line-art is sauvola, otsu, fixed or edges, not '" + s + "'");
-        }
-    }
-
-    private static LineArt.Codec codec(String s) throws Usage {
-        return switch (s.strip().toLowerCase(Locale.ROOT)) {
-            case "smallest" -> LineArt.Codec.SMALLEST;
-            case "jbig2" -> LineArt.Codec.JBIG2;
-            case "g4", "ccitt" -> LineArt.Codec.CCITT_G4;
-            case "flate" -> LineArt.Codec.FLATE;
-            default -> throw new Usage("--codec is smallest, jbig2, g4 or flate, not '" + s + "'");
-        };
-    }
-
-    private static PdfOptimizer.Effort effort(String s) throws Usage {
-        try {
-            return PdfOptimizer.Effort.valueOf(s.strip().toUpperCase(Locale.ROOT));
-        } catch (IllegalArgumentException e) {
-            throw new Usage("--effort is fast, default or max, not '" + s + "'");
-        }
-    }
-
-    private static Pictures pictures(String s) throws Usage {
-        try {
-            return Pictures.valueOf(s.strip().toUpperCase(Locale.ROOT));
-        } catch (IllegalArgumentException e) {
-            throw new Usage("--pictures is compact or lossless, not '" + s + "'");
-        }
     }
 
     private static void usage() {

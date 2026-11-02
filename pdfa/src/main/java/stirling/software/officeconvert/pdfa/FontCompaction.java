@@ -150,6 +150,7 @@ final class FontCompaction {
                 for (int code : codes) {
                     int gid = c.codeToGID(code);
                     map.put(c.codeToCID(code), gid);
+                    map.putIfAbsent(CidLookup.cid((PDType0Font) f, code), gid);
                     keep.add(gid);
                 }
             } else if (!SimpleGlyphs.collect((PDTrueTypeFont) f, ttf, codes, keep, unicode, macRoman)) {

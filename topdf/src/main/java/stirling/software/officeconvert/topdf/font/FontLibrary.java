@@ -259,15 +259,33 @@ public final class FontLibrary {
         }
         FontFace found = null;
         FontFace light = null;
+        List<Object> lights = new ArrayList<>();
         for (String family : Substitutes.script(codePoint)) {
+            List<FontEntry> entries = candidates(family, bold, italic);
+            if (codePoint > 0xFF && entries.stream().noneMatch(e -> e.mayCover(codePoint))) {
+                continue;
+            }
+            if (!entries.isEmpty() && entries.stream().allMatch(e -> Weights.tooLight(null, e.weight()))) {
+                lights.add(family);
+                continue;
+            }
             FontFace f = exact(family, bold, italic);
             if (f != null && f.covers(codePoint)) {
                 if (Weights.tooLight(null, f)) {
-                    light = light == null ? f : light;
+                    lights.add(f);
                     continue;
                 }
                 found = f;
                 break;
+            }
+        }
+        if (found == null) {
+            for (Object l : lights) {
+                FontFace f = l instanceof FontFace face ? face : exact((String) l, bold, italic);
+                if (f != null && f.covers(codePoint)) {
+                    light = f;
+                    break;
+                }
             }
         }
         if (found == null) {
@@ -615,6 +633,14 @@ public final class FontLibrary {
             }
         }
         return null;
+    }
+
+    private List<FontEntry> candidates(String family, boolean bold, boolean italic) {
+        List<FontEntry> out = new ArrayList<>();
+        for (List<FontEntry> group : groups(normalize(family))) {
+            out.addAll(ranked(group, bold, italic));
+        }
+        return out;
     }
 
     private List<List<FontEntry>> groups(String n) {

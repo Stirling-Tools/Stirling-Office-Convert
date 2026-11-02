@@ -16,6 +16,8 @@ final class Binarizer {
 
     private static final double QUANTUM = 65535.0;
 
+    private static final double EIGHT_SCALE = 1 / 257.0;
+
     private static final double[] RED = weights(0.212656);
 
     private static final double[] GREEN = weights(0.715158);
@@ -24,6 +26,10 @@ final class Binarizer {
 
     interface Rows {
         void process(float[] buffer, int first, int from, int to) throws IOException;
+    }
+
+    interface RingRows {
+        void process(float[] rows, int capacity, int from, int to) throws IOException;
     }
 
     interface GreyBand {
@@ -95,8 +101,16 @@ final class Binarizer {
             }
             case SAUVOLA -> {
                 int window = window(options.window(), w, h);
-                scan(greys, w, h, window / 2,
-                        (buffer, first, from, to) -> sauvola(buffer, first, w, h, from, to, window, options.k(), out));
+                Paper paper = new Paper(w, h, window);
+                Bitmap core = Bitmap.blank(w, h);
+                Bitmap edge = Bitmap.blank(w, h);
+                int ahead = window / 2 + Paper.lookahead(w, h, window);
+                Sauvola sauvola = new Sauvola(w, h, window, options.k());
+                ring(greys, w, h, window / 2, ahead, (slots, capacity, from, to) -> {
+                    paper.feed(slots, capacity, Math.min(h, to + ahead));
+                    sauvola.rows(slots, capacity, from, to, paper, out, core, edge);
+                });
+                Paper.grow(out, core, edge, window);
             }
             case EDGES -> edges(greys, w, h, options.edgeLevel(), options.threshold(), out, keepEdges);
         }
@@ -105,7 +119,10 @@ final class Binarizer {
 
     static int context(LineArt.Options options, int w, int h) {
         return switch (options.method()) {
-            case SAUVOLA -> window(options.window(), w, h) / 2 + 1;
+            case SAUVOLA -> {
+                int window = window(options.window(), w, h);
+                yield window / 2 + 1 + Math.ceilDiv(Paper.lookahead(w, h, window), 2);
+            }
             case EDGES -> 2 * options.edgeLevel() + 1;
             case FIXED, OTSU -> 0;
         };
@@ -169,6 +186,47 @@ final class Binarizer {
             state[0] = first;
             state[1] = count;
             state[2] = done;
+        });
+    }
+
+    static void ring(Greys greys, int w, int h, int behind, int ahead, RingRows sink) throws IOException {
+        float[][] holder = {null};
+        int[] state = new int[2];
+        greys.each((y, grey, n) -> {
+            LineArt.checkpoint();
+            float[] rows = holder[0];
+            int capacity = state[0];
+            int done = state[1];
+            if (rows == null && y == 0 && n >= h) {
+                rows = grey;
+                capacity = h;
+            } else {
+                int alive = Math.max(0, Math.min(y, done - behind));
+                if (rows == null || y + n - alive > capacity) {
+                    int grown = Math.min(h, Math.max(y + n - alive, behind + ahead + n + 1));
+                    float[] bigger = new float[Math.multiplyExact(grown, w)];
+                    for (int row = alive; row < y; row++) {
+                        System.arraycopy(rows, (row % capacity) * w, bigger, (row % grown) * w, w);
+                    }
+                    rows = bigger;
+                    capacity = grown;
+                }
+                for (int i = 0; i < n; ) {
+                    int slot = (y + i) % capacity;
+                    int run = Math.min(n - i, capacity - slot);
+                    System.arraycopy(grey, i * w, rows, slot * w, run * w);
+                    i += run;
+                }
+            }
+            int available = y + n;
+            int to = available >= h ? h : available - ahead;
+            if (to > done) {
+                sink.process(rows, capacity, done, to);
+                done = to;
+            }
+            holder[0] = rows;
+            state[0] = capacity;
+            state[1] = done;
         });
     }
 
@@ -417,64 +475,8 @@ final class Binarizer {
         return level;
     }
 
-    private static void sauvola(float[] buffer, int first, int w, int h, int from, int to, int window, double k, Bitmap out) {
-        int r = window / 2;
-        long[] columnSum = new long[w];
-        long[] columnSquares = new long[w];
-        int top = Math.max(0, from - r);
-        int bottom = Math.min(h - 1, from + r);
-        for (int y = top; y <= bottom; y++) {
-            LineArt.checkpoint();
-            addRow(buffer, (y - first) * w, w, columnSum, columnSquares, 1);
-        }
-        for (int y = from; y < to; y++) {
-            LineArt.checkpoint();
-            if (y > from) {
-                if (y + r < h) {
-                    addRow(buffer, (y + r - first) * w, w, columnSum, columnSquares, 1);
-                }
-                if (y - r - 1 >= 0) {
-                    addRow(buffer, (y - r - 1 - first) * w, w, columnSum, columnSquares, -1);
-                }
-            }
-            int rows = Math.min(h - 1, y + r) - Math.max(0, y - r) + 1;
-            long sum = 0;
-            long squares = 0;
-            for (int x = 0; x < Math.min(r, w); x++) {
-                sum += columnSum[x];
-                squares += columnSquares[x];
-            }
-            int base = (y - first) * w;
-            for (int x = 0; x < w; x++) {
-                if (x + r < w) {
-                    sum += columnSum[x + r];
-                    squares += columnSquares[x + r];
-                }
-                if (x - r - 1 >= 0) {
-                    sum -= columnSum[x - r - 1];
-                    squares -= columnSquares[x - r - 1];
-                }
-                long count = (long) rows * (Math.min(w - 1, x + r) - Math.max(0, x - r) + 1);
-                double mean = (double) sum / count;
-                double deviation = Math.sqrt(Math.max(0, (double) squares / count - mean * mean));
-                double level = mean * (1 + k * (deviation / 128 - 1));
-                if (eight(buffer[base + x]) <= level) {
-                    out.set(x, y);
-                }
-            }
-        }
-    }
-
-    private static void addRow(float[] buffer, int row, int w, long[] sum, long[] squares, int sign) {
-        for (int x = 0; x < w; x++) {
-            int v = eight(buffer[row + x]);
-            sum[x] += sign * v;
-            squares[x] += sign * v * v;
-        }
-    }
-
-    private static int eight(float f) {
-        return Math.clamp(Math.round(f / 257.0), 0, 255);
+    static int eight(float f) {
+        return Math.max(0, Math.min(255, (int) (f * EIGHT_SCALE + 0.5)));
     }
 
     private static int meanInk(Source source, int rows, Bitmap bitmap) throws IOException {

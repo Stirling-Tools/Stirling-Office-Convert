@@ -6,9 +6,12 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.BitSet;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 
 import org.apache.fontbox.ttf.HorizontalMetricsTable;
@@ -58,6 +61,8 @@ final class TrueTypeWriter {
     private int maxPoints;
 
     private int maxContours;
+
+    private final BitSet resolvable = new BitSet();
 
     private long glyphBytes;
 
@@ -214,7 +219,8 @@ final class TrueTypeWriter {
         int length = (int) (end - start);
         int at = glyfStart + (int) start;
         int lsb = hmtx == null ? 0 : hmtx.getLeftSideBearing(gid);
-        if (!wellFormed(ByteBuffer.wrap(glyf, at, length).slice(), advance, lsb)) {
+        if (!wellFormed(ByteBuffer.wrap(glyf, at, length).slice(), advance, lsb)
+                || unresolvable(gid, new HashSet<>(), 0)) {
             return new Glyph(new byte[0], advance, 0);
         }
         glyphBytes += length;
@@ -222,6 +228,31 @@ final class TrueTypeWriter {
             pending.add(glyphs.size());
         }
         return new Glyph(glyf, at, length, advance, lsb);
+    }
+
+    private boolean unresolvable(int gid, Set<Integer> path, int depth) {
+        if (depth > 64 || gid < 0 || gid + 1 >= loca.length || !path.add(gid)) {
+            return true;
+        }
+        if (resolvable.get(gid)) {
+            path.remove(gid);
+            return false;
+        }
+        long start = loca[gid];
+        long end = loca[gid + 1];
+        if (end - start < 10 || end > glyfLength) {
+            path.remove(gid);
+            return end < start || end > glyfLength;
+        }
+        Glyph g = new Glyph(glyf, glyfStart + (int) start, (int) (end - start), 0, 0);
+        for (int child : components(g)) {
+            if (unresolvable(child, path, depth + 1)) {
+                return true;
+            }
+        }
+        path.remove(gid);
+        resolvable.set(gid);
+        return false;
     }
 
     private void breakComponentCycles() {

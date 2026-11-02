@@ -99,10 +99,15 @@ final class StreamFixer {
                 }
             }
         }
-        if (COSName.EXT_G_STATE.equals(d.getCOSName(COSName.TYPE)) || d.containsKey(COSName.TR)
-                || d.containsKey(TR2) || d.containsKey(HT) || d.containsKey(HTP) || d.containsKey(HTO) || d.containsKey(OPM)) {
+        if (COSName.EXT_G_STATE.equals(d.getCOSName(COSName.TYPE)) || !softMask(d) && (d.containsKey(COSName.TR)
+                || d.containsKey(TR2) || d.containsKey(HT) || d.containsKey(HTP) || d.containsKey(HTO) || d.containsKey(OPM))) {
             extGState(d);
         }
+    }
+
+    private static boolean softMask(COSDictionary d) {
+        return COSName.MASK.equals(d.getCOSName(COSName.TYPE))
+                || d.getDictionaryObject(COSName.G) instanceof COSStream && d.getCOSName(COSName.S) != null;
     }
 
     private void stream(COSStream s) throws IOException {

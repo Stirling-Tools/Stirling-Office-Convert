@@ -282,7 +282,7 @@ final class Layout {
     static boolean framed(Map<String, String> cd) {
         int edges = 0;
         for (String side : new String[] {"top", "bottom", "left", "right"}) {
-            edges += Flow.border(cd, side) > 0 ? 1 : 0;
+            edges += BoxCss.border(cd, side) > 0 ? 1 : 0;
         }
         Integer fill = Css.color(cd.get("background-color"));
         String shadow = cd.getOrDefault("box-shadow", "none").strip().toLowerCase(Locale.ROOT);
@@ -594,8 +594,8 @@ final class Layout {
     }
 
     private static float side(Map<String, String> cd, Look look, String side) {
-        return Math.max(0, Flow.length(cd.get("margin-" + side), look.size, 0))
-                + Math.max(0, Flow.length(cd.get("padding-" + side), look.size, 0));
+        return Math.max(0, BoxCss.length(cd.get("margin-" + side), look.size, 0))
+                + Math.max(0, BoxCss.length(cd.get("padding-" + side), look.size, 0));
     }
 
     private static boolean grows(Map<String, String> cd) {

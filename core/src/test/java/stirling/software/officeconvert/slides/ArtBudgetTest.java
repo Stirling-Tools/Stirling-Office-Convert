@@ -16,6 +16,7 @@ import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
 import org.junit.jupiter.api.Test;
 
+import stirling.software.officeconvert.extract.HiddenContent;
 import stirling.software.officeconvert.build.PlacedContent;
 import stirling.software.officeconvert.extract.OperatorBudget;
 import stirling.software.officeconvert.model.Picture;
@@ -29,7 +30,7 @@ class ArtBudgetTest {
         try (PDDocument doc = manyPieces()) {
             PDPage page = doc.getPage(0);
             AffineTransform toDisplay = new AffineTransform(1, 0, 0, -1, 0, 792);
-            PaintOrder paint = PaintOrder.read(page, toDisplay, 612, 792);
+            PaintOrder paint = PaintOrder.read(page, toDisplay, 612, 792, HiddenContent.of(null));
             Art art = new Art(doc, new Store(), 72f, false, g -> true);
             art.pieces(paint, Set.of(), 0, toDisplay, 612, 792);
             long perRender = 3L * FILLER + 1000;

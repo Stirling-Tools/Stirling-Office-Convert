@@ -8,10 +8,8 @@ import java.io.InputStream;
 import java.io.InterruptedIOException;
 import java.io.OutputStream;
 import java.io.UncheckedIOException;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumMap;
@@ -33,6 +31,7 @@ import org.apache.pdfbox.pdmodel.graphics.color.PDSeparation;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 
 import stirling.software.officeconvert.extract.PdfFiles;
+import stirling.software.officeconvert.extract.StrictFilters;
 import stirling.software.officeconvert.jpx.JpxImageIO;
 import stirling.software.officeconvert.memory.Admission;
 
@@ -40,7 +39,7 @@ public final class LineArt {
 
     public static final long DEFAULT_MAX_PIXELS = 1_000_000_000L;
 
-    public static final long MAX_INPUT_BYTES = 1L << 30;
+    public static final long MAX_INPUT_BYTES = PdfFiles.MAX_INPUT_BYTES;
 
     public enum Method {
         EDGES,
@@ -135,7 +134,9 @@ public final class LineArt {
             List<String> warnings) {
 
         public Result {
-            codecs = Collections.unmodifiableMap(new EnumMap<>(codecs));
+            EnumMap<Codec, Integer> copy = new EnumMap<>(Codec.class);
+            copy.putAll(codecs);
+            codecs = Collections.unmodifiableMap(copy);
             warnings = List.copyOf(warnings);
         }
 
@@ -169,11 +170,8 @@ public final class LineArt {
         Objects.requireNonNull(in, "in");
         Objects.requireNonNull(out, "out");
         Objects.requireNonNull(options, "options");
-        if (Files.size(in) > MAX_INPUT_BYTES) {
-            throw new IOException("The PDF is larger than " + (MAX_INPUT_BYTES >> 20) + " MB");
-        }
-        Path part = Files.createTempFile(PdfFiles.outputFolder(out), ".lineart-", ".part");
-        try {
+        PdfFiles.checkSize(in);
+        return PdfFiles.writeThenMove(out, ".lineart-", part -> {
             Result result;
             try (PDDocument doc = PdfFiles.open(in, options.password())) {
                 result = convert(doc, options);
@@ -185,17 +183,11 @@ public final class LineArt {
                             result.codecs(), warnings);
                 }
                 try (OutputStream os = new BufferedOutputStream(Files.newOutputStream(part), 1 << 16)) {
-                    doc.save(os);
+                    PdfSave.save(doc, os);
                 }
             }
-            PdfFiles.stopIfInterrupted();
-            move(part, out);
             return result;
-        } catch (IOException e) {
-            throw PdfFiles.interrupted(e);
-        } finally {
-            Files.deleteIfExists(part);
-        }
+        });
     }
 
     public static Result convert(PDDocument document, Options options) throws IOException {
@@ -288,7 +280,8 @@ public final class LineArt {
     private static Codecs.Encoded convert(PDDocument document, ImageWalk.Found f, Options options, List<String> warnings)
             throws IOException {
         COSStream stream = f.stream();
-        if (stream.getBoolean(COSName.IMAGE_MASK, false) || stream.getDictionaryObject(COSName.F) != null) {
+        if (stream.getBoolean(COSName.IMAGE_MASK, false) || stream.getDictionaryObject(COSName.F) != null
+                || !StrictFilters.decodable(stream)) {
             return null;
         }
         PDImageXObject image = new PDImageXObject(new PDStream(stream), f.resources());
@@ -458,14 +451,6 @@ public final class LineArt {
         }
         if (decode != null) {
             stream.setItem(COSName.DECODE, decode);
-        }
-    }
-
-    private static void move(Path part, Path out) throws IOException {
-        try {
-            Files.move(part, out, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-        } catch (AtomicMoveNotSupportedException e) {
-            Files.move(part, out, StandardCopyOption.REPLACE_EXISTING);
         }
     }
 }

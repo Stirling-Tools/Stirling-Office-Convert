@@ -14,6 +14,8 @@ import org.apache.pdfbox.io.RandomAccessRead;
 import org.apache.pdfbox.io.RandomAccessStreamCache.StreamCacheCreateFunction;
 import org.apache.pdfbox.pdfparser.PDFObjectStreamParser;
 import org.apache.pdfbox.pdfparser.PDFParser;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.encryption.InvalidPasswordException;
 
 final class KeyedPdfParser extends PDFParser {
 
@@ -25,10 +27,65 @@ final class KeyedPdfParser extends PDFParser {
 
     private final boolean allStreams;
 
-    KeyedPdfParser(RandomAccessRead source, String password, StreamCacheCreateFunction cache, boolean allStreams)
-            throws IOException {
+    private final boolean tolerant;
+
+    private boolean clear;
+
+    KeyedPdfParser(RandomAccessRead source, String password, StreamCacheCreateFunction cache, boolean allStreams,
+            boolean tolerant) throws IOException {
         super(source, password, null, null, cache);
         this.allStreams = allStreams;
+        this.tolerant = tolerant;
+    }
+
+    @Override
+    protected void prepareDecryption() throws IOException {
+        try {
+            super.prepareDecryption();
+        } catch (InvalidPasswordException e) {
+            if (!tolerant || !contentInTheClear(document.getEncryptionDictionary())) {
+                throw e;
+            }
+            securityHandler = null;
+            clear = true;
+        }
+    }
+
+    @Override
+    protected void checkPages(COSDictionary root) throws IOException {
+        if (!tolerant) {
+            super.checkPages(root);
+        } else if (root.getCOSDictionary(COSName.PAGES) == null) {
+            throw new IOException("Page tree root must be a dictionary");
+        }
+    }
+
+    @Override
+    public PDDocument parse() throws IOException {
+        PDDocument doc = super.parse();
+        if (clear) {
+            document.setEncryptionDictionary(null);
+            document.getTrailer().removeItem(COSName.ENCRYPT);
+            doc.setAllSecurityToBeRemoved(true);
+            if (doc.getDocumentCatalog().getCOSObject().getDictionaryObject(COSName.NAMES) instanceof COSDictionary names) {
+                names.removeItem(COSName.EMBEDDED_FILES);
+            }
+        }
+        return doc;
+    }
+
+    static boolean contentInTheClear(COSDictionary encryption) {
+        if (encryption == null || !COSName.getPDFName("Standard").equals(encryption.getCOSName(COSName.FILTER))
+                || encryption.getInt(COSName.V, 0) < 4) {
+            return false;
+        }
+        for (COSName key : new COSName[] {COSName.STM_F, COSName.STR_F}) {
+            COSName filter = encryption.getCOSName(key);
+            if (filter != null && !COSName.IDENTITY.equals(filter)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     @Override

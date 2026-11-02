@@ -16,8 +16,11 @@ final class FormPage {
     private FormPage() {}
 
     static boolean looksLikeForm(PageData page, List<Line> segments, List<Rule> rules) {
-        if (page.widgets().size() < MIN_WIDGETS) {
+        if (page.widgets().stream().filter(w -> !w.note()).count() < MIN_WIDGETS) {
             return false;
+        }
+        if (mostlyFieldText(page, segments)) {
+            return true;
         }
         int across = 0;
         int down = 0;
@@ -48,6 +51,29 @@ final class FormPage {
         return small >= SMALL_SHARE * chars && boxed >= BOXED_SHARE * segments.size();
     }
 
+    private static boolean mostlyFieldText(PageData page, List<Line> segments) {
+        List<PageData.Widget> fields = page.widgets().stream().filter(w -> !w.note()).limit(MAX_FIELDS).toList();
+        int all = 0;
+        int inside = 0;
+        for (Line l : segments) {
+            float y = Regions.wordY(l);
+            for (Word w : l.words) {
+                int n = w.text.length();
+                all += n;
+                float x = Regions.wordX(w);
+                for (PageData.Widget f : fields) {
+                    if (x >= f.x() && x <= f.right() && y >= f.top() && y <= f.bottom()) {
+                        inside += n;
+                        break;
+                    }
+                }
+            }
+        }
+        return all > 0 && inside >= FIELD_TEXT_SHARE * all;
+    }
+
+    private static final int MAX_FIELDS = 2000;
+    private static final float FIELD_TEXT_SHARE = 0.5f;
     private static final int MIN_WIDGETS = 5;
     private static final float SHORT_UPRIGHT = 60f;
     private static final int MIN_ACROSS = 40;

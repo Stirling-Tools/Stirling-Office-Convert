@@ -84,7 +84,7 @@ record PageFit(float scale, float dx, float dy) {
     private List<PageData.Widget> widgets(List<PageData.Widget> from) {
         List<PageData.Widget> out = new ArrayList<>();
         for (PageData.Widget w : from) {
-            out.add(new PageData.Widget(x(w.x()), y(w.top()), x(w.right()), y(w.bottom()), w.choice()));
+            out.add(new PageData.Widget(x(w.x()), y(w.top()), x(w.right()), y(w.bottom()), w.choice(), w.note()));
         }
         return out;
     }

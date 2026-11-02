@@ -12,11 +12,9 @@ import java.io.InterruptedIOException;
 import java.io.OutputStream;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -280,11 +278,7 @@ public final class PhotoSplitter {
             }
             checkpoint();
             if (overwrite) {
-                try {
-                    Files.move(part, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-                } catch (AtomicMoveNotSupportedException e) {
-                    Files.move(part, target, StandardCopyOption.REPLACE_EXISTING);
-                }
+                PdfFiles.moveIntoPlace(part, target);
             } else {
                 Files.move(part, target);
             }

@@ -3,10 +3,13 @@ package stirling.software.officeconvert.pdfa;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.TreeSet;
+import java.util.function.IntUnaryOperator;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -14,6 +17,7 @@ import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSStream;
 import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.font.PDFont;
 
 import stirling.software.officeconvert.topdf.font.FontLibrary;
 
@@ -34,6 +38,36 @@ final class ToUnicodeWriter {
             }
         }
         return true;
+    }
+
+    static boolean legal(String text) {
+        if (text == null || text.isEmpty()) {
+            return false;
+        }
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (c == 0 || c == 0xFEFF || c == 0xFFFE || c == 0xFFFF || Character.isSurrogate(c)
+                    && !(Character.isHighSurrogate(c) && i + 1 < text.length()
+                            && Character.isLowSurrogate(text.charAt(++i)))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    static String plain(String text) {
+        if (text == null || text.length() != 1 || text.charAt(0) < 0xFB00 || text.charAt(0) > 0xFB06) {
+            return text;
+        }
+        return Normalizer.normalize(text, Normalizer.Form.NFKC);
+    }
+
+    static boolean usesOther(COSBase map) {
+        if (!(map instanceof COSStream s)) {
+            return false;
+        }
+        byte[] b = StreamFixer.read(s);
+        return b != null && new String(b, StandardCharsets.ISO_8859_1).contains("usecmap");
     }
 
     static boolean wellFormed(COSBase map) {
@@ -81,34 +115,52 @@ final class ToUnicodeWriter {
     }
 
     static COSStream write(PDDocument doc, TreeMap<Integer, String> map, int bytesPerCode) throws IOException {
-        return write(doc, map, bytesPerCode, false);
+        return write(doc, map, code -> bytesPerCode, false);
+    }
+
+    static COSStream write(PDDocument doc, TreeMap<Integer, String> map, PDFont font, int bytesPerCode)
+            throws IOException {
+        return write(doc, map, CodeWidths.of(font, bytesPerCode), false);
     }
 
     static COSStream preserve(PDDocument doc, TreeMap<Integer, String> map, int bytesPerCode) throws IOException {
-        return write(doc, map, bytesPerCode, true);
+        return write(doc, map, code -> bytesPerCode, true);
     }
 
-    private static COSStream write(PDDocument doc, TreeMap<Integer, String> map, int bytesPerCode, boolean preserve)
+    static COSStream preserve(PDDocument doc, TreeMap<Integer, String> map, PDFont font, int bytesPerCode)
             throws IOException {
+        return write(doc, map, CodeWidths.of(font, bytesPerCode), true);
+    }
+
+    private static COSStream write(PDDocument doc, TreeMap<Integer, String> map, IntUnaryOperator widths,
+            boolean preserve) throws IOException {
+        List<Map.Entry<Integer, String>> entries = new ArrayList<>();
+        TreeSet<Integer> lengths = new TreeSet<>();
+        for (Map.Entry<Integer, String> e : map.entrySet()) {
+            int width = widths.applyAsInt(e.getKey());
+            if ((preserve ? e.getValue() != null && !e.getValue().isEmpty() : valid(e.getValue()))
+                    && Integer.toUnsignedLong(e.getKey()) < 1L << (8 * width)) {
+                entries.add(e);
+                lengths.add(width);
+            }
+        }
+        if (lengths.isEmpty()) {
+            lengths.add(widths.applyAsInt(0));
+        }
         StringBuilder b = new StringBuilder();
         b.append("/CIDInit /ProcSet findresource begin\n12 dict begin\nbegincmap\n/CIDSystemInfo\n")
                 .append("<< /Registry (Adobe)\n/Ordering (UCS)\n/Supplement 0\n>> def\n")
-                .append("/CMapName /Adobe-Identity-UCS def\n/CMapType 2 def\n1 begincodespacerange\n");
-        String lo = "00".repeat(bytesPerCode);
-        String hi = "FF".repeat(bytesPerCode);
-        b.append('<').append(lo).append("> <").append(hi).append(">\nendcodespacerange\n");
-        List<Map.Entry<Integer, String>> entries = new ArrayList<>();
-        for (Map.Entry<Integer, String> e : map.entrySet()) {
-            if ((preserve ? e.getValue() != null && !e.getValue().isEmpty() : valid(e.getValue()))
-                    && e.getKey() >= 0 && e.getKey() < (1L << (8 * bytesPerCode))) {
-                entries.add(e);
-            }
+                .append("/CMapName /Adobe-Identity-UCS def\n/CMapType 2 def\n").append(lengths.size())
+                .append(" begincodespacerange\n");
+        for (int width : lengths) {
+            b.append('<').append("00".repeat(width)).append("> <").append("FF".repeat(width)).append(">\n");
         }
+        b.append("endcodespacerange\n");
         for (int i = 0; i < entries.size(); i += 100) {
             List<Map.Entry<Integer, String>> chunk = entries.subList(i, Math.min(entries.size(), i + 100));
             b.append(chunk.size()).append(" beginbfchar\n");
             for (Map.Entry<Integer, String> e : chunk) {
-                b.append('<').append(hex(e.getKey(), bytesPerCode)).append("> <");
+                b.append('<').append(hex(e.getKey(), widths.applyAsInt(e.getKey()))).append("> <");
                 for (byte x : e.getValue().getBytes(StandardCharsets.UTF_16BE)) {
                     b.append(String.format("%02X", x & 0xFF));
                 }

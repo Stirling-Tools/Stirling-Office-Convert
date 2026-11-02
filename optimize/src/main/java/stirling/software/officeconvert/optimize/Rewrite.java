@@ -632,16 +632,9 @@ final class Rewrite {
         packed.sort(Comparator.comparing((Integer i) -> index.group(i) == null ? "" : index.group(i))
                 .thenComparingInt(i -> i));
         numbers = new int[n];
-        int next = 1;
-        for (int i : packed) {
-            numbers[i] = next++;
-        }
         int containers = (packed.size() + OBJECTS_PER_STREAM - 1) / OBJECTS_PER_STREAM;
-        int firstContainer = next;
-        next += containers;
-        for (int i : plain) {
-            numbers[i] = next++;
-        }
+        int firstContainer = packed.size() + 1;
+        int next = number(packed, plain, containers);
         int encryptNumber = encryption != null ? next++ : 0;
         int xrefNumber = objectStreams ? next++ : 0;
         int size = next;
@@ -650,6 +643,35 @@ final class Rewrite {
         int[] indexIn = new int[size];
         out.ascii(versionHeader(version));
         out.write(new byte[] {'%', (byte) 0xE2, (byte) 0xE3, (byte) 0xCF, (byte) 0xD3, '\n'});
+        writePlain(out, plain, offsets);
+        writeObjectStreams(out, packed, containers, firstContainer, offsets, containerOf, indexIn);
+        if (encryption != null) {
+            writeEncryptDict(out, encryptNumber, offsets);
+        }
+        Bytes trailerId = trailerId(id);
+        String head = trailerHead(size, root, info, encryptNumber);
+        if (objectStreams) {
+            xrefStream(out, size, xrefNumber, offsets, containerOf, indexIn, head, trailerId);
+        } else {
+            xrefTable(out, size, offsets, head, trailerId);
+        }
+        out.flush();
+        return size - 1;
+    }
+
+    private int number(List<Integer> packed, List<Integer> plain, int containers) {
+        int next = 1;
+        for (int i : packed) {
+            numbers[i] = next++;
+        }
+        next += containers;
+        for (int i : plain) {
+            numbers[i] = next++;
+        }
+        return next;
+    }
+
+    private void writePlain(CountingOutput out, List<Integer> plain, long[] offsets) throws IOException {
         Bytes b = new Bytes(1 << 16);
         int written = 0;
         for (int i : plain) {
@@ -694,6 +716,10 @@ final class Rewrite {
                 b.writeTo(out);
             }
         }
+    }
+
+    private void writeObjectStreams(CountingOutput out, List<Integer> packed, int containers, int firstContainer,
+            long[] offsets, int[] containerOf, int[] indexIn) throws IOException {
         ExecutorService pool = containers > 1 && Runtime.getRuntime().availableProcessors() > 1
                 ? Executors.newFixedThreadPool(Math.min(MAX_THREADS, Runtime.getRuntime().availableProcessors()),
                         Thread.ofPlatform().name("pdf-optimize-pack-", 0).daemon().factory()) : null;
@@ -753,28 +779,29 @@ final class Rewrite {
                 pool.shutdownNow();
             }
         }
-        if (encryption != null) {
-            offsets[encryptNumber] = out.position();
-            Bytes e = new Bytes(512);
-            e.ascii(encryptNumber + " 0 obj\n");
-            new Syntax((ref, s) -> s.value(ref.getObject())).into(e).dictionary(encryption.dictionary, null);
-            e.ascii("\nendobj\n");
-            e.writeTo(out);
-        }
+    }
+
+    private void writeEncryptDict(CountingOutput out, int encryptNumber, long[] offsets) throws IOException {
+        offsets[encryptNumber] = out.position();
+        Bytes e = new Bytes(512);
+        e.ascii(encryptNumber + " 0 obj\n");
+        new Syntax((ref, s) -> s.value(ref.getObject())).into(e).dictionary(encryption.dictionary, null);
+        e.ascii("\nendobj\n");
+        e.writeTo(out);
+    }
+
+    private static Bytes trailerId(COSArray id) throws IOException {
         Bytes trailerId = new Bytes(96);
         if (id != null) {
             new Syntax((ref, s) -> s.word("null")).into(trailerId).value(id);
         }
-        String head = "/Size " + size + "/Root " + numbers[root] + " 0 R" + (info >= 0 && numbers[info] > 0
+        return trailerId;
+    }
+
+    private String trailerHead(int size, int root, int info, int encryptNumber) {
+        return "/Size " + size + "/Root " + numbers[root] + " 0 R" + (info >= 0 && numbers[info] > 0
                 ? "/Info " + numbers[info] + " 0 R" : "") + (encryption != null ? "/Encrypt " + encryptNumber + " 0 R"
                 : "");
-        if (objectStreams) {
-            xrefStream(out, size, xrefNumber, offsets, containerOf, indexIn, head, trailerId);
-        } else {
-            xrefTable(out, size, offsets, head, trailerId);
-        }
-        out.flush();
-        return size - 1;
     }
 
     private static byte[] get(Future<byte[]> f) throws IOException {

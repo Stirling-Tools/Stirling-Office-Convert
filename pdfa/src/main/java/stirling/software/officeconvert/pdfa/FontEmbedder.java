@@ -6,6 +6,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -28,11 +29,20 @@ import stirling.software.officeconvert.topdf.font.FontSet;
 
 public final class FontEmbedder {
 
-    public record Result(List<String> embedded, List<String> failed) {
+    /**
+     * @param incomplete the {@code embedded} entries whose stand-in lacked some characters, which now draw
+     *     nothing; callers that must not lose content treat these as failures
+     */
+    public record Result(List<String> embedded, List<String> failed, List<String> incomplete) {
 
         public Result {
             embedded = List.copyOf(embedded);
             failed = List.copyOf(failed);
+            incomplete = List.copyOf(incomplete);
+        }
+
+        public Result(List<String> embedded, List<String> failed) {
+            this(embedded, failed, List.of());
         }
     }
 
@@ -71,7 +81,7 @@ public final class FontEmbedder {
             usage.scan(tokens, n.resources(), n.owner());
         }
         usage.resolve();
-        Map<COSDictionary, TreeSet<Integer>> targets = new IdentityHashMap<>(usage.codes());
+        Map<COSDictionary, TreeSet<Integer>> targets = new LinkedHashMap<>(usage.codes());
         Set<COSDictionary> unknown = Collections.newSetFromMap(new IdentityHashMap<>());
         for (ContentGraph.Node n : graph.nodes()) {
             COSDictionary dict = n.resources() == null ? null
@@ -95,6 +105,7 @@ public final class FontEmbedder {
         }
         List<String> embedded = new ArrayList<>();
         List<String> failed = new ArrayList<>();
+        List<String> incomplete = new ArrayList<>();
         FontLibrary library = null;
         for (List<COSDictionary> group : groups(targets)) {
             PdfFiles.stopIfInterrupted();
@@ -126,9 +137,11 @@ public final class FontEmbedder {
             try {
                 boolean declared = leader.containsKey(COSName.TO_UNICODE);
                 TreeMap<Integer, String> text = new TreeMap<>();
+                boolean standIn = UnicodeGuess.standIn(font);
                 for (int code : codes) {
                     try {
-                        String unicode = font.toUnicode(code);
+                        String unicode = standIn ? UnicodeGuess.text(font, code, usage.bytesPerCode(leader))
+                                : font.toUnicode(code);
                         if (unicode != null && !unicode.isEmpty()) {
                             text.put(code, unicode);
                         }
@@ -136,10 +149,14 @@ public final class FontEmbedder {
                         PdfFiles.stopIfInterrupted();
                     }
                 }
-                embedded.add(FontFixer.substitute(doc, font, codes, PdfALevel.A2B, library,
-                        usage.bytesPerCode(leader), false));
+                FontRebuild.Rebuilt rebuilt = FontFixer.substitute(doc, font, codes, PdfALevel.A2B, library,
+                        usage.bytesPerCode(leader), false);
+                embedded.add(rebuilt.note());
+                if (rebuilt.missing() > 0) {
+                    incomplete.add(rebuilt.note());
+                }
                 if (!text.isEmpty() && (declared || !(font instanceof PDType0Font) || !keepsText(leader, text))) {
-                    leader.setItem(COSName.TO_UNICODE, ToUnicodeWriter.preserve(doc, text,
+                    leader.setItem(COSName.TO_UNICODE, ToUnicodeWriter.preserve(doc, text, font,
                             font instanceof PDType0Font ? usage.bytesPerCode(leader) : 1));
                 }
             } catch (IOException | RuntimeException x) {
@@ -152,7 +169,7 @@ public final class FontEmbedder {
                 d.addAll(leader);
             }
         }
-        return new Result(embedded, failed);
+        return new Result(embedded, failed, incomplete);
     }
 
     private static boolean keepsText(COSDictionary font, Map<Integer, String> text) throws IOException {

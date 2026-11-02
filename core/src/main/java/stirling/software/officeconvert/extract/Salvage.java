@@ -1,6 +1,7 @@
-package stirling.software.officeconvert.optimize;
+package stirling.software.officeconvert.extract;
 
 import java.io.IOException;
+import java.io.InterruptedIOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -12,16 +13,24 @@ import java.util.TreeMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import org.apache.pdfbox.cos.COSArray;
+import org.apache.pdfbox.cos.COSBase;
+import org.apache.pdfbox.cos.COSBoolean;
 import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSDocument;
 import org.apache.pdfbox.cos.COSName;
+import org.apache.pdfbox.cos.COSNull;
+import org.apache.pdfbox.cos.COSFloat;
+import org.apache.pdfbox.cos.COSInteger;
+import org.apache.pdfbox.cos.COSObject;
+import org.apache.pdfbox.cos.COSString;
 import org.apache.pdfbox.pdfparser.PDFStreamParser;
+import org.apache.pdfbox.pdfwriter.COSWriter;
+import org.brotli.dec.BrotliInputStream;
 
-import stirling.software.officeconvert.extract.BrotliBudget;
+public final class Salvage {
 
-final class Salvage {
-
-    static final long MAX_BYTES = 256L << 20;
+    public static final long MAX_BYTES = 256L << 20;
 
     static final int MAX_OBJECTS = 2_000_000;
 
@@ -39,15 +48,15 @@ final class Salvage {
 
     private static final int MAX_UNPACKED = 64 << 20;
 
-    record Rebuilt(int pages, int unpacked) {}
+    public record Rebuilt(int pages, int unpacked) {}
 
     private Salvage() {}
 
-    static Rebuilt rebuild(Path in, Path out) throws IOException {
+    public static Rebuilt rebuild(Path in, Path out) throws IOException {
         return rebuild(in, out, false);
     }
 
-    static Rebuilt rebuildEmpty(Path in, Path out, long rootOffset) throws IOException {
+    public static Rebuilt rebuildEmpty(Path in, Path out, long rootOffset) throws IOException {
         if (rootOffset < 0 || Files.size(in) > MAX_BYTES) {
             return null;
         }
@@ -58,7 +67,7 @@ final class Salvage {
             file.position(rootOffset);
             var bytes = java.nio.ByteBuffer.allocate((int) Math.min(1 << 16, file.size() - rootOffset));
             while (bytes.hasRemaining() && file.read(bytes) >= 0) {
-                stirling.software.officeconvert.extract.PdfFiles.stopIfInterrupted();
+                PdfFiles.stopIfInterrupted();
             }
             if (!declaresPages(new String(bytes.array(), 0, bytes.position(), StandardCharsets.ISO_8859_1))) {
                 return null;
@@ -68,7 +77,7 @@ final class Salvage {
     }
 
     private static Rebuilt rebuild(Path in, Path out, boolean emptyOnly) throws IOException {
-        stirling.software.officeconvert.extract.PdfFiles.stopIfInterrupted();
+        PdfFiles.stopIfInterrupted();
         if (Files.size(in) > MAX_BYTES) {
             return null;
         }
@@ -84,43 +93,15 @@ final class Salvage {
         }
         Map<Integer, String> bodies = new java.util.HashMap<>();
         Map<Integer, Long> order = new java.util.HashMap<>();
-        List<Map.Entry<Integer, Integer>> byOffset = new ArrayList<>(offsets.entrySet());
-        byOffset.sort(Map.Entry.comparingByValue());
         TreeMap<Integer, String> packed = new TreeMap<>();
-        BrotliBudget budget = BrotliBudget.create();
-        long[] left = {MAX_UNPACKED};
-        for (int k = 0; k < byOffset.size(); k++) {
-            if ((k & 1023) == 0) {
-                stirling.software.officeconvert.extract.PdfFiles.stopIfInterrupted();
-            }
-            int number = byOffset.get(k).getKey();
-            int start = byOffset.get(k).getValue();
-            int end = k + 1 < byOffset.size() ? byOffset.get(k + 1).getValue() : data.length;
-            String body = text.substring(start, Math.min(end, start + (1 << 16)));
-            int stream = body.indexOf("stream");
-            String head = stream >= 0 ? body.substring(0, stream) : body;
-            bodies.put(number, head);
-            order.put(number, (long) start << 20);
-            if (stream >= 0 && left[0] > 0 && OBJECT_STREAM.matcher(head).find()) {
-                unpack(data, start, Math.min(end, data.length), head, packed, order, budget, left);
-            }
-        }
+        scan(data, text, offsets, bodies, order, packed);
         packed.keySet().removeAll(offsets.keySet());
         if (offsets.size() + packed.size() > MAX_OBJECTS) {
             return null;
         }
         bodies.putAll(packed);
         List<Integer> pages = new ArrayList<>();
-        int catalog = -1;
-        for (Map.Entry<Integer, String> e : bodies.entrySet()) {
-            String head = e.getValue();
-            if (PAGE.matcher(head).find() && !head.contains("/Kids")) {
-                pages.add(e.getKey());
-            } else if (CATALOG.matcher(head).find()
-                    && (catalog < 0 || order.get(e.getKey()) > order.get(catalog))) {
-                catalog = e.getKey();
-            }
-        }
+        int catalog = leaves(bodies, order, pages);
         if (pages.isEmpty()) {
             return null;
         }
@@ -162,21 +143,8 @@ final class Salvage {
         }
         StringBuilder added = new StringBuilder();
         TreeMap<Integer, Long> extra = new TreeMap<>();
-        long position = data.length + 1;
-        for (Map.Entry<Integer, String> e : packed.entrySet()) {
-            if (e.getKey() == pagesNumber) {
-                continue;
-            }
-            String object = e.getKey() + " 0 obj\n" + e.getValue() + "\nendobj\n";
-            extra.put(e.getKey(), position);
-            added.append(object);
-            position += object.length();
-        }
-        StringBuilder kids = new StringBuilder();
-        for (int p : pages) {
-            kids.append(p).append(' ').append(packed.containsKey(p) ? 0 : generations.getOrDefault(p, 0))
-                    .append(" R ");
-        }
+        long position = appendPacked(packed, pagesNumber, added, extra, data.length + 1);
+        StringBuilder kids = kids(pages, packed, generations);
         String pagesObject = pagesNumber + " " + pagesGeneration + " obj\n<</Type/Pages"
                 + inherited(inheritedFrom) + "/Kids[" + kids + "]/Count " + pages.size() + ">>\nendobj\n";
         extra.put(pagesNumber, position);
@@ -195,10 +163,86 @@ final class Salvage {
         all.putAll(extra);
         int size = Math.max(all.lastKey(), next - 1) + 1;
         long xref = position;
+        StringBuilder table = xrefTable(size, all, extra, generations, pagesNumber, pagesGeneration);
+        table.append("trailer\n<</Size ").append(size).append("/Root ").append(catalogNumber)
+                .append(' ').append(catalogGeneration).append(" R>>\nstartxref\n").append(xref).append("\n%%EOF\n");
+        try (OutputStream os = Files.newOutputStream(out)) {
+            os.write(data);
+            os.write('\n');
+            os.write(added.toString().getBytes(StandardCharsets.ISO_8859_1));
+            os.write(table.toString().getBytes(StandardCharsets.ISO_8859_1));
+        }
+        return new Rebuilt(pages.size(), packed.size());
+    }
+
+    private static void scan(byte[] data, String text, TreeMap<Integer, Integer> offsets, Map<Integer, String> bodies,
+            Map<Integer, Long> order, TreeMap<Integer, String> packed) throws IOException {
+        List<Map.Entry<Integer, Integer>> byOffset = new ArrayList<>(offsets.entrySet());
+        byOffset.sort(Map.Entry.comparingByValue());
+        BrotliBudget budget = BrotliBudget.create();
+        long[] left = {MAX_UNPACKED};
+        for (int k = 0; k < byOffset.size(); k++) {
+            if ((k & 1023) == 0) {
+                PdfFiles.stopIfInterrupted();
+            }
+            int number = byOffset.get(k).getKey();
+            int start = byOffset.get(k).getValue();
+            int end = k + 1 < byOffset.size() ? byOffset.get(k + 1).getValue() : data.length;
+            String body = text.substring(start, Math.min(end, start + (1 << 16)));
+            int stream = body.indexOf("stream");
+            String head = stream >= 0 ? body.substring(0, stream) : body;
+            bodies.put(number, head);
+            order.put(number, (long) start << 20);
+            if (stream >= 0 && left[0] > 0 && OBJECT_STREAM.matcher(head).find()) {
+                unpack(data, start, Math.min(end, data.length), head, packed, order, budget, left);
+            }
+        }
+    }
+
+    private static int leaves(Map<Integer, String> bodies, Map<Integer, Long> order, List<Integer> pages) {
+        int catalog = -1;
+        for (Map.Entry<Integer, String> e : bodies.entrySet()) {
+            String head = e.getValue();
+            if (PAGE.matcher(head).find() && !head.contains("/Kids")) {
+                pages.add(e.getKey());
+            } else if (CATALOG.matcher(head).find()
+                    && (catalog < 0 || order.get(e.getKey()) > order.get(catalog))) {
+                catalog = e.getKey();
+            }
+        }
+        return catalog;
+    }
+
+    private static long appendPacked(TreeMap<Integer, String> packed, int pagesNumber, StringBuilder added,
+            TreeMap<Integer, Long> extra, long position) {
+        for (Map.Entry<Integer, String> e : packed.entrySet()) {
+            if (e.getKey() == pagesNumber) {
+                continue;
+            }
+            String object = e.getKey() + " 0 obj\n" + e.getValue() + "\nendobj\n";
+            extra.put(e.getKey(), position);
+            added.append(object);
+            position += object.length();
+        }
+        return position;
+    }
+
+    private static StringBuilder kids(List<Integer> pages, TreeMap<Integer, String> packed,
+            Map<Integer, Integer> generations) {
+        StringBuilder kids = new StringBuilder();
+        for (int p : pages) {
+            kids.append(p).append(' ').append(packed.containsKey(p) ? 0 : generations.getOrDefault(p, 0))
+                    .append(" R ");
+        }
+        return kids;
+    }
+
+    private static StringBuilder xrefTable(int size, TreeMap<Integer, Long> all, TreeMap<Integer, Long> extra,
+            Map<Integer, Integer> generations, int pagesNumber, int pagesGeneration) throws IOException {
         StringBuilder table = new StringBuilder("xref\n0 " + size + "\n0000000000 65535 f\r\n");
         for (int n = 1; n < size; n++) {
             if ((n & 1023) == 0) {
-                stirling.software.officeconvert.extract.PdfFiles.stopIfInterrupted();
+                PdfFiles.stopIfInterrupted();
             }
             Long o = all.get(n);
             int gen = o == null ? 0 : extra.containsKey(n) ? n == pagesNumber ? pagesGeneration : 0
@@ -212,15 +256,7 @@ final class Salvage {
                 table.append(" n\r\n");
             }
         }
-        table.append("trailer\n<</Size ").append(size).append("/Root ").append(catalogNumber)
-                .append(' ').append(catalogGeneration).append(" R>>\nstartxref\n").append(xref).append("\n%%EOF\n");
-        try (OutputStream os = Files.newOutputStream(out)) {
-            os.write(data);
-            os.write('\n');
-            os.write(added.toString().getBytes(StandardCharsets.ISO_8859_1));
-            os.write(table.toString().getBytes(StandardCharsets.ISO_8859_1));
-        }
-        return new Rebuilt(pages.size(), packed.size());
+        return table;
     }
 
     private static boolean only(String filter, String name) {
@@ -229,7 +265,7 @@ final class Salvage {
     }
 
     private static void unpack(byte[] data, int start, int end, String head, Map<Integer, String> packed,
-            Map<Integer, Long> order, BrotliBudget budget, long[] left) {
+            Map<Integer, Long> order, BrotliBudget budget, long[] left) throws IOException {
         int cap = (int) Math.min(MAX_UNPACKED, left[0]);
         Matcher n = COUNT.matcher(head);
         Matcher first = FIRST.matcher(head);
@@ -278,9 +314,8 @@ final class Salvage {
             }
             decoded = plain.toByteArray();
         } else if (brotli) {
-            try {
-                decoded = Filters.brotli(raw, cap, budget);
-            } catch (Filters.Undecodable e) {
+            decoded = brotli(raw, cap, budget);
+            if (decoded == null) {
                 return;
             }
             complete = true;
@@ -393,31 +428,27 @@ final class Salvage {
             for (COSName name : new COSName[] {COSName.RESOURCES, COSName.MEDIA_BOX, COSName.CROP_BOX, COSName.ROTATE}) {
                 values.setItem(name, source.getItem(name));
             }
-            Bytes out = new Bytes(256);
-            new Syntax((ref, syntax) -> {
-                syntax.word(Long.toString(ref.getKey().getNumber()));
-                syntax.word(Integer.toString(ref.getKey().getGeneration()));
-                syntax.word("R");
-            }).into(out).dictionary(values, null);
-            String dictionary = new String(out.toByteArray(), StandardCharsets.ISO_8859_1);
+            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+            write(values, out, 0);
+            String dictionary = out.toString(StandardCharsets.ISO_8859_1).strip();
             return dictionary.substring(2, dictionary.length() - 2);
         } catch (IOException | RuntimeException invalid) {
             return "";
         }
     }
 
-    static final class DictionaryParser extends PDFStreamParser implements AutoCloseable {
+    public static final class DictionaryParser extends PDFStreamParser implements AutoCloseable {
 
-        DictionaryParser(byte[] data) {
+        public DictionaryParser(byte[] data) {
             super(data);
             document = new COSDocument();
         }
 
-        COSDictionary read() throws IOException {
+        public COSDictionary read() throws IOException {
             return parseCOSDictionary(false);
         }
 
-        long position() throws IOException {
+        public long position() throws IOException {
             return source.getPosition();
         }
 
@@ -435,37 +466,37 @@ final class Salvage {
         TreeMap<Integer, Integer> found = new TreeMap<>();
         for (int i = 0; i + 3 <= d.length; i++) {
             if ((i & 4095) == 0) {
-                stirling.software.officeconvert.extract.PdfFiles.stopIfInterrupted();
+                PdfFiles.stopIfInterrupted();
             }
             if (d[i] != 'o' || d[i + 1] != 'b' || d[i + 2] != 'j') {
                 continue;
             }
-            if (i + 3 < d.length && Lexical.regular(d[i + 3] & 0xFF)) {
+            if (i + 3 < d.length && regular(d[i + 3] & 0xFF)) {
                 continue;
             }
             int p = i - 1;
-            if (p < 0 || !Lexical.whitespace(d[p] & 0xFF)) {
+            if (p < 0 || !whitespace(d[p] & 0xFF)) {
                 continue;
             }
-            while (p >= 0 && Lexical.whitespace(d[p] & 0xFF)) {
+            while (p >= 0 && whitespace(d[p] & 0xFF)) {
                 p--;
             }
             int genEnd = p;
             while (p >= 0 && d[p] >= '0' && d[p] <= '9') {
                 p--;
             }
-            if (p == genEnd || p < 0 || !Lexical.whitespace(d[p] & 0xFF) || genEnd - p > 5) {
+            if (p == genEnd || p < 0 || !whitespace(d[p] & 0xFF) || genEnd - p > 5) {
                 continue;
             }
             int genStart = p + 1;
-            while (p >= 0 && Lexical.whitespace(d[p] & 0xFF)) {
+            while (p >= 0 && whitespace(d[p] & 0xFF)) {
                 p--;
             }
             int numEnd = p;
             while (p >= 0 && d[p] >= '0' && d[p] <= '9') {
                 p--;
             }
-            if (p == numEnd || numEnd - p > 9 || p >= 0 && Lexical.regular(d[p] & 0xFF)) {
+            if (p == numEnd || numEnd - p > 9 || p >= 0 && regular(d[p] & 0xFF)) {
                 continue;
             }
             int number = Integer.parseInt(new String(d, p + 1, numEnd - p, StandardCharsets.ISO_8859_1));
@@ -479,5 +510,73 @@ final class Salvage {
             }
         }
         return found;
+    }
+
+    static byte[] brotli(byte[] raw, int cap, BrotliBudget budget) throws IOException {
+        java.io.ByteArrayOutputStream plain = new java.io.ByteArrayOutputStream();
+        try (BrotliInputStream z = new BrotliInputStream(new java.io.ByteArrayInputStream(raw))) {
+            byte[] buffer = new byte[1 << 16];
+            int n;
+            while ((n = z.read(buffer, 0, buffer.length)) > 0) {
+                PdfFiles.stopIfInterrupted();
+                if (plain.size() + (long) n > cap || !budget.take(n)) {
+                    return null;
+                }
+                plain.write(buffer, 0, n);
+            }
+        } catch (InterruptedIOException e) {
+            throw e;
+        } catch (IOException | RuntimeException e) {
+            return null;
+        }
+        return plain.toByteArray();
+    }
+
+    private static void write(COSBase value, OutputStream out, int depth) throws IOException {
+        if (depth > 64) {
+            throw new IOException("nested too deeply");
+        }
+        if (value instanceof COSObject ref) {
+            out.write((ref.getKey().getNumber() + " " + ref.getKey().getGeneration() + " R ")
+                    .getBytes(StandardCharsets.ISO_8859_1));
+        } else if (value instanceof COSDictionary d) {
+            out.write("<<".getBytes(StandardCharsets.ISO_8859_1));
+            for (Map.Entry<COSName, COSBase> e : d.entrySet()) {
+                if (e.getValue() != null) {
+                    e.getKey().writePDF(out);
+                    out.write(' ');
+                    write(e.getValue(), out, depth + 1);
+                }
+            }
+            out.write(">>".getBytes(StandardCharsets.ISO_8859_1));
+        } else if (value instanceof COSArray a) {
+            out.write('[');
+            for (COSBase item : a) {
+                write(item, out, depth + 1);
+            }
+            out.write(']');
+        } else if (value instanceof COSName name) {
+            name.writePDF(out);
+        } else if (value instanceof COSString text) {
+            COSWriter.writeString(text, out);
+        } else if (value instanceof COSInteger n) {
+            n.writePDF(out);
+        } else if (value instanceof COSFloat n) {
+            n.writePDF(out);
+        } else if (value instanceof COSBoolean b) {
+            b.writePDF(out);
+        } else {
+            COSNull.NULL.writePDF(out);
+        }
+        out.write(' ');
+    }
+
+    private static boolean whitespace(int c) {
+        return c == 0 || c == 9 || c == 10 || c == 12 || c == 13 || c == 32;
+    }
+
+    private static boolean regular(int c) {
+        return !whitespace(c) && c != '(' && c != ')' && c != '<' && c != '>' && c != '[' && c != ']' && c != '{'
+                && c != '}' && c != '/' && c != '%';
     }
 }

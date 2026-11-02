@@ -51,6 +51,10 @@ final class FontProgram {
 
     private static final int PUNCTUATION_END = 0x20D0;
 
+    private static final int PAGE_BITS = 8;
+
+    private static final int PAGES = 0x10000 >> PAGE_BITS;
+
     private final FontEntry entry;
 
     private final FontMetrics metrics;
@@ -64,6 +68,8 @@ final class FontProgram {
     private final int[] direct;
 
     private final int[] punctuation;
+
+    private final AtomicReferenceArray<char[]> pages = new AtomicReferenceArray<>(PAGES);
 
     private final boolean symbol;
 
@@ -380,7 +386,24 @@ final class FontProgram {
         if (codePoint >= PUNCTUATION && codePoint < PUNCTUATION_END) {
             return punctuation[codePoint - PUNCTUATION];
         }
+        if (codePoint >= 0 && codePoint < 0x10000) {
+            return page(codePoint >> PAGE_BITS)[codePoint & ((1 << PAGE_BITS) - 1)];
+        }
         return search(codePoint);
+    }
+
+    private char[] page(int index) {
+        char[] page = pages.getAcquire(index);
+        if (page == null) {
+            page = new char[1 << PAGE_BITS];
+            int first = index << PAGE_BITS;
+            int i = Arrays.binarySearch(codePoints, first);
+            for (i = i < 0 ? -i - 1 : i; i < codePoints.length && codePoints[i] < first + page.length; i++) {
+                page[codePoints[i] - first] = (char) glyphs[i];
+            }
+            pages.setRelease(index, page);
+        }
+        return page;
     }
 
     int encode(int codePoint) {

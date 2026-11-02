@@ -273,14 +273,12 @@ final class RunBuilder {
 
     static boolean arabicStandIn(Glyph g) {
         String family = g.font.family();
-        if (!g.font.substituted() || !"Arial".equals(family) && !"Arial Narrow".equals(family) || g.font.mono()) {
+        if (!g.font.substituted() || !"Arial".equals(family) && !"Arial Narrow".equals(family) || g.font.mono()
+                || !anyScript(g.text, Character.UnicodeScript.ARABIC)) {
             return false;
         }
         String ps = g.font.postScriptName();
-        if (ps != null && NASKH_OR_NASTALIQ.matcher(ps).find()) {
-            return false;
-        }
-        return anyScript(g.text, Character.UnicodeScript.ARABIC);
+        return ps == null || !NASKH_OR_NASTALIQ.matcher(ps).find();
     }
 
     private static void arabicWidths(Map<String, float[]> sums, Word w) {
@@ -519,7 +517,8 @@ final class RunBuilder {
                 && !unmeasured(g)) {
             int scale = Math.round(s.scale() * fix.scale() / 100f);
             return new RunStyle(s.font(), s.size(), s.bold(), s.italic(), s.underline(), s.strike(), s.rgb(),
-                    s.highlight(), s.vertAlign(), s.symbol(), fix.spacing() - squeeze, scale, s.smallCaps(), s.border());
+                    s.highlight(), s.vertAlign(), s.symbol(), fix.spacing() - squeeze, scale, s.smallCaps(), s.border())
+                    .withMath(s.math());
         }
         return s;
     }
@@ -1011,7 +1010,7 @@ final class RunBuilder {
                 0f,
                 scaleOf(g),
                 g.font.smallCaps(),
-                g.boxRgb);
+                g.boxRgb).withMath(g.math);
     }
 
     static int scaleOf(Glyph g) {

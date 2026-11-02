@@ -16,6 +16,7 @@ import stirling.software.officeconvert.Pictures;
 import stirling.software.officeconvert.build.PlacedContent;
 import stirling.software.officeconvert.extract.Glyph;
 import stirling.software.officeconvert.extract.PageData;
+import stirling.software.officeconvert.extract.PageGraphics;
 import stirling.software.officeconvert.extract.PageGraphics.Fill;
 import stirling.software.officeconvert.layout.Box;
 import stirling.software.officeconvert.layout.DocStats;
@@ -115,11 +116,23 @@ final class SlideBuilder {
         }
     }
 
+    private static void formulaBars(PageLayout layout, Stack stack) {
+        for (Object bar : layout.formulaBars()) {
+            if (bar instanceof PageGraphics.Rule r && r.horizontal()) {
+                float half = r.thickness() / 2f;
+                stack.cover(new Box(r.start(), r.pos() - half, r.end(), r.pos() + half));
+            } else if (bar instanceof PageGraphics.Fill f) {
+                stack.cover(new Box(f.x(), f.top(), f.right(), f.bottom()));
+            }
+        }
+    }
+
     Slide build(PageLayout layout, AffineTransform toDisplay, PaintOrder paint, List<SlantedText.Group> slanted)
             throws IOException {
         try {
             PageData page = layout.page();
             Stack stack = new Stack(paint, FigureText.placed(layout));
+            formulaBars(layout, stack);
             bulletDots(page, stack);
             List<SlideShape> icons = new ArrayList<>();
             for (PageLayout.Band band : layout.bands()) {

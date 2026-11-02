@@ -36,6 +36,7 @@ final class ContentFixer {
             throws IOException {
         ExplicitResources.run(graph);
         Map<Shared, COSBase> pages = new HashMap<>();
+        Map<COSStream, COSDictionary> glyphResources = UndefinedResources.glyphResources(graph);
         for (ContentGraph.Node n : graph.nodes()) {
             PdfFiles.stopIfInterrupted();
             Shared shared = new Shared(n.streams(), n.resources());
@@ -60,6 +61,7 @@ final class ContentFixer {
                 colours.unknown();
                 report.warn("Removed a broken token at the end of a content stream");
             }
+            UndefinedResources undefined = UndefinedResources.in(n, glyphResources);
             int start = 0;
             for (int i = 0; i < tokens.size(); i++) {
                 if (!(tokens.get(i) instanceof Operator op)) {
@@ -135,7 +137,15 @@ final class ContentFixer {
                     operation = limited;
                     changed = true;
                 }
+                List<Object> defined = operation.isEmpty() ? operation : undefined.fix(operation);
+                if (defined != operation) {
+                    operation = defined;
+                    changed = true;
+                }
                 out.addAll(operation);
+            }
+            if (undefined.removed() > 0) {
+                report.warn("Removed content operators that use a resource the content does not define");
             }
             List<Object> result = changed ? out : tokens;
             usage.scan(result, n.resources(), n.owner());

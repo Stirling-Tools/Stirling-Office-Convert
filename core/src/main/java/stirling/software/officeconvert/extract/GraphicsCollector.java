@@ -19,6 +19,7 @@ import java.util.Set;
 
 import org.apache.pdfbox.contentstream.PDFGraphicsStreamEngine;
 import org.apache.pdfbox.contentstream.operator.Operator;
+import org.apache.pdfbox.pdmodel.graphics.PDXObject;
 import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.PDPage;
@@ -94,6 +95,7 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
     private final List<PageGraphics.Area> masked = new ArrayList<>();
 
     private final StreamRunner runner;
+    private HiddenContent hiddenContent = new HiddenContent(OptionalContent.of(null));
 
     private GraphicsCollector(PDPage page, AffineTransform toDisplay, float w, float h, ParsedStreams parsed) {
         super(page);
@@ -127,10 +129,17 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
 
     static PageGraphics read(PDPage page, AffineTransform toDisplay, float width, float height, ParsedStreams parsed)
             throws IOException {
+        return read(page, toDisplay, width, height, parsed, OptionalContent.of(null));
+    }
+
+    static PageGraphics read(PDPage page, AffineTransform toDisplay, float width, float height, ParsedStreams parsed,
+            OptionalContent layers) throws IOException {
         GraphicsCollector c = new GraphicsCollector(page, toDisplay, width, height, parsed);
+        c.hiddenContent = new HiddenContent(layers);
         try {
             c.processPage(page);
-            Annotations.show(c, page);
+            c.hiddenContent.reset();
+            Annotations.show(c, page, layers);
         } catch (IOException e) {
             BrokenOperators.brokenStream(e);
         }
@@ -173,7 +182,13 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
             return;
         }
         try {
-            super.processOperator(operator, operands);
+            if (TextObjects.opensImplicitly(this, operator)) {
+                super.processOperator(TextObjects.BEGIN, List.of());
+            }
+            Operator painted = hiddenContent.painted(operator, operands, getResources());
+            if (painted != null) {
+                super.processOperator(painted, painted == operator ? TextObjects.sized(operator, operands) : List.of());
+            }
         } catch (IOException | RuntimeException e) {
             BrokenOperators.skip(operator, e);
         }
@@ -186,7 +201,7 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
 
     @Override
     public void showForm(PDFormXObject form) throws IOException {
-        if (budget.form()) {
+        if (budget.form() && !hiddenContent.hidden(form)) {
             runner.showForm(form);
         }
     }
@@ -223,7 +238,7 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
 
     @Override
     public void showTransparencyGroup(PDTransparencyGroup form) throws IOException {
-        if (!budget.form()) {
+        if (!budget.form() || hiddenContent.hidden(form)) {
             return;
         }
         boolean masked = getGraphicsState().getSoftMask() != null;
@@ -381,7 +396,8 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
 
     @Override
     public void drawImage(PDImage pdImage) throws IOException {
-        if (images.size() >= MAX_IMAGES) {
+        if (images.size() >= MAX_IMAGES || pdImage instanceof PDXObject x && hiddenContent.hidden(x)
+                || pdImage instanceof PDImageXObject image && !StrictFilters.decodable(image.getCOSObject())) {
             return;
         }
         PDGraphicsState gs = getGraphicsState();

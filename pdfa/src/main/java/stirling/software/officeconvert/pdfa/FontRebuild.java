@@ -1,5 +1,6 @@
 package stirling.software.officeconvert.pdfa;
 
+import java.awt.geom.AffineTransform;
 import java.awt.geom.GeneralPath;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -45,17 +46,20 @@ final class FontRebuild {
         this.hinting = hinting;
     }
 
+    /** What a rebuild says about itself; {@code missing} counts characters drawn as empty glyphs. */
+    record Rebuilt(String note, int missing) {}
+
     static String rebuild(PDDocument doc, PDFont font, Set<Integer> codes, Mode mode, GlyphSource substitute,
             PdfALevel level, int bytesPerCode) throws IOException {
-        return new FontRebuild(doc, level, true).run(font, codes, mode, substitute, bytesPerCode);
+        return new FontRebuild(doc, level, true).run(font, codes, mode, substitute, bytesPerCode).note();
     }
 
-    static String substitute(PDDocument doc, PDFont font, Set<Integer> codes, GlyphSource substitute,
+    static Rebuilt substitute(PDDocument doc, PDFont font, Set<Integer> codes, GlyphSource substitute,
             PdfALevel level, int bytesPerCode, boolean hinting) throws IOException {
         return new FontRebuild(doc, level, hinting).run(font, codes, Mode.SUBSTITUTE, substitute, bytesPerCode);
     }
 
-    private String run(PDFont font, Set<Integer> codes, Mode mode, GlyphSource substitute, int bytesPerCode)
+    private Rebuilt run(PDFont font, Set<Integer> codes, Mode mode, GlyphSource substitute, int bytesPerCode)
             throws IOException {
         String original = font.getName();
         boolean type0 = font instanceof PDType0Font;
@@ -63,7 +67,8 @@ final class FontRebuild {
         TrueTypeFont own = mode == Mode.OWN ? ownTrueType(font) : null;
         TrueTypeWriter w;
         if (mode == Mode.SUBSTITUTE) {
-            w = new TrueTypeWriter(substitute.font());
+            w = substitute.copies() ? new TrueTypeWriter(substitute.font())
+                    : new TrueTypeWriter(substitute.font().getUnitsPerEm());
         } else if (own != null) {
             w = new TrueTypeWriter(own);
         } else {
@@ -73,22 +78,32 @@ final class FontRebuild {
             w.dropHinting();
         }
         double scale = w.unitsPerEm() / 1000.0;
+        FontProgram type1 = mode == Mode.OWN && own == null ? unloadedType1(font) : null;
+        AffineTransform type1Em = type1 == null ? null : unitsOf(type1, w.unitsPerEm());
         TreeMap<Integer, Integer> slots = new TreeMap<>();
         TreeMap<Integer, String> unicode = new TreeMap<>();
         TreeMap<Integer, Float> widths = new TreeMap<>();
         int missing = 0;
+        boolean standIn = UnicodeGuess.standIn(font);
         for (int code : codes) {
             PdfFiles.stopIfInterrupted();
-            int key = type0 ? cid.codeToCID(code) : code;
+            int key = type0 ? CidLookup.cid((PDType0Font) font, code) : code;
+            int inherited = type0 ? cid.codeToCID(code) : code;
             String text = UnicodeGuess.of(font, code, type0 ? bytesPerCode : 1);
             if (!ToUnicodeWriter.valid(text) || ToUnicodeWriter.privateUse(text)) {
                 String s = ToUnicodeWriter.symbol(text, original, code);
                 text = s != null ? s : text;
             }
-            if (ToUnicodeWriter.valid(text) && !(level.tagged() && ToUnicodeWriter.privateUse(text))) {
-                unicode.put(code, text);
+            String mapped = standIn ? UnicodeGuess.text(font, code, type0 ? bytesPerCode : 1) : text;
+            boolean guessed = standIn && ToUnicodeWriter.valid(text) && !text.isBlank() && !ToUnicodeWriter.valid(mapped);
+            if (guessed) {
+                missing++;
+            }
+            if (usable(mapped)) {
+                unicode.put(code, UnicodeGuess.searchable(font, code, mapped));
             } else if (level.unicode()) {
-                unicode.put(code, ToUnicodeWriter.unknown(code, level));
+                String e = UnicodeGuess.extracted(font, code);
+                unicode.put(code, usable(e) || e != null && !level.tagged() ? e : ToUnicodeWriter.unknown(code, level));
             }
             if (slots.containsKey(key)) {
                 continue;
@@ -100,23 +115,32 @@ final class FontRebuild {
             if (mode == Mode.SUBSTITUTE) {
                 String name = font instanceof PDSimpleFont s && s.getEncoding() != null ? s.getEncoding().getName(code) : null;
                 int gid = substitute.glyph(code, name, text);
-                if (gid > 0) {
+                if (gid > 0 && substitute.copies()) {
                     slot = w.addCopy(gid, advance);
                 } else {
-                    GeneralPath p = substitute.fallback(text, w.unitsPerEm());
+                    GeneralPath p = gid > 0 ? substitute.outline(gid, w.unitsPerEm()) : null;
+                    p = p != null ? p : substitute.fallback(text, w.unitsPerEm());
                     slot = p != null ? w.addOutline(p, advance) : w.addEmpty(advance);
-                    if (p == null && text != null && !text.isBlank()) {
+                    // A character nothing could name is lost just the same, so it counts
+                    if (p == null && !guessed && (text == null || !text.isBlank())) {
                         missing++;
                     }
                 }
             } else if (own != null) {
                 int gid = ownGid(font, code);
                 slot = w.addCopy(gid > 0 && gid < own.getNumberOfGlyphs() ? gid : 0, advance);
+            } else if (type1 != null) {
+                int gid = type0 ? type1.gidForCid(key) : type1.gid(encodingName(font, code));
+                GeneralPath p = gid > 0 && gid < type1.count() ? type1.path(gid, type1Em) : null;
+                slot = p == null ? w.addEmpty(advance) : w.addOutline(p, advance);
             } else {
                 GeneralPath p = font instanceof PDVectorFont v ? v.getNormalizedPath(code) : null;
                 slot = p == null ? w.addEmpty(advance) : w.addOutline(p, advance);
             }
             slots.put(key, slot);
+            if (inherited != key && inherited > 0) {
+                slots.putIfAbsent(inherited, slot);
+            }
         }
         String base = cleanName(type0 ? cid.getBaseFont() : font.getName());
         String name = tag(slots, base) + base;
@@ -139,14 +163,51 @@ final class FontRebuild {
             updateSimple(font, name, fd, codes, widths);
         }
         if (!unicode.isEmpty()) {
-            font.getCOSObject().setItem(COSName.TO_UNICODE, ToUnicodeWriter.write(doc, unicode, type0 ? bytesPerCode : 1));
+            font.getCOSObject().setItem(COSName.TO_UNICODE, ToUnicodeWriter.preserve(doc, unicode, font, type0 ? bytesPerCode : 1));
         }
         String note = mode == Mode.SUBSTITUTE ? cleanName(original) + " as " + substitute.description()
                 : null;
         if (missing > 0 && note != null) {
             note += ", " + missing + (missing == 1 ? " character" : " characters") + " not in it";
         }
-        return note;
+        return new Rebuilt(note, missing);
+    }
+
+    private boolean usable(String text) {
+        return ToUnicodeWriter.valid(text) && !(level.tagged() && ToUnicodeWriter.privateUse(text));
+    }
+
+    private static FontProgram unloadedType1(PDFont font) throws IOException {
+        PDFontDescriptor fd = font.getFontDescriptor();
+        if (font.isEmbedded() || fd == null || fd.getFontFile() == null) {
+            return null;
+        }
+        try {
+            COSStream s = fd.getFontFile().getCOSObject();
+            byte[] data = Decoded.bytes(s, FontProgramBounds.MAX_BYTES, "A font program");
+            WebFonts.FontKind kind = WebFonts.sniff(data);
+            if (kind == WebFonts.FontKind.TRUETYPE) {
+                return null;
+            }
+            boolean cff = kind == WebFonts.FontKind.CFF;
+            return FontProgram.read(data, cff ? kind : WebFonts.FontKind.TYPE1, cff ? -1 : s.getInt(COSName.LENGTH1),
+                    cff ? -1 : s.getInt(COSName.LENGTH2));
+        } catch (IOException | RuntimeException e) {
+            Decoded.rethrowFatal(e instanceof IOException io ? io : new IOException(e));
+            PdfFiles.stopIfInterrupted();
+            return null;
+        }
+    }
+
+    private static AffineTransform unitsOf(FontProgram program, int unitsPerEm) {
+        AffineTransform t = AffineTransform.getScaleInstance(unitsPerEm / (double) WebFonts.UNITS_PER_EM,
+                unitsPerEm / (double) WebFonts.UNITS_PER_EM);
+        t.concatenate(program.toEm());
+        return t;
+    }
+
+    private static String encodingName(PDFont font, int code) {
+        return font instanceof PDSimpleFont s && s.getEncoding() != null ? s.getEncoding().getName(code) : null;
     }
 
     private static TrueTypeFont ownTrueType(PDFont font) {

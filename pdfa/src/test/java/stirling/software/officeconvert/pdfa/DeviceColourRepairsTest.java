@@ -37,7 +37,9 @@ class DeviceColourRepairsTest {
             PDPage page = new PDPage();
             doc.addPage(page);
             if (rgb) {
-                try (ByteArrayInputStream profile = new ByteArrayInputStream(IccProfiles.cmyk())) {
+                byte[] printer = IccProfiles.cmyk();
+                System.arraycopy("prtr".getBytes(StandardCharsets.US_ASCII), 0, printer, 12, 4);
+                try (ByteArrayInputStream profile = new ByteArrayInputStream(printer)) {
                     doc.getDocumentCatalog().addOutputIntent(new PDOutputIntent(doc, profile));
                 }
             }
@@ -109,5 +111,47 @@ class DeviceColourRepairsTest {
         Path output = dir.resolve("appearance-out.pdf");
         PdfToPdfA.convert(input, output, PdfToPdfA.Options.defaults());
         VeraPdf.assertCompliant(output, PdfALevel.A2B);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"A1B", "A2B", "A3U", "A4"})
+    void shadingsMatchingTheOutputIntentKeepTheirDeviceSpace(PdfALevel level) throws Exception {
+        Path input = dir.resolve("matching.pdf");
+        try (PDDocument doc = new PDDocument()) {
+            PDPage page = new PDPage();
+            doc.addPage(page);
+            byte[] printer = IccProfiles.cmyk();
+            System.arraycopy("prtr".getBytes(StandardCharsets.US_ASCII), 0, printer, 12, 4);
+            PDOutputIntent intent = new PDOutputIntent(doc, new ByteArrayInputStream(printer));
+            intent.setOutputConditionIdentifier("CGATS TR 001");
+            doc.getDocumentCatalog().addOutputIntent(intent);
+            COSDictionary shading = new COSDictionary();
+            shading.setInt(COSName.SHADING_TYPE, 2);
+            shading.setItem(COSName.COLORSPACE, COSName.DEVICECMYK);
+            shading.setItem(COSName.COORDS, ColourSamples.floats(0, 0, 200, 0));
+            COSDictionary function = new COSDictionary();
+            function.setInt(COSName.FUNCTION_TYPE, 2);
+            function.setItem(COSName.DOMAIN, ColourSamples.floats(0, 1));
+            function.setItem(COSName.C0, ColourSamples.floats(0, 1, 0, 0));
+            function.setItem(COSName.C1, ColourSamples.floats(1, 0, 0, 0));
+            function.setInt(COSName.N, 1);
+            shading.setItem(COSName.FUNCTION, function);
+            COSDictionary shadings = new COSDictionary();
+            shadings.setItem("Sh0", shading);
+            PDResources resources = new PDResources();
+            resources.getCOSObject().setItem(COSName.SHADING, shadings);
+            page.setResources(resources);
+            Samples.raw(page, doc, "q 0 0 200 200 re W n /Sh0 sh Q");
+            doc.save(input.toFile());
+        }
+        Path output = dir.resolve("matching-out.pdf");
+        PdfToPdfA.convert(input, output, PdfToPdfA.Options.defaults().level(level));
+        VeraPdf.assertCompliant(output, level);
+        try (PDDocument doc = Loader.loadPDF(output.toFile())) {
+            COSDictionary shadings = ContentGraph.dict(doc.getPage(0).getResources().getCOSObject()
+                    .getDictionaryObject(COSName.SHADING));
+            COSDictionary shading = ContentGraph.dict(shadings.getDictionaryObject("Sh0"));
+            assertEquals(COSName.DEVICECMYK, shading.getDictionaryObject(COSName.COLORSPACE));
+        }
     }
 }

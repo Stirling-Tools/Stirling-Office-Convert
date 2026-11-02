@@ -19,6 +19,7 @@ import org.apache.pdfbox.pdmodel.font.PDType3Font;
 import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
 import org.apache.pdfbox.pdmodel.graphics.form.PDTransparencyGroup;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImage;
+import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotation;
 import org.apache.pdfbox.rendering.ImageType;
 import org.apache.pdfbox.rendering.PDFRenderer;
@@ -109,6 +110,9 @@ public class GuardedRenderer extends PDFRenderer {
 
         @Override
         public void drawImage(PDImage pdImage) throws IOException {
+            if (pdImage instanceof PDImageXObject x && !StrictFilters.decodable(x.getCOSObject())) {
+                return;
+            }
             PDImage fitted = ImageBudget.fitted(pdImage);
             if (fitted != null) {
                 super.drawImage(fitted);

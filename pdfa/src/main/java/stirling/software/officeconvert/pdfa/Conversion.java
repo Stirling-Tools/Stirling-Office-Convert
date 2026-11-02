@@ -9,6 +9,7 @@ import java.security.NoSuchAlgorithmException;
 import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSString;
+import org.apache.pdfbox.pdmodel.DefaultResourceCache;
 import org.apache.pdfbox.pdmodel.PDDocument;
 
 import stirling.software.officeconvert.extract.PdfFiles;
@@ -35,7 +36,9 @@ final class Conversion {
             doc.setAllSecurityToBeRemoved(true);
         }
         doc.getDocument().setEncryptionDictionary(null);
-        PageTreeRepair.run(doc, report);
+        if (PdfFiles.repairPageTree(doc) || PdfFiles.repairs(doc).pageTree()) {
+            report.warn("Rebuilt a page tree that was not well formed");
+        }
         int pages = doc.getNumberOfPages();
         pageLimit(pages, options);
         if (level.tagged()) {
@@ -64,8 +67,11 @@ final class Conversion {
         DeviceNReduction.run(doc, census, graph, level, report);
         SpotColours.run(doc, census, level, report);
         FontFixer.repairSubtypes(graph, report);
+        FontFixer.dropUnreadable(graph, report);
         ContentFixer.run(graph, level, report, usage, colours);
         FontFixer.run(doc, usage, level, options::fontLibrary, report);
+        doc.setResourceCache(new DefaultResourceCache());
+        TransferBaking.run(doc, graph, report, colours);
         PdfFiles.stopIfInterrupted();
         FontCompaction compaction = new FontCompaction(doc, usage, level);
         CosWalk.Visitor jpx = JpxImages.visitor(doc, level, report);

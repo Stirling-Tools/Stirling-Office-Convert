@@ -4,10 +4,8 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.io.InterruptedIOException;
 import java.io.OutputStream;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -117,31 +115,13 @@ public final class PdfToDocx {
         Objects.requireNonNull(target, "target");
         Objects.requireNonNull(options, "options");
         PdfFiles.stopIfInterrupted();
-        Path part = Files.createTempFile(PdfFiles.outputFolder(target), ".office-convert-", ".part");
-        try {
-            try (PDDocument doc = load(pdf, options.password());
+        PdfFiles.writeThenMove(target, ".office-convert-", part -> {
+            try (PDDocument doc = PdfFiles.open(pdf, options.password());
                     OutputStream out = Files.newOutputStream(part)) {
                 convert(doc, out, options, format.apply(doc));
             }
-            PdfFiles.stopIfInterrupted();
-            moveIntoPlace(part, target);
-        } catch (IOException e) {
-            throw PdfFiles.interrupted(e);
-        } finally {
-            Files.deleteIfExists(part);
-        }
-    }
-
-    private static PDDocument load(Path pdf, String password) throws IOException {
-        return PdfFiles.open(pdf, password);
-    }
-
-    private static void moveIntoPlace(Path part, Path docx) throws IOException {
-        try {
-            Files.move(part, docx, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-        } catch (AtomicMoveNotSupportedException e) {
-            Files.move(part, docx, StandardCopyOption.REPLACE_EXISTING);
-        }
+            return null;
+        });
     }
 
     public static void convert(PDDocument doc, OutputStream out, Options options) throws IOException {

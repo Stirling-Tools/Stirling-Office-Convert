@@ -31,6 +31,7 @@ final class FlattenRenderer extends GuardedRenderer {
 
     private Drawer drawer;
 
+
     FlattenRenderer(PDDocument doc) {
         super(doc, "flattening transparency");
     }

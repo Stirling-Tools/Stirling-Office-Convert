@@ -76,8 +76,8 @@ final class HtmlTables {
             Look rowLook = look.child(rowDecl, frame.width(), false);
             Table.Row row = new Table.Row();
             // A browser breaks a tall row across pages rather than cutting it off
-            row.splits = !Flow.avoidsBreaks(rowDecl);
-            row.height = Math.max(0, Flow.length(rowDecl.get("height"), rowLook.size, 0));
+            row.splits = !BoxCss.avoidsBreaks(rowDecl);
+            row.height = Math.max(0, BoxCss.length(rowDecl.get("height"), rowLook.size, 0));
             row.header = "thead".equals(tr.parent() == null ? "" : tr.parent().normalName());
             boolean allHeads = true;
             int col = 0;
@@ -257,7 +257,7 @@ final class HtmlTables {
     }
 
     static Table.Border border(Map<String, String> d, String side, float fallback) {
-        float w = Flow.border(d, side);
+        float w = BoxCss.border(d, side);
         if (w <= 0) {
             return fallback > 0 && !d.containsKey("border-" + side) ? new Table.Border(fallback, 0x808080) : Table.Border.NONE;
         }
@@ -275,7 +275,7 @@ final class HtmlTables {
                 }
             }
         }
-        return new Table.Border(w, c == null || c < 0 ? 0 : c, Flow.doubled(d, side));
+        return new Table.Border(w, c == null || c < 0 ? 0 : c, BoxCss.doubled(d, side));
     }
 
     private static void outerBorders(Table t, Map<String, String> d) {
@@ -708,8 +708,8 @@ final class HtmlTables {
         boolean autoLeft = marginLeft == null ? align.equals("center") : marginLeft.strip().equalsIgnoreCase("auto");
         boolean autoRight = marginRight == null ? align.equals("center")
                 : marginRight.strip().equalsIgnoreCase("auto");
-        float left = autoLeft ? 0 : Flow.length(marginLeft, look.size, room);
-        float right = autoRight ? 0 : Flow.length(marginRight, look.size, room);
+        float left = autoLeft ? 0 : BoxCss.length(marginLeft, look.size, room);
+        float right = autoRight ? 0 : BoxCss.length(marginRight, look.size, room);
         if (align.equals("right") || align.equals("left")) {
             return align.equals("right") ? slack - right : left;
         }
@@ -738,7 +738,7 @@ final class HtmlTables {
 
     /** True for a table that only stacks things: one cell a row and no borders drawn. */
     static boolean layoutOnly(Element table, Map<String, String> d, HtmlContext ctx, Look look) {
-        if (frameBorder(table) > 0 || Flow.border(d, "top") > 0 || Flow.border(d, "bottom") > 0) {
+        if (frameBorder(table) > 0 || BoxCss.border(d, "top") > 0 || BoxCss.border(d, "bottom") > 0) {
             return false;
         }
         Elements rows = table.select(ROWS);
@@ -754,7 +754,7 @@ final class HtmlTables {
             }
             for (Element td : cells) {
                 Map<String, String> cd = ctx.declared(td, look);
-                if (Flow.border(cd, "top") > 0 || Flow.border(cd, "bottom") > 0 || Flow.border(cd, "left") > 0
+                if (BoxCss.border(cd, "top") > 0 || BoxCss.border(cd, "bottom") > 0 || BoxCss.border(cd, "left") > 0
                         || td.normalName().equals("th")) {
                     return false;
                 }

@@ -62,6 +62,9 @@ public final class PageAnalyzer {
         boolean ocr = OcrText.dominates(page);
         List<Glyph> glyphs = OcrText.pageGlyphs(page);
         PageGraphics gfx = page.graphics();
+        FormulaLines.Rebuilt formulas = ocr ? new FormulaLines.Rebuilt(glyphs, Set.of())
+                : FormulaLines.rebuild(glyphs, gfx.rules(), gfx.fills());
+        glyphs = formulas.glyphs();
         if (glyphs.isEmpty() && page.rotated().isEmpty() && outlinedText(gfx)) {
             return FallbackPage.of(page);
         }
@@ -86,6 +89,8 @@ public final class PageAnalyzer {
 
         List<Rule> rules = new ArrayList<>(gfx.rules());
         List<Fill> fills = new ArrayList<>(gfx.fills());
+        rules.removeIf(formulas.consumed()::contains);
+        fills.removeIf(formulas.consumed()::contains);
         fills.removeIf(usedMarks::contains);
         Decorations.underlines(segments, rules);
         Decorations.highlights(segments, fills);
@@ -101,13 +106,15 @@ public final class PageAnalyzer {
                 : ColumnFinder.boxedPanelSpans(segments, rules, stats.bodySize);
         boolean panelGrid = panels.size() >= MIN_PANEL_PAIRS && !tableBesidePanels(page, glyphs, panels);
         if (forms && (poster || panelGrid || FormPage.looksLikeForm(page, segments, rules))) {
-            return formPage(page, ocr, concat(segments, furnitureLines), rules, fills, textPaint, panelGrid, poster);
+            return formPage(page, ocr, concat(segments, furnitureLines), rules, fills, textPaint, panelGrid, poster,
+                    formulas.consumed());
         }
 
         boolean tinted = tinted(page, gfx);
         Veils.Split veiled = Veils.split(gfx.marks(), gfx);
         List<PageGraphics.VectorMark> art = veiled.art();
-        List<TextBoxFinder.Container> containers = TextBoxFinder.containers(unused(art, usedMarks), segments, tinted);
+        List<TextBoxFinder.Container> containers =
+                TextBoxFinder.containers(outsideNotes(unused(art, usedMarks), page.widgets()), segments, tinted);
         for (TextBoxFinder.Container c : containers) {
             usedMarks.add(c.mark());
         }
@@ -254,11 +261,11 @@ public final class PageAnalyzer {
         }
         groundTextBoxes(bands, furniture, decorations, gfx);
         return new PageLayout(page, bands, ocr, decorations, notes.notes(), notes.continuation(), furniture,
-                veiled.veils(), textPaint);
+                veiled.veils(), textPaint, formulas.consumed());
     }
 
     private PageLayout formPage(PageData page, boolean ocr, List<Line> lines, List<Rule> rules, List<Fill> fills,
-            Set<Object> textPaint, boolean panelGrid, boolean poster) {
+            Set<Object> textPaint, boolean panelGrid, boolean poster, Set<Object> formulaBars) {
         PageGraphics gfx = page.graphics();
         List<PageLayout.TextBoxItem> boxes = new ArrayList<>();
         List<Line> pieces = FormPage.pieces(lines, rules, fills, tabLeaders);
@@ -298,18 +305,38 @@ public final class PageAnalyzer {
                 ? List.of()
                 : List.of(new PageLayout.Band(0, page.height(), List.of(new PageLayout.Column(0, page.width(), pictures))));
         return new PageLayout(page, bands, ocr, poster ? List.of() : FormPage.shapes(rules, fills, gfx), List.of(),
-                List.of(), boxes, List.of(), textPaint);
+                List.of(), boxes, List.of(), textPaint, formulaBars);
     }
 
     private static List<Box> choiceFields(List<PageData.Widget> widgets, List<Box> tableBoxes) {
         List<Box> out = new ArrayList<>();
         for (PageData.Widget w : widgets) {
             Box field = new Box(w.x(), w.top(), w.right(), w.bottom());
-            if (w.choice() && field.area() > 0 && Float.isFinite(field.area()) && !Regions.overlapsMostly(field, tableBoxes)) {
+            if ((w.choice() || w.note()) && field.area() > 0 && Float.isFinite(field.area()) && !Regions.overlapsMostly(field, tableBoxes)) {
                 out.add(field);
                 if (out.size() > MAX_CHOICE_FIELDS) {
                     return List.of();
                 }
+            }
+        }
+        return out;
+    }
+
+    private static List<PageGraphics.VectorMark> outsideNotes(List<PageGraphics.VectorMark> marks,
+            List<PageData.Widget> widgets) {
+        List<Box> notes = new ArrayList<>();
+        for (PageData.Widget w : widgets) {
+            if (w.note()) {
+                notes.add(new Box(w.x(), w.top(), w.right(), w.bottom()));
+            }
+        }
+        if (notes.isEmpty()) {
+            return marks;
+        }
+        List<PageGraphics.VectorMark> out = new ArrayList<>();
+        for (PageGraphics.VectorMark m : marks) {
+            if (!Regions.insideAny(new Box(m.x(), m.top(), m.right(), m.bottom()), notes, FIELD_FRAME)) {
+                out.add(m);
             }
         }
         return out;

@@ -177,8 +177,9 @@ final class XmpProperties {
             kept.add(urgency);
         }
         List<Element> history = properties.get(MM + "History");
-        if (history != null && history.size() == 1 && XmpHistory.valid(history.getFirst())) {
-            kept.add(history.getFirst());
+        Element events = history != null && history.size() == 1 ? XmpHistory.repaired(history.getFirst()) : null;
+        if (events != null) {
+            kept.add(events);
         }
         return kept.isEmpty() ? List.of() : List.of(XmpCarryOver.serialise(kept, Map.of(), Map.of()));
     }

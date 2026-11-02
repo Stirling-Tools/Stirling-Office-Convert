@@ -19,7 +19,12 @@ public record PageData(
         this(index, width, height, direction, glyphs, hidden, rotated, graphics, links, List.of());
     }
 
-    public record Widget(float x, float top, float right, float bottom, boolean choice) {}
+    public record Widget(float x, float top, float right, float bottom, boolean choice, boolean note) {
+
+        public Widget(float x, float top, float right, float bottom, boolean choice) {
+            this(x, top, right, bottom, choice, false);
+        }
+    }
 
     public record Link(float x, float top, float right, float bottom, String uri, int targetPage) {}
 }

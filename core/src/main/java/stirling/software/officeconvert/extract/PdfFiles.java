@@ -5,10 +5,17 @@ import java.io.InputStream;
 import java.io.InterruptedIOException;
 import java.nio.channels.ClosedChannelException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.util.Collections;
+import java.util.Map;
+import java.util.Set;
+import java.util.WeakHashMap;
 
+import org.apache.pdfbox.cos.COSDocument;
 import org.apache.pdfbox.io.IOUtils;
 import org.apache.pdfbox.io.RandomAccessRead;
 import org.apache.pdfbox.io.RandomAccessReadBufferedFile;
@@ -20,16 +27,52 @@ import stirling.software.officeconvert.memory.Admission;
 
 public final class PdfFiles {
 
+    public static final long MAX_INPUT_BYTES = 1L << 30;
+
+    @FunctionalInterface
+    public interface Output<T> {
+        T writeTo(Path part) throws IOException;
+    }
+
     private PdfFiles() {}
+
+    public record Repairs(Salvage.Rebuilt salvaged, boolean pageTree) {}
+
+    private static final Map<COSDocument, Repairs> REPAIRS = Collections.synchronizedMap(new WeakHashMap<>());
+
+    private static final Set<COSDocument> TREE_CHECKED = Collections.synchronizedSet(
+            Collections.newSetFromMap(new WeakHashMap<>()));
 
     public static PDDocument open(Path pdf, String password) throws IOException {
         JpxImageIO.install();
-        return load(pdf, password, true);
+        return load(pdf, password, true, true);
     }
 
     public static PDDocument openAsStored(Path pdf, String password) throws IOException {
         JpxImageIO.install();
-        return load(pdf, password, false);
+        return load(pdf, password, false, false);
+    }
+
+    public static PDDocument openUnrepaired(Path pdf, String password) throws IOException {
+        JpxImageIO.install();
+        try {
+            return parse(new InterruptibleRead(new RandomAccessReadBufferedFile(pdf.toFile())), password, false, false);
+        } catch (Unopened e) {
+            throw new IOException("The PDF could not be opened: " + reason(pdf, e.getCause()), e.getCause());
+        }
+    }
+
+    public static Repairs repairs(PDDocument doc) {
+        Repairs found = REPAIRS.get(doc.getDocument());
+        return found != null ? found : new Repairs(null, false);
+    }
+
+    public static boolean repairPageTree(PDDocument doc) {
+        if (!TREE_CHECKED.add(doc.getDocument()) || !PageTreeRepair.run(doc)) {
+            return false;
+        }
+        REPAIRS.merge(doc.getDocument(), new Repairs(null, true), (a, b) -> new Repairs(a.salvaged(), true));
+        return true;
     }
 
     public static boolean decodedBrotli(PDDocument doc) {
@@ -41,7 +84,7 @@ public final class PdfFiles {
     }
 
     public static int pageCount(Path pdf, String password) {
-        try (PDDocument doc = load(pdf, password, false)) {
+        try (PDDocument doc = load(pdf, password, false, true)) {
             return doc.getNumberOfPages();
         } catch (IOException | RuntimeException e) {
             return 0;
@@ -71,6 +114,36 @@ public final class PdfFiles {
         return dir;
     }
 
+    public static long checkSize(Path pdf) throws IOException {
+        long size = Files.size(pdf);
+        if (size > MAX_INPUT_BYTES) {
+            throw new IOException("The PDF is larger than " + (MAX_INPUT_BYTES >> 20) + " MB");
+        }
+        return size;
+    }
+
+    public static <T> T writeThenMove(Path target, String prefix, Output<T> output) throws IOException {
+        Path part = Files.createTempFile(outputFolder(target), prefix, ".part");
+        try {
+            T result = output.writeTo(part);
+            stopIfInterrupted();
+            moveIntoPlace(part, target);
+            return result;
+        } catch (IOException e) {
+            throw interrupted(e);
+        } finally {
+            Files.deleteIfExists(part);
+        }
+    }
+
+    public static void moveIntoPlace(Path part, Path target) throws IOException {
+        try {
+            Files.move(part, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+        } catch (AtomicMoveNotSupportedException e) {
+            Files.move(part, target, StandardCopyOption.REPLACE_EXISTING);
+        }
+    }
+
     public static void checkOpen(PDDocument doc) throws IOException {
         if (doc.getDocument().isClosed()) {
             throw new IOException("The PDF document is closed");
@@ -94,11 +167,71 @@ public final class PdfFiles {
         return e;
     }
 
-    private static PDDocument load(Path pdf, String password, boolean allStreams) throws IOException {
-        RandomAccessRead source = new InterruptibleRead(new RandomAccessReadBufferedFile(pdf.toFile()));
+    private static PDDocument load(Path pdf, String password, boolean allStreams, boolean tolerant)
+            throws IOException {
+        PDDocument doc;
+        try {
+            doc = parse(new InterruptibleRead(new RandomAccessReadBufferedFile(pdf.toFile())), password, allStreams,
+                    tolerant);
+        } catch (Unopened e) {
+            doc = salvage(pdf, password, allStreams, tolerant, e.getCause());
+            if (doc == null) {
+                throw new IOException("The PDF could not be opened: " + reason(pdf, e.getCause()), e.getCause());
+            }
+        }
+        if (tolerant) {
+            try {
+                repairPageTree(doc);
+            } catch (RuntimeException e) {
+                doc.close();
+                throw new IOException("The PDF could not be opened: " + e.getMessage(), e);
+            }
+        }
+        return doc;
+    }
+
+    private static PDDocument salvage(Path pdf, String password, boolean allStreams, boolean tolerant,
+            Exception failure)
+            throws IOException {
+        if (failure instanceof BrotliBudget.Spent || failure.getCause() instanceof BrotliBudget.Spent) {
+            return null;
+        }
+        Path rebuilt = Files.createTempFile("pdf-salvage-", ".pdf");
+        boolean opened = false;
+        try {
+            Salvage.Rebuilt found;
+            try {
+                found = Salvage.rebuild(pdf, rebuilt);
+            } catch (InterruptedIOException e) {
+                throw e;
+            } catch (IOException | RuntimeException e) {
+                return null;
+            }
+            if (found == null) {
+                return null;
+            }
+            PDDocument doc;
+            try {
+                doc = parse(new InterruptibleRead(new RandomAccessReadBufferedFile(rebuilt.toFile()), rebuilt),
+                        password, allStreams, tolerant);
+            } catch (Unopened again) {
+                return null;
+            }
+            opened = true;
+            REPAIRS.put(doc.getDocument(), new Repairs(found, false));
+            return doc;
+        } finally {
+            if (!opened) {
+                Files.deleteIfExists(rebuilt);
+            }
+        }
+    }
+
+    private static PDDocument parse(RandomAccessRead source, String password, boolean allStreams, boolean tolerant)
+            throws IOException {
         try {
             return new KeyedPdfParser(source, password == null ? "" : password,
-                    IOUtils.createTempFileOnlyStreamCache(), allStreams).parse();
+                    IOUtils.createTempFileOnlyStreamCache(), allStreams, tolerant).parse();
         } catch (NoClassDefFoundError e) {
             source.close();
             throw new IOException("This PDF is encrypted with a certificate, which needs BouncyCastle (bcpkix) on the classpath", e);
@@ -107,7 +240,19 @@ public final class PdfFiles {
             throw e;
         } catch (IOException | RuntimeException e) {
             source.close();
-            throw new IOException("The PDF could not be opened: " + reason(pdf, e), e);
+            throw new Unopened(e);
+        }
+    }
+
+    private static final class Unopened extends IOException {
+
+        Unopened(Exception cause) {
+            super(cause);
+        }
+
+        @Override
+        public synchronized Exception getCause() {
+            return (Exception) super.getCause();
         }
     }
 

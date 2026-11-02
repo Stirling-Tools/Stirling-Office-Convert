@@ -230,6 +230,10 @@ final class OdsStyles {
                 .append("\" style:family=\"table\" style:master-page-name=\"mp").append(name.substring(2))
                 .append("\"><style:table-properties table:display=\"true\" style:writing-mode=\"")
                 .append(page.rtl() ? "rl-tb" : "lr-tb").append("\"/></style:style>"));
+        sb.append("<style:style style:name=\"").append(OdsWriter.SUPER_STYLE)
+                .append("\" style:family=\"text\"><style:text-properties style:text-position=\"super 58%\"/></style:style>")
+                .append("<style:style style:name=\"").append(OdsWriter.SUB_STYLE)
+                .append("\" style:family=\"text\"><style:text-properties style:text-position=\"sub 58%\"/></style:style>");
         sb.append(numberXml).append(cellXml);
         return sb.toString();
     }

@@ -110,6 +110,9 @@ final class TextPositions {
             unicode = font.toUnicode(code, GLYPHS);
         }
         if (unicode == null) {
+            unicode = LigatureNames.text(font, code, GLYPHS);
+        }
+        if (unicode == null) {
             unicode = unmapped.text(font, code, trm);
             float along = (float) Math.hypot(trm.getScaleX(), trm.getShearY());
             float drawn = unicode == null || dxDisplay > 0 ? Float.NaN : unmapped.drawnWidth(font, code, trm);
@@ -147,7 +150,8 @@ final class TextPositions {
     }
 
     boolean mapped(PDFont font, int code) {
-        return builtInText(font, code) != null || font.toUnicode(code, GLYPHS) != null;
+        return builtInText(font, code) != null || font.toUnicode(code, GLYPHS) != null
+                || LigatureNames.text(font, code, GLYPHS) != null;
     }
 
     private String builtInText(PDFont font, int code) {

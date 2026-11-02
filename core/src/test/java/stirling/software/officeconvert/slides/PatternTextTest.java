@@ -18,6 +18,7 @@ import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
 import org.apache.pdfbox.pdmodel.graphics.pattern.PDTilingPattern;
 import org.junit.jupiter.api.Test;
 
+import stirling.software.officeconvert.extract.HiddenContent;
 import stirling.software.officeconvert.layout.Box;
 
 class PatternTextTest {
@@ -64,7 +65,7 @@ class PatternTextTest {
                 out.write((paint + " BT /F1 40 Tf 100 100 Td (W) Tj ET").getBytes(StandardCharsets.US_ASCII));
             }
             page.setContents(stream);
-            return PaintOrder.read(page, TO_DISPLAY, 612, 792).effectGlyph(GLYPH);
+            return PaintOrder.read(page, TO_DISPLAY, 612, 792, HiddenContent.of(null)).effectGlyph(GLYPH);
         }
     }
 }

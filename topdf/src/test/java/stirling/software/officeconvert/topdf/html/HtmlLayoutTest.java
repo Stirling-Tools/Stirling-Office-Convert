@@ -888,13 +888,13 @@ class HtmlLayoutTest {
     void doubleBordersWithoutAWidthOrWithAKeywordWidthStayDouble() {
         Map<String, String> bare = Map.of("border-bottom", "double blue");
         Map<String, String> thick = Map.of("border-bottom", "thick double blue");
-        assertTrue(Flow.doubled(bare, "bottom"));
-        assertEquals(2.25f, Flow.border(bare, "bottom"));
-        assertTrue(Flow.doubled(thick, "bottom"));
-        assertEquals(3.75f, Flow.border(thick, "bottom"));
-        assertEquals(3.75f, Flow.border(Map.of("border-bottom", "thick solid red"), "bottom"));
-        assertEquals(0.75f, Flow.border(Map.of("border-bottom", "solid red"), "bottom"));
-        assertFalse(Flow.doubled(Map.of("border-bottom", "thin double"), "bottom"));
+        assertTrue(BoxCss.doubled(bare, "bottom"));
+        assertEquals(2.25f, BoxCss.border(bare, "bottom"));
+        assertTrue(BoxCss.doubled(thick, "bottom"));
+        assertEquals(3.75f, BoxCss.border(thick, "bottom"));
+        assertEquals(3.75f, BoxCss.border(Map.of("border-bottom", "thick solid red"), "bottom"));
+        assertEquals(0.75f, BoxCss.border(Map.of("border-bottom", "solid red"), "bottom"));
+        assertFalse(BoxCss.doubled(Map.of("border-bottom", "thin double"), "bottom"));
     }
 
     @Test

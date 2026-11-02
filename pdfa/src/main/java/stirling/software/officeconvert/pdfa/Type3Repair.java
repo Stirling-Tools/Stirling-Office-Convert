@@ -23,11 +23,12 @@ final class Type3Repair {
 
     static void run(PDDocument doc, PDType3Font font, Set<Integer> codes, PdfALevel level, Report report)
             throws IOException {
-        COSDictionary procs = font.getCharProcs();
-        if (procs == null) {
-            procs = new COSDictionary();
-            font.getCOSObject().setItem(COSName.CHAR_PROCS, procs);
+        COSDictionary procs = new COSDictionary();
+        if (font.getCharProcs() != null) {
+            procs.addAll(font.getCharProcs());
         }
+        font.getCOSObject().setItem(COSName.CHAR_PROCS, procs);
+        ownEncoding(font);
         for (int code : codes) {
             PdfFiles.stopIfInterrupted();
             float width = font.getWidth(code);
@@ -73,6 +74,25 @@ final class Type3Repair {
             procs.setItem(name, repaired);
             difference(font, code, name);
         }
+    }
+
+    private static void ownEncoding(PDType3Font font) {
+        COSDictionary dict = font.getCOSObject();
+        COSDictionary shared = ContentGraph.dict(dict.getDictionaryObject(COSName.ENCODING));
+        if (shared == null) {
+            return;
+        }
+        COSDictionary own = new COSDictionary();
+        own.addAll(shared);
+        COSArray differences = ContentGraph.array(shared.getDictionaryObject(COSName.DIFFERENCES));
+        if (differences != null) {
+            COSArray copy = new COSArray();
+            for (int i = 0; i < differences.size(); i++) {
+                copy.add(differences.getObject(i));
+            }
+            own.setItem(COSName.DIFFERENCES, copy);
+        }
+        dict.setItem(COSName.ENCODING, own);
     }
 
     private static void difference(PDType3Font font, int code, COSName name) {

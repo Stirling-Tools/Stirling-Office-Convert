@@ -59,6 +59,28 @@ class StreamBoundsAndCacheTest {
     }
 
     @Test
+    void everyDescriptorSharingAnUndecodableFontProgramDropsIt() throws Exception {
+        try (PDDocument doc = new PDDocument()) {
+            PDPage page = new PDPage();
+            doc.addPage(page);
+            COSStream stream = doc.getDocument().createCOSStream();
+            stream.setItem(COSName.FILTER, COSName.getPDFName("NoSuchDecode"));
+            try (OutputStream out = stream.createRawOutputStream()) {
+                out.write("not a font".getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+            }
+            COSDictionary first = new COSDictionary();
+            first.setItem(COSName.FONT_FILE2, stream);
+            COSDictionary second = new COSDictionary();
+            second.setItem(COSName.FONT_FILE2, stream);
+            page.getCOSObject().setItem(COSName.getPDFName("TestFirst"), first);
+            page.getCOSObject().setItem(COSName.getPDFName("TestSecond"), second);
+            FontProgramBounds.run(doc);
+            org.junit.jupiter.api.Assertions.assertFalse(first.containsKey(COSName.FONT_FILE2));
+            org.junit.jupiter.api.Assertions.assertFalse(second.containsKey(COSName.FONT_FILE2));
+        }
+    }
+
+    @Test
     void contentCacheReusesTokensAndInvalidatesEveryListContainingAChangedStream() throws Exception {
         try (PDDocument doc = new PDDocument()) {
             COSStream first = doc.getDocument().createCOSStream();

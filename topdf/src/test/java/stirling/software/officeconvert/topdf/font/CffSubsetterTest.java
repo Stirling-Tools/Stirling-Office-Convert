@@ -3,6 +3,7 @@ package stirling.software.officeconvert.topdf.font;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -29,6 +30,38 @@ class CffSubsetterTest {
         CFFCIDFont out = (CFFCIDFont) new CFFParser().parse(new RandomAccessReadBuffer(subset)).get(0);
         assertEquals(source.getType2CharString(2).getPath().getBounds2D(),
                 out.getType2CharString(2).getPath().getBounds2D());
+    }
+
+    @Test
+    void checkingOutlinesReadsTheIndexesButNotTheGlyphData() throws IOException {
+        List<byte[]> glyphs = new ArrayList<>();
+        glyphs.add(new byte[] {14});
+        for (int g = 1; g < 200; g++) {
+            byte[] body = new byte[60_000];
+            Arrays.fill(body, (byte) 139);
+            body[body.length - 1] = 14;
+            glyphs.add(body);
+        }
+        byte[] cff = nameKeyed(List.of(new byte[] {11}), glyphs);
+        CffSubsetter.check(cff);
+        long[] read = {0};
+        CffSubsetter.check(cff.length, (into, from, to) -> {
+            System.arraycopy(cff, from, into, from, to - from);
+            read[0] += to - from;
+        });
+        assertTrue(read[0] < cff.length / 20, read[0] + " of " + cff.length);
+    }
+
+    @Test
+    void checkingOutlinesPageByPageRefusesWhatTheWholeCheckRefuses() {
+        List<byte[]> glyphs = List.of(new byte[] {14}, new byte[70_000]);
+        byte[] cff = nameKeyed(List.of(new byte[] {11}), glyphs);
+        assertThrows(IOException.class, () -> CffSubsetter.check(cff));
+        assertThrows(IOException.class, () -> CffSubsetter.check(cff.length,
+                (into, from, to) -> System.arraycopy(cff, from, into, from, to - from)));
+        byte[] cut = Arrays.copyOf(cff, 40);
+        assertThrows(IOException.class, () -> CffSubsetter.check(cut.length,
+                (into, from, to) -> System.arraycopy(cut, from, into, from, to - from)));
     }
 
     @Test
