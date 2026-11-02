@@ -3,6 +3,7 @@ package stirling.software.officeconvert.pdfa;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.ByteArrayInputStream;
@@ -146,6 +147,43 @@ class AttachmentPreservationTest {
             });
         }
         assertEquals(4, payloads.size());
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = PdfALevel.class, names = {"A3A", "A3B", "A3U"})
+    void unreadableRetainedAttachmentsRefuseConversionWithoutReplacingOutput(PdfALevel level) throws Exception {
+        Path input = Samples.write(dir, "s21_tagged");
+        try (PDDocument doc = Loader.loadPDF(Files.readAllBytes(input))) {
+            PDComplexFileSpecification fs = spec(doc, "unreadable.bin", BINARY);
+            fs.getEmbeddedFile().getCOSObject().setItem(COSName.FILTER, COSName.getPDFName("UnknownDecode"));
+            tree(doc, Map.of("unreadable.bin", fs));
+            doc.save(input.toFile());
+        }
+        byte[] originalInput = Files.readAllBytes(input);
+        Path output = dir.resolve("existing.pdf");
+        Files.write(output, BINARY);
+        assertThrows(java.io.IOException.class,
+                () -> PdfToPdfA.convert(input, output, PdfToPdfA.Options.defaults().level(level)));
+        assertArrayEquals(BINARY, Files.readAllBytes(output));
+        assertArrayEquals(originalInput, Files.readAllBytes(input));
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = PdfALevel.class, names = {"A3A", "A3B", "A3U"})
+    void retainedLzwAttachmentsAreRecompressedWithoutChangingPayloadBytes(PdfALevel level) throws Exception {
+        Path input = Samples.write(dir, "s21_tagged");
+        try (PDDocument doc = Loader.loadPDF(Files.readAllBytes(input))) {
+            PDComplexFileSpecification fs = spec(doc, "compressed.bin", BINARY);
+            try (var out = fs.getEmbeddedFile().getCOSObject().createOutputStream(COSName.LZW_DECODE)) {
+                out.write(BINARY);
+            }
+            tree(doc, Map.of("compressed.bin", fs));
+            doc.save(input.toFile());
+        }
+        Path output = dir.resolve("recompressed.pdf");
+        PdfToPdfA.convert(input, output, PdfToPdfA.Options.defaults().level(level));
+        VeraPdf.assertCompliant(output, level);
+        assertArrayEquals(BINARY, files(output).get("compressed.bin"));
     }
 
     @ParameterizedTest

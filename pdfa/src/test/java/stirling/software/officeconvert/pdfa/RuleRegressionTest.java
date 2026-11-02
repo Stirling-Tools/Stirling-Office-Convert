@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.Set;
 import java.util.TreeSet;
 
 import org.apache.pdfbox.cos.COSDictionary;
@@ -31,7 +32,7 @@ class RuleRegressionTest {
             state.setName(COSName.RI, "Bogus");
             state.setName(COSName.BM, "Bogus");
             page(doc, state);
-            StreamFixer.run(doc, PdfALevel.A2B, new Report(), b -> {});
+            StreamFixer.run(doc, PdfALevel.A2B, new Report(), Set.of(), b -> {});
             assertEquals("RelativeColorimetric", state.getNameAsString(COSName.RI));
             assertEquals("Normal", state.getNameAsString(COSName.BM));
         }

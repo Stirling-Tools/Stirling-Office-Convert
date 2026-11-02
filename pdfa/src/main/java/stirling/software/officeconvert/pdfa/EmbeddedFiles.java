@@ -59,8 +59,20 @@ final class EmbeddedFiles {
         this.report = report;
     }
 
-    static void run(PDDocument doc, PdfALevel level, Report report) throws IOException {
-        new EmbeddedFiles(doc, level, report).run();
+    static Set<COSStream> run(PDDocument doc, PdfALevel level, Report report) throws IOException {
+        EmbeddedFiles files = new EmbeddedFiles(doc, level, report);
+        files.run();
+        Set<COSStream> payloads = Collections.newSetFromMap(new IdentityHashMap<>());
+        for (COSDictionary spec : files.retained) {
+            COSDictionary ef = ContentGraph.dict(spec.getDictionaryObject(COSName.EF));
+            for (COSBase value : ef.getValues()) {
+                COSBase actual = value instanceof COSObject object ? object.getObject() : value;
+                if (actual instanceof COSStream stream) {
+                    payloads.add(stream);
+                }
+            }
+        }
+        return payloads;
     }
 
     private void run() throws IOException {

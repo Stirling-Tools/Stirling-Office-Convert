@@ -774,8 +774,9 @@ that instance. Prefer the file-based overload for documents that need a strict t
   and Unix streams gain standard references, and retained attachment bytes are not rewritten. Incompatible variants
   are removed with warnings without discarding other eligible variants of the same file. Attachment checks allow up to
   16 MiB of PDF bytes, 100,000 parsed values, 64 levels of object nesting and 8 MiB of decoded object and cross-reference
-  streams. Exceeding a verification budget fails the conversion instead of silently dropping a potentially valid file;
-  the path-based API leaves an existing output file unchanged on failure.
+  streams. Exceeding a verification budget, or failing to decode a retained attachment for lossless recompression,
+  fails the conversion instead of silently dropping or emptying its data. The path-based API leaves an existing
+  output file unchanged on failure.
 - Optional content: part 1 has none, so content in hidden layers is deleted and the rest kept; parts 2 and 3 keep the
   layers and fix their configurations.
 - XMP metadata and Info agree. Valid XMP-only titles, creators, descriptions, creation dates and creator tools fill
