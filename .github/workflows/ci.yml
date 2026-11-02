@@ -25,8 +25,10 @@ jobs:
         include:
           - shard: core
             tasks: ':core:test'
-          - shard: topdf
-            tasks: ':topdf:test'
+          - shard: topdf-markup
+            tasks: ':topdf:test -Ptopdf.testGroup=markup'
+          - shard: topdf-rest
+            tasks: ':topdf:test -Ptopdf.testGroup=rest'
           - shard: other
             tasks: 'check -x :core:test -x :topdf:test'
           - shard: assemble
@@ -39,6 +41,8 @@ jobs:
           distribution: 'temurin'
           java-version: '25'
       - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: false
       - name: Restore test font packages
         if: matrix.shard != 'assemble'
         id: fonts
