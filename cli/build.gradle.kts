@@ -189,3 +189,22 @@ tasks.named("jar") {
 tasks.named("assemble") {
     dependsOn(shrunkJar)
 }
+
+tasks.test {
+    exclude("**/PackagedPdfATest.class")
+}
+
+val packagedTest by tasks.registering(Test::class) {
+    description = "Tests PDF/A conversion with the packaged CLI"
+    group = "verification"
+    dependsOn(shrunkJar)
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    include("**/PackagedPdfATest.class")
+    inputs.file(shrunkJar.flatMap { it.archiveFile }).withPropertyName("packagedJar")
+    systemProperty("officeconvert.packagedJar", shrunkJar.flatMap { it.archiveFile }.get().asFile.absolutePath)
+}
+
+tasks.named("check") {
+    dependsOn(packagedTest)
+}

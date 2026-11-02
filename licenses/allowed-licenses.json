@@ -69,6 +69,10 @@
       "moduleLicense": "LICENSE-JJ2000.txt, LICENSE-Sun.txt"
     },
     {
+      "moduleName": "javax.activation:javax.activation-api",
+      "moduleLicense": "CDDL/GPLv2+CE"
+    },
+    {
       "moduleName": ".*",
       "moduleLicense": "Apache 2"
     },

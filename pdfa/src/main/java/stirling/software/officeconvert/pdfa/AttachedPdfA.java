@@ -2,20 +2,21 @@ package stirling.software.officeconvert.pdfa;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.util.Set;
 import java.util.Collections;
 import java.util.IdentityHashMap;
+import java.util.Set;
 
-import org.apache.pdfbox.io.RandomAccessReadBuffer;
-import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSStream;
+import org.apache.pdfbox.io.RandomAccessReadBuffer;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
+
+import stirling.software.officeconvert.extract.PdfFiles;
 
 final class AttachedPdfA {
 
@@ -25,28 +26,27 @@ final class AttachedPdfA {
 
     private static final String IDENTIFICATION = "http://www.aiim.org/pdfa/ns/id/";
 
-    private static final Set<String> FORBIDDEN = Set.of("JavaScript", "Launch", "Sound", "Movie", "ResetForm",
-            "ImportData", "Hide", "SetOCGState", "Rendition", "Trans", "GoTo3DView");
-
-    private static final COSName XFA = COSName.getPDFName("XFA");
-
     private static final COSName EMBEDDED_FILE = COSName.getPDFName("EmbeddedFile");
 
     private AttachedPdfA() {}
 
-    static boolean check(COSStream file) {
+    static boolean check(COSStream file) throws IOException {
         return check(file, false);
     }
 
-    static boolean check(COSStream file, boolean partFour) {
+    static boolean check(COSStream file, boolean partFour) throws IOException {
         return check(file, 0, partFour);
     }
 
-    private static boolean check(COSStream file, int depth, boolean partFour) {
+    private static boolean check(COSStream file, int depth, boolean partFour) throws IOException {
         byte[] data;
         try {
             data = Decoded.bytes(file, MAX_BYTES, "An attachment");
         } catch (IOException | RuntimeException e) {
+            if (e instanceof IOException io) {
+                rethrowBudget(io);
+            }
+            PdfFiles.stopIfInterrupted();
             return false;
         }
         if (data.length < 5 || !new String(data, 0, 5, StandardCharsets.ISO_8859_1).equals("%PDF-")) {
@@ -55,39 +55,49 @@ final class AttachedPdfA {
         try (RandomAccessReadBuffer source = new RandomAccessReadBuffer(data)) {
             AttachmentParser parser = new AttachmentParser(source);
             try (PDDocument doc = parser.parse(false)) {
-                if (doc.isEncrypted() || !declaresPdfA(doc, partFour)) {
+                String profile = profile(doc, partFour);
+                if (doc.isEncrypted() || profile == null) {
                     return false;
                 }
                 boolean[] ok = {true};
                 Set<COSStream> checked = Collections.newSetFromMap(new IdentityHashMap<>());
-                boolean carriesAnyFile = partFour && carriesAnyFile(doc);
+                boolean carriesAnyFile = profile.equals("4f") || profile.equals("4e");
                 CosWalk.walk(doc, b -> ok[0] &= allowed(b, depth, checked, partFour, carriesAnyFile));
                 parser.checkBudget();
-                return ok[0];
+                FontProgramBounds.run(doc);
+                ContentBudget.peakBytes(doc);
+                return ok[0] && AttachmentValidation.compliant(data, profile);
             }
         } catch (IOException | RuntimeException e) {
+            if (e instanceof IOException io) {
+                rethrowBudget(io);
+            }
+            PdfFiles.stopIfInterrupted();
             return false;
         }
     }
 
-    private static boolean declaresPdfA(PDDocument doc, boolean partFour) {
+    private static String profile(PDDocument doc, boolean partFour) throws IOException {
         COSDictionary cat = doc.getDocumentCatalog().getCOSObject();
         if (!(cat.getDictionaryObject(COSName.METADATA) instanceof COSStream xmp)) {
-            return false;
+            return null;
         }
         try {
             byte[] b = Decoded.bytes(xmp, StreamFixer.MAX_METADATA_BYTES, "XMP metadata");
+            metadataBudget(b);
             Document xml = XmpCarryOver.parse(b);
             if (xml == null) {
-                return false;
+                return null;
             }
             String part = property(xml, "part");
             String conformance = property(xml, "conformance");
-            return ("1".equals(part) && Set.of("A", "B").contains(conformance))
+            boolean allowed = ("1".equals(part) && Set.of("A", "B").contains(conformance))
                     || ("2".equals(part) && Set.of("A", "B", "U").contains(conformance))
                     || (partFour && "4".equals(part) && Set.of("", "E", "F").contains(conformance));
+            return allowed ? part + conformance.toLowerCase(java.util.Locale.ROOT) : null;
         } catch (IOException e) {
-            return false;
+            rethrowBudget(e);
+            return null;
         }
     }
 
@@ -114,34 +124,13 @@ final class AttachedPdfA {
         return count == 1 ? value : "";
     }
 
-    private static boolean carriesAnyFile(PDDocument doc) {
-        if (!(doc.getDocumentCatalog().getCOSObject().getDictionaryObject(COSName.METADATA) instanceof COSStream xmp)) {
-            return false;
-        }
-        try {
-            Document xml = XmpCarryOver.parse(Decoded.bytes(xmp, StreamFixer.MAX_METADATA_BYTES, "XMP metadata"));
-            return xml != null && "4".equals(property(xml, "part")) && "F".equals(property(xml, "conformance"));
-        } catch (IOException e) {
-            return false;
-        }
-    }
-
     private static boolean allowed(COSBase b, int depth, Set<COSStream> checked, boolean partFour,
-            boolean carriesAnyFile) {
+            boolean carriesAnyFile) throws IOException {
         if (!(b instanceof COSDictionary d)) {
             return true;
         }
-        if (!partFour && (d.containsKey(COSName.JS) || d.containsKey(COSName.AA)) || d.containsKey(XFA)
-                || d.containsKey(COSName.ENCRYPT)) {
-            return false;
-        }
-        if (d.getDictionaryObject(COSName.S) instanceof COSName s && FORBIDDEN.contains(s.getName())
-                && !(partFour && "JavaScript".equals(s.getName()))) {
-            return false;
-        }
-        if (COSName.FONT.equals(d.getCOSName(COSName.TYPE)) && !COSName.TYPE0.equals(d.getCOSName(COSName.SUBTYPE))
-                && !COSName.TYPE3.equals(d.getCOSName(COSName.SUBTYPE)) && !embedded(d)) {
-            return false;
+        if (d instanceof COSStream stream && COSName.METADATA.equals(d.getCOSName(COSName.TYPE))) {
+            metadataBudget(Decoded.bytes(stream, StreamFixer.MAX_METADATA_BYTES, "An attachment's XMP metadata"));
         }
         if (carriesAnyFile) {
             return true;
@@ -150,25 +139,35 @@ final class AttachedPdfA {
         if (ef != null) {
             for (COSName key : ef.keySet()) {
                 if (!(ef.getDictionaryObject(key) instanceof COSStream file)
-                        || checked.add(file) && !(depth < MAX_DEPTH && check(file, depth + 1, partFour))) {
+                        || checked.add(file) && !nested(file, depth, partFour)) {
                     return false;
                 }
             }
         }
         if (d instanceof COSStream s && EMBEDDED_FILE.equals(s.getCOSName(COSName.TYPE)) && checked.add(s)) {
-            return depth < MAX_DEPTH && check(s, depth + 1, partFour);
+            return nested(s, depth, partFour);
         }
         return true;
     }
 
-    private static boolean embedded(COSDictionary font) {
-        COSDictionary fd = ContentGraph.dict(font.getDictionaryObject(COSName.FONT_DESC));
-        if (fd == null) {
-            COSArray kids = ContentGraph.array(font.getDictionaryObject(COSName.DESCENDANT_FONTS));
-            return kids != null;
+    private static boolean nested(COSStream stream, int depth, boolean partFour) throws IOException {
+        if (depth >= MAX_DEPTH) {
+            throw new AttachmentParser.LimitExceeded(
+                    "An attachment nests PDF/A files beyond the verification depth limit");
         }
-        return fd.getDictionaryObject(COSName.FONT_FILE) instanceof COSStream
-                || fd.getDictionaryObject(COSName.FONT_FILE2) instanceof COSStream
-                || fd.getDictionaryObject(COSName.FONT_FILE3) instanceof COSStream;
+        return check(stream, depth + 1, partFour);
+    }
+
+    private static void metadataBudget(byte[] bytes) throws IOException {
+        if (!XmpBounds.allows(bytes)) {
+            throw new AttachmentParser.LimitExceeded("An attachment's XMP metadata cannot be verified safely");
+        }
+    }
+
+    private static void rethrowBudget(IOException exception) throws IOException {
+        Decoded.rethrowFatal(exception);
+        if (exception instanceof AttachmentParser.LimitExceeded) {
+            throw exception;
+        }
     }
 }

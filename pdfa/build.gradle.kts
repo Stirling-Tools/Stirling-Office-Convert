@@ -7,10 +7,10 @@ dependencies {
     api(libs.pdfbox)
     implementation(project(":core"))
     api(project(":topdf"))
+    implementation(libs.verapdf.validation.model)
 
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)
-    testImplementation(libs.verapdf.validation.model)
     testImplementation(libs.jai.imageio.jpeg2000)
     testRuntimeOnly(libs.junit.platform.launcher)
 }

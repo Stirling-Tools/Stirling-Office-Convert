@@ -3,14 +3,23 @@ package stirling.software.officeconvert.pdfa;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.io.ByteArrayOutputStream;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
+import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.cos.COSStream;
 import org.apache.pdfbox.pdmodel.PDDocument;
+import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 class AttachmentIdentityTest {
+
+    @TempDir
+    Path dir;
 
     @ParameterizedTest
     @ValueSource(strings = {"<pdfaid:part>2</pdfaid:part>",
@@ -24,9 +33,28 @@ class AttachmentIdentityTest {
     @ParameterizedTest
     @ValueSource(strings = {"A", "B", "U"})
     void correctlyNamespacedPartTwoClaimsAreRecognised(String conformance) throws Exception {
-        String properties = "<pdfaid:part>2</pdfaid:part><pdfaid:conformance>" + conformance + "</pdfaid:conformance>";
-        assertTrue(check(properties, "http://www.aiim.org/pdfa/ns/id/"));
-        assertFalse(check(properties, "http://example.com/not-pdfa/"));
+        var input = Samples.write(dir, "s21_tagged");
+        var output = dir.resolve("compliant.pdf");
+        PdfToPdfA.convert(input, output, PdfToPdfA.Options.defaults().level(PdfALevel.parse("2" + conformance)));
+        try (PDDocument attachment = Loader.loadPDF(output.toFile());
+                PDDocument owner = new PDDocument()) {
+            COSStream file = owner.getDocument().createCOSStream();
+            try (OutputStream out = file.createOutputStream()) {
+                out.write(Files.readAllBytes(output));
+            }
+            assertTrue(AttachedPdfA.check(file));
+            var metadata = attachment.getDocumentCatalog().getMetadata();
+            byte[] wrongNamespace = new String(metadata.toByteArray(), StandardCharsets.UTF_8)
+                    .replace("http://www.aiim.org/pdfa/ns/id/", "http://example.com/not-pdfa/")
+                    .getBytes(StandardCharsets.UTF_8);
+            metadata.importXMPMetadata(wrongNamespace);
+            ByteArrayOutputStream altered = new ByteArrayOutputStream();
+            attachment.save(altered);
+            try (OutputStream out = file.createOutputStream()) {
+                out.write(altered.toByteArray());
+            }
+            assertFalse(AttachedPdfA.check(file));
+        }
     }
 
     @org.junit.jupiter.api.Test

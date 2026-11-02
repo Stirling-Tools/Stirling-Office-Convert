@@ -83,7 +83,8 @@ class DocumentRulesTest {
         Converted.convert(dir, "s11_embedded_files", PdfALevel.A3B);
         try (PDDocument d = Loader.loadPDF(Converted.out(dir, "s11_embedded_files", PdfALevel.A3B).toFile())) {
             var files = d.getDocumentCatalog().getNames().getEmbeddedFiles().getNames();
-            assertEquals(1, files.size());
+            assertEquals(2, files.size());
+            assertTrue(files.containsKey("tool.exe"));
             COSDictionary fs = files.get("data.csv").getCOSObject();
             assertEquals(COSName.getPDFName("Unspecified"), fs.getDictionaryObject(COSName.getPDFName("AFRelationship")));
             COSArray af = (COSArray) d.getDocumentCatalog().getCOSObject().getDictionaryObject(COSName.getPDFName("AF"));

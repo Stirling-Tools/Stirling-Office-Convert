@@ -44,16 +44,6 @@ final class ObjectMetadata {
                 owners.add(d);
             }
         }
-        if (level.part() == 2 || level.part() == 3) {
-            for (COSDictionary d : owners) {
-                d.removeItem(COSName.METADATA);
-            }
-            if (!owners.isEmpty()) {
-                report.warn("Removed metadata of pages, images and fonts, as PDF/A-2 and 3 allow only predefined XMP "
-                        + "properties there");
-            }
-            return;
-        }
         Map<COSStream, Boolean> verdicts = new IdentityHashMap<>();
         boolean removed = false;
         for (COSDictionary d : owners) {
@@ -61,7 +51,7 @@ final class ObjectMetadata {
             COSStream s = (COSStream) d.getDictionaryObject(COSName.METADATA);
             Boolean ok = verdicts.get(s);
             if (ok == null) {
-                ok = repair(s);
+                ok = repair(s, level, report);
                 verdicts.put(s, ok);
             }
             if (!ok) {
@@ -74,7 +64,7 @@ final class ObjectMetadata {
         }
     }
 
-    private static boolean repair(COSStream s) throws IOException {
+    private static boolean repair(COSStream s, PdfALevel level, Report report) throws IOException {
         byte[] data = StreamFixer.read(s, StreamFixer.MAX_METADATA_BYTES);
         if (data == null) {
             return false;
@@ -89,20 +79,26 @@ final class ObjectMetadata {
         if (!wellFormed(data)) {
             return false;
         }
+        String fixed = text;
         int[] at = header(text);
-        if (at == null) {
-            return true;
+        if (at != null) {
+            if (at[1] - at[0] > MAX_HEADER_CHARS) {
+                return false;
+            }
+            String header = text.substring(at[0], at[1]);
+            fixed = text.substring(0, at[0]) + withoutSizeAttributes(header) + text.substring(at[1]);
         }
-        if (at[1] - at[0] > MAX_HEADER_CHARS) {
-            return false;
+        byte[] repaired = fixed.getBytes(StandardCharsets.UTF_8);
+        if (level.part() == 2 || level.part() == 3) {
+            repaired = ObjectXmp.predefined(repaired, report);
+            if (repaired == null) {
+                return false;
+            }
         }
-        String header = text.substring(at[0], at[1]);
-        String stripped = withoutSizeAttributes(header);
-        if (!stripped.equals(header)) {
-            String fixed = text.substring(0, at[0]) + stripped + text.substring(at[1]);
+        if (!java.util.Arrays.equals(data, repaired)) {
             s.removeItem(COSName.DECODE_PARMS);
             try (OutputStream out = s.createOutputStream(COSName.FLATE_DECODE)) {
-                out.write(fixed.getBytes(StandardCharsets.UTF_8));
+                out.write(repaired);
             }
         }
         return true;

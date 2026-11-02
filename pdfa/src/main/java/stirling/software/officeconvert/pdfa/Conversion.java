@@ -45,11 +45,11 @@ final class Conversion {
             Tagging.run(doc, level, report);
         }
         Census census = Census.of(doc);
+        EmbeddedFiles.run(doc, level, report);
         FontProgramBounds.run(doc);
         Signatures.run(doc, census, report);
         Interactive.run(doc, level, report);
         ObjectMetadata.run(doc, census, level, report);
-        EmbeddedFiles.run(doc, level, report);
         if (level.part() == 4) {
             ActualTexts.run(doc, report);
         }

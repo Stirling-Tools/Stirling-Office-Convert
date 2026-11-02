@@ -20,3 +20,9 @@
 -keep class com.microsoft.schemas.** { *; }
 -keep class org.etsi.** { *; }
 -keep class org.w3.** { *; }
+
+# veraPDF models, its rule engine and JAXB profiles resolve classes and members through reflection.
+-keep class org.verapdf.** { *; }
+-keep class org.mozilla.javascript.** { *; }
+-keep class javax.xml.bind.** { *; }
+-keep class com.sun.xml.bind.** { *; }

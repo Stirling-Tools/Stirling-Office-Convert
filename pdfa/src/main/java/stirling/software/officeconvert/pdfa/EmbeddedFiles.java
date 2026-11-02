@@ -1,8 +1,6 @@
 package stirling.software.officeconvert.pdfa;
 
 import java.io.IOException;
-import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.IdentityHashMap;
@@ -51,6 +49,10 @@ final class EmbeddedFiles {
 
     private final Map<COSDictionary, Boolean> decisions = new IdentityHashMap<>();
 
+    private final Map<COSStream, Boolean> compatible = new IdentityHashMap<>();
+
+    private final List<COSDictionary> retained = new ArrayList<>();
+
     private EmbeddedFiles(PDDocument doc, PdfALevel level, Report report) {
         this.doc = doc;
         this.level = level;
@@ -87,6 +89,8 @@ final class EmbeddedFiles {
                     fs.removeItem(COSName.TYPE);
                 }
                 report.warn("Removed an embedded file that could not be retained safely for " + level.label());
+            } else {
+                retained.add(fs);
             }
         }
         COSDictionary names = ContentGraph.dict(cat.getDictionaryObject(COSName.NAMES));
@@ -143,6 +147,9 @@ final class EmbeddedFiles {
         } else if (level.part() < 3) {
             cat.removeItem(AF);
         }
+        if (level.part() > 1) {
+            AttachmentNames.retain(doc, retained);
+        }
     }
 
     private void prune(COSDictionary node, Visits visits, int depth) throws IOException {
@@ -187,34 +194,53 @@ final class EmbeddedFiles {
 
     private boolean specification(COSDictionary fs) throws IOException {
         COSDictionary ef = ContentGraph.dict(fs.getDictionaryObject(COSName.EF));
+        if (level.part() == 1) {
+            return false;
+        }
+        if (ef == null) {
+            return false;
+        }
+        if (level.part() == 2 || level.part() == 4) {
+            for (COSName key : new ArrayList<>(ef.keySet())) {
+                COSBase embedded = ef.getDictionaryObject(key);
+                if (!(embedded instanceof COSStream stream) || !compatible(stream)) {
+                    ef.removeItem(key);
+                    report.warn("Removed an embedded file variant that is not a verified PDF/A attachment for "
+                            + level.label());
+                }
+            }
+        }
         COSStream file = null;
-        if (ef != null) {
-            for (COSName k : List.of(COSName.UF, COSName.F)) {
-                if (ef.getDictionaryObject(k) instanceof COSStream s) {
-                    file = s;
+        for (COSName key : List.of(COSName.UF, COSName.F, COSName.UNIX, COSName.DOS, COSName.MAC)) {
+            if (ef.getDictionaryObject(key) instanceof COSStream stream) {
+                file = stream;
+                break;
+            }
+        }
+        if (file == null) {
+            for (COSBase value : ef.getValues()) {
+                COSBase actual = value instanceof COSObject object ? object.getObject() : value;
+                if (actual instanceof COSStream stream) {
+                    file = stream;
                     break;
                 }
             }
         }
         if (file == null) {
-            return level.part() == 1 ? false : ef == null;
-        }
-        if (level.part() == 1) {
             return false;
         }
-        if (level.part() == 2 || level.part() == 4) {
-            for (COSBase value : ef.getValues()) {
-                COSBase embedded = value instanceof COSObject object ? object.getObject() : value;
-                if (!(embedded instanceof COSStream stream) || !AttachedPdfA.check(stream, level.part() == 4)) {
-                    return false;
-                }
-            }
+        if (!(ef.getDictionaryObject(COSName.F) instanceof COSStream)) {
+            ef.setItem(COSName.F, file);
         }
+        if (!(ef.getDictionaryObject(COSName.UF) instanceof COSStream)) {
+            ef.setItem(COSName.UF, file);
+        }
+        fs.setItem(COSName.TYPE, COSName.FILESPEC);
         String name = fileName(fs);
-        if (fs.getDictionaryObject(COSName.F) == null) {
+        if (!(fs.getDictionaryObject(COSName.F) instanceof COSString f) || f.getString().isBlank()) {
             fs.setString(COSName.F, name);
         }
-        if (fs.getDictionaryObject(COSName.UF) == null) {
+        if (!(fs.getDictionaryObject(COSName.UF) instanceof COSString uf) || uf.getString().isBlank()) {
             fs.setString(COSName.UF, name);
         }
         if (level.part() >= 3) {
@@ -223,22 +249,18 @@ final class EmbeddedFiles {
             }
             for (COSBase value : ef.getValues()) {
                 COSBase embedded = value instanceof COSObject object ? object.getObject() : value;
-                if (embedded instanceof COSStream stream
-                        && (!(stream.getDictionaryObject(COSName.SUBTYPE) instanceof COSName mime)
-                                || !mime.getName().matches("[-\\w+.]+/[-\\w+.]+"))) {
-                    stream.setItem(COSName.SUBTYPE, COSName.getPDFName(mime(name)));
+                if (embedded instanceof COSStream stream) {
+                    if (!(stream.getDictionaryObject(COSName.SUBTYPE) instanceof COSName mime)
+                            || !mime.getName().matches("[-\\w+.]+/[-\\w+.]+")) {
+                        stream.setItem(COSName.SUBTYPE, COSName.getPDFName(mime(name)));
+                    }
+                    if (level.part() == 3) {
+                        modificationDate(stream);
+                    }
                 }
             }
-            COSDictionary params = ContentGraph.dict(file.getDictionaryObject(COSName.PARAMS));
             if (level.part() == 4) {
                 return true;
-            }
-            if (params == null) {
-                params = new COSDictionary();
-                file.setItem(COSName.PARAMS, params);
-            }
-            if (params.getDictionaryObject(COSName.MOD_DATE) == null) {
-                params.setDate(COSName.MOD_DATE, java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC")));
             }
             if (seen.add(fs)) {
                 associated.add(fs);
@@ -247,7 +269,27 @@ final class EmbeddedFiles {
         return true;
     }
 
-    private static String fileName(COSDictionary fs) {
+    private boolean compatible(COSStream stream) throws IOException {
+        Boolean known = compatible.get(stream);
+        if (known == null) {
+            known = AttachedPdfA.check(stream, level.part() == 4);
+            compatible.put(stream, known);
+        }
+        return known;
+    }
+
+    private static void modificationDate(COSStream stream) {
+        COSDictionary params = ContentGraph.dict(stream.getDictionaryObject(COSName.PARAMS));
+        if (params == null) {
+            params = new COSDictionary();
+            stream.setItem(COSName.PARAMS, params);
+        }
+        if (params.getDictionaryObject(COSName.MOD_DATE) == null) {
+            params.setDate(COSName.MOD_DATE, java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC")));
+        }
+    }
+
+    static String fileName(COSDictionary fs) {
         for (COSName k : List.of(COSName.UF, COSName.F, COSName.UNIX, COSName.DOS, COSName.MAC)) {
             COSBase v = fs.getDictionaryObject(k);
             if (v instanceof COSString s && !s.getString().isBlank()) {
