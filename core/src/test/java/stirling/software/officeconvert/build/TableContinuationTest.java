@@ -41,11 +41,57 @@ class TableContinuationTest {
     @Test
     void whatIsLeftOfARepeatedHeaderIsNotGluedIntoTheLastRow() {
         Table prev = table(new String[] {"Name", "Formula", "Type"}, new String[] {"Mean", "x", "Discrete"});
+        Table next = table(new String[] {"", "", "Type"}, new String[] {"", "y", "Continuous"});
+        bold(prev.rows.getFirst());
+        bold(next.rows.getFirst());
+        assertTrue(TableContinuation.join(prev, next, null));
+        assertEquals(3, prev.rows.size(), "the body row after the remnant stays a row of its own");
+        assertEquals(1, prev.rows.get(1).cells.get(2).paragraphs.size(), "Type is not appended to Discrete");
+        assertEquals("y", text(prev.rows.get(2).cells.get(1)));
+    }
+
+    @Test
+    void aMatchingFirstDataRowIsNotTakenForAHeaderRemnant() {
+        Table prev = table(new String[] {"A", "Pending"}, new String[] {"B", "Still"});
+        Table next = table(new String[] {"", "Pending"}, new String[] {"C", "Done"});
+        assertTrue(TableContinuation.join(prev, next, null));
+        assertEquals(3, prev.rows.size());
+        assertEquals(2, prev.rows.get(1).cells.get(1).paragraphs.size(), "the continuation joins the cut row");
+    }
+
+    @Test
+    void aRemnantIsMatchedByGridColumnUnderASpanningHeader() {
+        Table prev = table(new String[] {"Name and symbol", "Type"}, new String[] {"Mean", "x", "Discrete"});
+        prev.rows.getFirst().cells.getFirst().gridSpan = 2;
         Table next = table(new String[] {"", "", "Type"}, new String[] {"Median", "y", "Discrete"});
+        bold(prev.rows.getFirst());
+        bold(next.rows.getFirst());
         assertTrue(TableContinuation.join(prev, next, null));
         assertEquals(3, prev.rows.size());
         assertEquals(1, prev.rows.get(1).cells.get(2).paragraphs.size(), "Type is not appended to Discrete");
-        assertEquals("Median", ((Inline.Text) prev.rows.get(2).cells.getFirst().paragraphs.getFirst().inlines.getFirst()).text());
+    }
+
+    private static void bold(Table.Row row) {
+        for (Table.Cell c : row.cells) {
+            for (Paragraph p : c.paragraphs) {
+                p.inlines.replaceAll(in -> in instanceof Inline.Text t
+                        ? new Inline.Text(t.text(), new RunStyle("Arial", 10, true, false, false, false, 0, -1, 0, false),
+                                null, -1)
+                        : in);
+            }
+        }
+    }
+
+    private static String text(Table.Cell cell) {
+        StringBuilder sb = new StringBuilder();
+        for (Paragraph p : cell.paragraphs) {
+            for (Inline in : p.inlines) {
+                if (in instanceof Inline.Text t) {
+                    sb.append(t.text());
+                }
+            }
+        }
+        return sb.toString();
     }
 
     @Test

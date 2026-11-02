@@ -106,7 +106,8 @@ public final class PageAnalyzer {
                 : ColumnFinder.boxedPanelSpans(segments, rules, stats.bodySize);
         boolean panelGrid = panels.size() >= MIN_PANEL_PAIRS && !tableBesidePanels(page, glyphs, panels);
         if (forms && (poster || panelGrid || FormPage.looksLikeForm(page, segments, rules))) {
-            return formPage(page, ocr, concat(segments, furnitureLines), rules, fills, textPaint, panelGrid, poster);
+            return formPage(page, ocr, concat(segments, furnitureLines), rules, fills, textPaint, panelGrid, poster,
+                    formulas.consumed());
         }
 
         boolean tinted = tinted(page, gfx);
@@ -264,7 +265,7 @@ public final class PageAnalyzer {
     }
 
     private PageLayout formPage(PageData page, boolean ocr, List<Line> lines, List<Rule> rules, List<Fill> fills,
-            Set<Object> textPaint, boolean panelGrid, boolean poster) {
+            Set<Object> textPaint, boolean panelGrid, boolean poster, Set<Object> formulaBars) {
         PageGraphics gfx = page.graphics();
         List<PageLayout.TextBoxItem> boxes = new ArrayList<>();
         List<Line> pieces = FormPage.pieces(lines, rules, fills, tabLeaders);
@@ -304,7 +305,7 @@ public final class PageAnalyzer {
                 ? List.of()
                 : List.of(new PageLayout.Band(0, page.height(), List.of(new PageLayout.Column(0, page.width(), pictures))));
         return new PageLayout(page, bands, ocr, poster ? List.of() : FormPage.shapes(rules, fills, gfx), List.of(),
-                List.of(), boxes, List.of(), textPaint, Set.of());
+                List.of(), boxes, List.of(), textPaint, formulaBars);
     }
 
     private static List<Box> choiceFields(List<PageData.Widget> widgets, List<Box> tableBoxes) {

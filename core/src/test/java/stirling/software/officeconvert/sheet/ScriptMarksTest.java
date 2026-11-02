@@ -43,4 +43,11 @@ class ScriptMarksTest {
         Line line = new Line(List.of(new Word(List.of(g("x", 0, 0), g("i", 4, -1)))), new byte[0]);
         assertEquals("yz", ScriptMarks.mark(line, "yz"));
     }
+
+    @Test
+    void markersTakeNoWidth() {
+        String marked = "x" + ScriptMarks.SUB + "i" + ScriptMarks.END + "y" + ScriptMarks.SUPER + "2" + ScriptMarks.END;
+        assertEquals(TextWidth.of("xiy2", 10, false), TextWidth.of(marked, 10, false));
+        assertEquals(TextWidth.lines("xiy2", 10, false, 4), TextWidth.lines(marked, 10, false, 4));
+    }
 }

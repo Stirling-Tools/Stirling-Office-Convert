@@ -76,4 +76,25 @@ class WordEquationTest {
         }
         assertTrue(out.toString(StandardCharsets.UTF_8).contains("Mean xi here"));
     }
+
+    @Test
+    void theSpaceAfterAnEquationIsKept() throws IOException {
+        RunStyle math = SampleDocument.BODY.withMath(MATH);
+        Paragraph p = new Paragraph();
+        p.inlines.add(new Inline.Text("Mean ", SampleDocument.BODY, null, -1));
+        p.inlines.add(new Inline.Text("x", math, null, -1));
+        p.inlines.add(new Inline.Text("i ", math.withVertAlign(-1), null, -1));
+        p.inlines.add(new Inline.Text("here", SampleDocument.BODY, null, -1));
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try (DocxWriter w = new DocxWriter(out)) {
+            StyleSheet styles = new StyleSheet(SampleDocument.BODY);
+            w.begin(styles, null);
+            w.block(p);
+            w.finish(JsonModel.defaultPage(), null, new Numbering(), styles, "Math", "Tester");
+        }
+        String xml = document(out.toByteArray());
+        String after = xml.substring(xml.indexOf("</m:oMath>"), xml.indexOf("here"));
+        assertTrue(after.contains("> </w:t>"), "a plain space run follows the equation: " + after);
+        assertFalse(after.contains("<m:"), after);
+    }
 }
