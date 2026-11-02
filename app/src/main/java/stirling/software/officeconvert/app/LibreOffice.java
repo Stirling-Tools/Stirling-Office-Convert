@@ -3,6 +3,7 @@ package stirling.software.officeconvert.app;
 import java.io.File;
 import java.io.IOException;
 import java.io.InterruptedIOException;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -148,12 +149,23 @@ final class LibreOffice {
     }
 
     static void delete(Path dir) {
+        int failed = 0;
+        String cause = null;
         try (Stream<Path> tree = Files.walk(dir)) {
             for (Path p : (Iterable<Path>) tree.sorted(Comparator.reverseOrder())::iterator) {
-                Files.deleteIfExists(p);
+                try {
+                    Files.deleteIfExists(p);
+                } catch (IOException e) {
+                    failed++;
+                    cause = e.getClass().getSimpleName();
+                }
             }
-        } catch (IOException e) {
-            System.out.println("Could not delete " + dir + ": " + e.getMessage());
+        } catch (IOException | UncheckedIOException e) {
+            failed++;
+            cause = e.getClass().getSimpleName();
+        }
+        if (failed > 0) {
+            System.out.println("Could not delete " + failed + " LibreOffice profile entries (" + cause + ")");
         }
     }
 
