@@ -25,7 +25,15 @@ base {
 val networkScanTest =
     "stirling.software.officeconvert.topdf.NetworkSafetyTest.everyModuleReferencesOnlyAllowedNetworkOrScriptCode"
 
+val markupTests = listOf("stirling.software.officeconvert.topdf.html.*", "stirling.software.officeconvert.topdf.xls.*")
+
 tasks.test {
+    when (val group = providers.gradleProperty("topdf.testGroup").orNull) {
+        null -> {}
+        "markup" -> filter { markupTests.forEach { includeTestsMatching(it) } }
+        "rest" -> filter { markupTests.forEach { excludeTestsMatching(it) } }
+        else -> throw GradleException("topdf.testGroup must be markup or rest, not $group")
+    }
     systemProperty("topdf.expectJava", "25")
     systemProperty("topdf.reportDir", layout.buildDirectory.dir("reports").get().asFile.absolutePath)
     val tmp = layout.buildDirectory.dir("tmp/test-java-io-tmpdir").get().asFile
