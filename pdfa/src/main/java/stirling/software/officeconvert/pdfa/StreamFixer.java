@@ -69,14 +69,18 @@ final class StreamFixer {
 
     private final Report report;
 
-    private StreamFixer(PDDocument doc, PdfALevel level, Report report) {
+    private final Set<COSStream> attachments;
+
+    private StreamFixer(PDDocument doc, PdfALevel level, Report report, Set<COSStream> attachments) {
         this.doc = doc;
         this.level = level;
         this.report = report;
+        this.attachments = attachments;
     }
 
-    static void run(PDDocument doc, PdfALevel level, Report report, CosWalk.Visitor first) throws IOException {
-        StreamFixer f = new StreamFixer(doc, level, report);
+    static void run(PDDocument doc, PdfALevel level, Report report, Set<COSStream> attachments,
+            CosWalk.Visitor first) throws IOException {
+        StreamFixer f = new StreamFixer(doc, level, report, attachments);
         CosWalk.walk(doc, b -> {
             first.visit(b);
             f.visit(b);
@@ -175,6 +179,9 @@ final class StreamFixer {
         } catch (IOException e) {
             if (e instanceof java.io.InterruptedIOException) {
                 throw e;
+            }
+            if (attachments.contains(s)) {
+                throw new IOException("An embedded file could not be decoded without losing its data", e);
             }
             decoded = false;
         }

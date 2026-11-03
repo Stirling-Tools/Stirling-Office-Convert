@@ -38,7 +38,7 @@ class AttachmentParsingBoundsTest {
             try (OutputStream out = file.createOutputStream(COSName.FLATE_DECODE)) {
                 out.write(pdf.bytes());
             }
-            assertFalse(AttachedPdfA.check(file));
+            assertThrows(IOException.class, () -> AttachedPdfA.check(file));
             pdf.set(6, "[1.5]");
             try (OutputStream out = file.createOutputStream(COSName.FLATE_DECODE)) {
                 out.write(pdf.bytes());

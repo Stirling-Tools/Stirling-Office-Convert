@@ -18,6 +18,12 @@ final class AttachmentParser extends PDFParser {
 
     static final long MAX_STRUCTURE_BYTES = 8L << 20;
 
+    static final class LimitExceeded extends IOException {
+        LimitExceeded(String message) {
+            super(message);
+        }
+    }
+
     private int objects;
 
     private int depth;
@@ -36,7 +42,7 @@ final class AttachmentParser extends PDFParser {
         PdfFiles.stopIfInterrupted();
         if (exceeded || ++objects > MAX_OBJECTS || depth >= 64) {
             exceeded = true;
-            throw new IOException("An attachment exceeds the PDF object parsing budget");
+            throw new LimitExceeded("An attachment exceeds the PDF object parsing budget");
         }
         depth++;
         try {
@@ -54,7 +60,7 @@ final class AttachmentParser extends PDFParser {
         if (objectStream && dictionary.getLong(COSName.N, 0) > MAX_OBJECTS
                 || xref && dictionary.getLong(COSName.SIZE, 0) > MAX_OBJECTS) {
             exceeded = true;
-            throw new IOException("An attachment declares too many PDF objects");
+            throw new LimitExceeded("An attachment declares too many PDF objects");
         }
         COSStream stream = super.parseCOSStream(dictionary);
         if (objectStream || xref) {
@@ -77,7 +83,7 @@ final class AttachmentParser extends PDFParser {
             }
             if (objectStream && ContentTokens.tokens(bytes) > MAX_OBJECTS) {
                 exceeded = true;
-                throw new IOException("An attachment's object stream has too many values");
+                throw new LimitExceeded("An attachment's object stream has too many values");
             }
             stream.removeItem(COSName.DECODE_PARMS);
             try (OutputStream out = stream.createOutputStream(COSName.FLATE_DECODE)) {
@@ -89,7 +95,7 @@ final class AttachmentParser extends PDFParser {
 
     void checkBudget() throws IOException {
         if (exceeded) {
-            throw new IOException("An attachment exceeds the PDF object parsing budget");
+            throw new LimitExceeded("An attachment exceeds the PDF object parsing budget");
         }
     }
 }

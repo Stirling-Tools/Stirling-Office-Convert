@@ -762,14 +762,22 @@ that instance. Prefer the file-based overload for documents that need a strict t
 - Removed, with a warning each: JavaScript, launch, sound, movie, reset, import and hide actions and every additional
   action, forbidden annotation types and hidden annotations, XFA, PostScript XObjects, image alternates, transfer
   functions, halftones and undefined operators, form field actions, digital signatures (the rewrite would break them),
-  and, for parts 2 and 3, metadata of pages, images and fonts (only predefined XMP properties are allowed there).
+  and invalid object metadata. Parts 2 and 3 keep valid predefined properties in page, image and font metadata;
+  unsupported properties are removed individually, with a warning, while the other properties remain.
   Annotations without an appearance get one; LZW streams and inline images with filters PDF/A does not allow are
   recompressed with Flate; forms that borrow their parent's resources get their own; encryption is removed (give the
   password for a protected file).
-- Embedded files: removed for part 1, kept for part 2 only when they are PDF/A themselves, kept for part 3 with a MIME
-  type, a modification date, an `AFRelationship` and the catalog's `AF` array. Part 2 attachment checks allow up to
+- Embedded files: removed for part 1, kept for part 2 only when they validate as PDF/A-1 or PDF/A-2, and for part 4
+  when they validate as PDF/A-1, PDF/A-2 or PDF/A-4. Part 3 keeps arbitrary file types with a MIME type, a modification
+  date, an `AFRelationship` and the catalog's `AF` array. Eligible files are listed in the embedded-file name tree
+  before annotations or associations are removed. Duplicate filenames get distinct tree entries, legacy DOS, Mac
+  and Unix streams gain standard references, and retained attachment bytes are not rewritten. Incompatible variants
+  are removed with warnings without discarding other eligible variants of the same file. A bounded prefix check rejects
+  non-PDF variants before applying the PDF verification limit. Attachment checks allow up to
   16 MiB of PDF bytes, 100,000 parsed values, 64 levels of object nesting and 8 MiB of decoded object and cross-reference
-  streams; files that cannot be verified within these bounds are removed with a warning.
+  streams. Exceeding a verification budget, or failing to decode a retained attachment for lossless recompression,
+  fails the conversion instead of silently dropping or emptying its data. The path-based API leaves an existing
+  output file unchanged on failure.
 - Optional content: part 1 has none, so content in hidden layers is deleted and the rest kept; parts 2 and 3 keep the
   layers and fix their configurations.
 - XMP metadata and Info agree. Valid XMP-only titles, creators, descriptions, creation dates and creator tools fill
@@ -793,7 +801,8 @@ anywhere) fails with an `IOException` naming the problem and the pages, rather t
 (10,000 by default) refuses longer documents rather than cutting them, the timeout and thread interrupts stop the work,
 and the output is moved into place only when complete.
 
-It depends on the core and topdf modules (and so on what those depend on) and `org.apache.pdfbox:pdfbox:3.0.8`.
+It depends on the core and topdf modules (and so on what those depend on), `org.apache.pdfbox:pdfbox:3.0.8`, and
+`org.verapdf:validation-model:1.30.2` for embedded PDF/A verification and predefined object metadata properties.
 
 ### Web fonts from PDF font programs
 

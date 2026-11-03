@@ -40,6 +40,19 @@ final class Decoded {
         return out.toByteArray();
     }
 
+    static byte[] prefix(COSStream s, int length) throws IOException {
+        PdfFiles.stopIfInterrupted();
+        Prefix out = new Prefix(length);
+        if (length > 0) {
+            try {
+                copy(s, out, MAX_STREAM_BYTES, "Stream prefix stages");
+            } catch (PrefixComplete e) {
+                // Stop decoding once the requested prefix is available.
+            }
+        }
+        return out.toByteArray();
+    }
+
     static byte[] before(COSStream s, COSName last, long limit, String what) throws IOException {
         List<COSName> filters = filters(s);
         if (filters.isEmpty() || !last.equals(filters.get(filters.size() - 1))) {
@@ -154,6 +167,31 @@ final class Decoded {
             return buf;
         }
     }
+
+    private static final class Prefix extends ByteArrayOutputStream {
+
+        private final int limit;
+
+        Prefix(int limit) {
+            super(limit);
+            this.limit = limit;
+        }
+
+        @Override
+        public void write(int b) {
+            write(new byte[] {(byte) b}, 0, 1);
+        }
+
+        @Override
+        public void write(byte[] b, int off, int len) {
+            super.write(b, off, Math.min(len, limit - count));
+            if (count == limit) {
+                throw new Stop(new PrefixComplete());
+            }
+        }
+    }
+
+    private static final class PrefixComplete extends IOException {}
 
     private static final class Stop extends RuntimeException {
         Stop(IOException cause) {

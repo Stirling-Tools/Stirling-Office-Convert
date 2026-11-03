@@ -143,6 +143,12 @@ final class XmpCarryOver {
         return out.append('>').append(body).append("</rdf:Description>").toString();
     }
 
+    static String serialise(Element root) {
+        StringBuilder out = new StringBuilder();
+        write(root, out);
+        return out.toString();
+    }
+
     private static void write(Node n, StringBuilder out) {
         if (n.getNodeType() == Node.TEXT_NODE || n.getNodeType() == Node.CDATA_SECTION_NODE) {
             out.append(escape(n.getNodeValue()));

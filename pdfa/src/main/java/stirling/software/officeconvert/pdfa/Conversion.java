@@ -45,11 +45,11 @@ final class Conversion {
             Tagging.run(doc, level, report);
         }
         Census census = Census.of(doc);
+        var attachments = EmbeddedFiles.run(doc, level, report);
         FontProgramBounds.run(doc);
         Signatures.run(doc, census, report);
         Interactive.run(doc, level, report);
         ObjectMetadata.run(doc, census, level, report);
-        EmbeddedFiles.run(doc, level, report);
         if (level.part() == 4) {
             ActualTexts.run(doc, report);
         }
@@ -76,7 +76,7 @@ final class Conversion {
         PdfFiles.stopIfInterrupted();
         FontCompaction compaction = new FontCompaction(doc, usage, level);
         CosWalk.Visitor jpx = JpxImages.visitor(doc, level, report);
-        StreamFixer.run(doc, level, report, b -> {
+        StreamFixer.run(doc, level, report, attachments, b -> {
             compaction.collect(b);
             jpx.visit(b);
         });
