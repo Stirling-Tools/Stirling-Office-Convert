@@ -193,13 +193,11 @@ class MainTest {
         Path docx = minimalDocx(dir.resolve("hello.docx"));
         Path pdf = dir.resolve("hello.pdf");
         Result r = run(docx.toString(), "--max-pages", "3", "--timeout", "120", "--fonts", dir.toString());
-        if (r.code() == 0) {
-            assertTrue(Files.size(pdf) > 0);
-            assertTrue(r.out().startsWith("OK "), r.out());
-        } else {
-            assertEquals(1, r.code(), r.err());
-            assertTrue(r.err().startsWith("FAIL "), r.err());
-            assertFalse(Files.exists(pdf));
+        assertEquals(0, r.code(), r.err());
+        assertTrue(r.out().startsWith("OK "), r.out());
+        try (PDDocument doc = Loader.loadPDF(pdf.toFile())) {
+            assertEquals(1, doc.getNumberOfPages());
+            assertTrue(new PDFTextStripper().getText(doc).contains("Hello Word"));
         }
     }
 

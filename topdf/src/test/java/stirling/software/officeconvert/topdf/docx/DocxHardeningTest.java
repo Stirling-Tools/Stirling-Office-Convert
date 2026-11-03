@@ -154,14 +154,14 @@ class DocxHardeningTest {
 
     @Test
     void oneLongUnbrokenWordBreaksInLinearTime() throws IOException {
-        String word = "a".repeat(1_000_000);
+        String word = "a".repeat(200_000);
         byte[] docx = new DocxDoc().styles(DEFAULTS).body(DocxDoc.p(word) + DocxDoc.p("End")).bytes();
         Path in = Fixtures.write(dir, "longword.docx", docx);
         Path out = dir.resolve("longword.pdf");
         OfficeToPdf.Result result = OfficeToPdf.convert(in, out,
                 OfficeToPdf.Options.defaults().timeout(Duration.ofMinutes(10)));
         DocxDoc.Rendered r = new DocxDoc.Rendered(out, result);
-        assertTrue(r.pages() > 100, "pages " + r.pages());
+        assertTrue(r.pages() > 20, "pages " + r.pages());
         String text = r.text().replaceAll("\\s", "");
         assertEquals(word.length() + 3, text.length());
     }

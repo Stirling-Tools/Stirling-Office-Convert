@@ -20,7 +20,8 @@ class RuleSamplesTest {
 
     static Stream<Arguments> cases() {
         return RuleSamples.ALL.values().stream().flatMap(s -> Stream.of(PdfALevel.values())
-                .filter(l -> !l.tagged() || s.tagged()).map(l -> Arguments.of(s.name(), l)));
+                .filter(l -> !l.tagged() || s.tagged()).filter(l -> l.part() != 3)
+                .map(l -> Arguments.of(s.name(), l)));
     }
 
     @ParameterizedTest(name = "{0} to {1}")

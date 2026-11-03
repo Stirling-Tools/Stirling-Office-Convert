@@ -8,7 +8,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Enumeration;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -128,8 +127,6 @@ public final class ClassScan {
             "org/apache/poi/xssf/streaming/SXSSFWorkbook.<init>(", "java/util/Scanner.<init>(Ljava/nio/file/Path;",
             "java/util/Scanner.<init>(Ljava/lang/String;Ljava/lang/String;", "java/util/Formatter.<init>(Ljava/lang/String;",
             "java/io/PrintStream.<init>(Ljava/lang/String;", "java/io/PrintWriter.<init>(Ljava/lang/String;");
-
-    public static final Map<String, String> NETWORK_CAPABLE = network();
 
     private static final Pattern NET_TYPE = Pattern.compile("java[/.]net[/.][A-Za-z0-9_$/.]+");
 
@@ -322,24 +319,6 @@ public final class ClassScan {
         return false;
     }
 
-    public static List<String> networkCapable(Refs r) {
-        Set<String> out = new LinkedHashSet<>();
-        for (String c : r.classes()) {
-            for (Map.Entry<String, String> e : NETWORK_CAPABLE.entrySet()) {
-                if (c.equals(e.getKey()) || e.getKey().endsWith("/") && c.startsWith(e.getKey())) {
-                    out.add(e.getValue());
-                }
-            }
-        }
-        for (String m : r.members()) {
-            String label = NETWORK_CAPABLE.get(m);
-            if (label != null) {
-                out.add(label);
-            }
-        }
-        return new ArrayList<>(out);
-    }
-
     private static boolean isAllowedNetPrefix(String type) {
         for (String allowed : ALLOWED_NET) {
             if (type.equals(allowed) || type.startsWith(allowed + "/") || type.startsWith(allowed + "$")) {
@@ -347,36 +326,5 @@ public final class ClassScan {
             }
         }
         return false;
-    }
-
-    private static Map<String, String> network() {
-        Map<String, String> m = new LinkedHashMap<>();
-        m.put("java/net/Socket", "socket");
-        m.put("java/net/ServerSocket", "server socket");
-        m.put("java/net/DatagramSocket", "datagram socket");
-        m.put("java/net/URLConnection", "URL connection");
-        m.put("java/net/HttpURLConnection", "HTTP connection");
-        m.put("java/net/URL.openConnection", "URL.openConnection");
-        m.put("java/net/URL.openStream", "URL.openStream");
-        m.put("java/net/URL.getContent", "URL.getContent");
-        m.put("java/net/InetAddress.getByName", "DNS lookup");
-        m.put("java/net/InetAddress.getAllByName", "DNS lookup");
-        m.put("java/net/InetAddress.getLocalHost", "local host lookup");
-        m.put("java/net/http/", "java.net.http client");
-        m.put("javax/net/", "SSL sockets");
-        m.put("java/nio/channels/SocketChannel", "socket channel");
-        m.put("javax/naming/", "JNDI");
-        m.put("java/rmi/", "RMI");
-        m.put("javax/script/", "script engine");
-        m.put("java/lang/ProcessBuilder", "process launch");
-        m.put("java/lang/Runtime.exec", "process launch");
-        m.put("javax/xml/transform/TransformerFactory.newTransformer", "XSLT transformer");
-        m.put("java/awt/Desktop", "desktop browse");
-        m.put("org/apache/batik/", "Batik SVG");
-        m.put("javax/imageio/ImageIO.read", "ImageIO registry, any installed plugin");
-        m.put("javax/imageio/ImageIO.getImageReaders", "ImageIO registry, any installed plugin");
-        m.put("javax/imageio/ImageIO.getImageReadersByFormatName", "ImageIO registry by format name");
-        m.put("org/apache/poi/sl/draw/DrawPictureShape.getImageRenderer", "POI ImageRenderer ServiceLoader");
-        return m;
     }
 }

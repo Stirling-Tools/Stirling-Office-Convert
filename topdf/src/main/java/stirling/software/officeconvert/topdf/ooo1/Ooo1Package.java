@@ -15,6 +15,7 @@ import org.w3c.dom.Document;
 
 import stirling.software.officeconvert.sink.KeepOpen;
 import stirling.software.officeconvert.topdf.io.BoundedZip;
+import stirling.software.officeconvert.topdf.io.OfficeZip;
 import stirling.software.officeconvert.topdf.io.SecureXml;
 import stirling.software.officeconvert.topdf.io.SourceFile;
 
@@ -86,6 +87,10 @@ public final class Ooo1Package {
     }
 
     public static void write(Path source, Kind kind, OutputStream out) throws IOException {
+        write(source, kind, out, OfficeZip.Limits.DEFAULT);
+    }
+
+    static void write(Path source, Kind kind, OutputStream out, OfficeZip.Limits limits) throws IOException {
         String body = switch (kind) {
             case TEXT -> "text";
             case SPREADSHEET -> "spreadsheet";
@@ -98,7 +103,8 @@ public final class Ooo1Package {
             case PRESENTATION -> "presentation";
             case DRAWING -> "graphics";
         };
-        try (BoundedZip zip = BoundedZip.open(source); ZipOutputStream z = new ZipOutputStream(new KeepOpen(out))) {
+        try (BoundedZip zip = BoundedZip.open(source, limits);
+                ZipOutputStream z = new ZipOutputStream(new KeepOpen(out))) {
             zip.checkEntries();
             byte[] m = mime.getBytes(StandardCharsets.US_ASCII);
             ZipEntry me = new ZipEntry("mimetype");

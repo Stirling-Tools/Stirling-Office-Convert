@@ -38,15 +38,21 @@ public class GuardedRendererTest {
 
     private static final class Watched extends GuardedRenderer {
 
+        private final int maxForms;
         private Drawer drawer;
 
         Watched(PDDocument doc) {
+            this(doc, OperatorBudget.MAX_FORMS);
+        }
+
+        Watched(PDDocument doc, int maxForms) {
             super(doc, "a test");
+            this.maxForms = maxForms;
         }
 
         @Override
         protected PageDrawer createPageDrawer(PageDrawerParameters parameters) throws IOException {
-            drawer = new Drawer(parameters, "a test");
+            drawer = new Drawer(parameters, "a test", maxForms);
             return drawer;
         }
     }
@@ -55,7 +61,7 @@ public class GuardedRendererTest {
     @Timeout(value = 60, unit = TimeUnit.SECONDS)
     void aFormFanOutStopsAtTheBudget() throws IOException {
         try (PDDocument doc = fanOut()) {
-            Watched r = new Watched(doc);
+            Watched r = new Watched(doc, 500);
             BufferedImage image = r.draw(0, 0.25f, ImageType.RGB);
             assertEquals(153, image.getWidth());
             assertTrue(r.drawer.leftOut());

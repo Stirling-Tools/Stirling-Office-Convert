@@ -39,7 +39,7 @@ public final class PhotoSplitter {
 
     public static final long MAX_PIXELS = 100_000_000L;
 
-    static final int MAX_PAGES = 1000;
+    static volatile int maxPages = 1000;
 
     private static final long ANALYSIS_PIXELS = 4_500_000L;
     private static final long ANALYSIS_BYTES_PER_PIXEL = 24;
@@ -179,9 +179,9 @@ public final class PhotoSplitter {
                 GuardedRenderer renderer = new GuardedRenderer(document, "splitting photos");
                 renderer.setSubsamplingAllowed(true);
                 int pages = document.getNumberOfPages();
-                if (pages > MAX_PAGES) {
-                    throw new IOException(input.getFileName() + " has more than " + MAX_PAGES + " pages; the limit is "
-                            + MAX_PAGES);
+                if (pages > maxPages) {
+                    throw new IOException(input.getFileName() + " has more than " + maxPages + " pages; the limit is "
+                            + maxPages);
                 }
                 for (int page = 0; page < pages; page++) {
                     checkpoint();
@@ -365,9 +365,9 @@ public final class PhotoSplitter {
                 if (index > 0 && !hasImage(reader, index)) {
                     return null;
                 }
-                if (index == MAX_PAGES) {
-                    throw new IOException(input.getFileName() + " has more than " + MAX_PAGES + " pages; the limit is "
-                            + MAX_PAGES);
+                if (index == maxPages) {
+                    throw new IOException(input.getFileName() + " has more than " + maxPages + " pages; the limit is "
+                            + maxPages);
                 }
                 String name = index == 0 ? input.getFileName().toString() : input.getFileName() + " page " + (index + 1);
                 long pixels = (long) reader.getWidth(index) * reader.getHeight(index);

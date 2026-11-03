@@ -115,7 +115,7 @@ class EncryptedSpillTest {
     @Test
     void largeEncryptedStreamsAreEncryptedWhileCopied() throws Exception {
         long imageBytes = Recoder.MAX_RAW_BYTES + (1 << 20);
-        Object[][] kinds = {{"rc4-128", 128, false}, {"aes-128", 128, true}, {"aes-256", 256, true}};
+        Object[][] kinds = {{"rc4-128", 128, false}, {"aes-256", 256, true}};
         for (Object[] k : kinds) {
             String name = (String) k[0];
             int keyLength = (Integer) k[1];

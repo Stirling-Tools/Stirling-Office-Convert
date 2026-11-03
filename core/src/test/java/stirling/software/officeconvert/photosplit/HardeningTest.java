@@ -193,22 +193,28 @@ class HardeningTest {
 
     @Test
     void tiffWithMorePagesThanTheCapIsRefused() throws Exception {
-        Path input = dir.resolve("many.tif");
-        BufferedImage blank = new BufferedImage(8, 8, BufferedImage.TYPE_BYTE_GRAY);
-        ImageWriter writer = ImageIO.getImageWritersByFormatName("tiff").next();
-        try (ImageOutputStream out = ImageIO.createImageOutputStream(input.toFile())) {
-            writer.setOutput(out);
-            writer.prepareWriteSequence(null);
-            for (int page = 0; page <= PhotoSplitter.MAX_PAGES; page++) {
-                writer.writeToSequence(new IIOImage(blank, null, null), null);
+        int maxPages = PhotoSplitter.maxPages;
+        PhotoSplitter.maxPages = 20;
+        try {
+            Path input = dir.resolve("many.tif");
+            BufferedImage blank = new BufferedImage(8, 8, BufferedImage.TYPE_BYTE_GRAY);
+            ImageWriter writer = ImageIO.getImageWritersByFormatName("tiff").next();
+            try (ImageOutputStream out = ImageIO.createImageOutputStream(input.toFile())) {
+                writer.setOutput(out);
+                writer.prepareWriteSequence(null);
+                for (int page = 0; page <= PhotoSplitter.maxPages; page++) {
+                    writer.writeToSequence(new IIOImage(blank, null, null), null);
+                }
+                writer.endWriteSequence();
+            } finally {
+                writer.dispose();
             }
-            writer.endWriteSequence();
+            IOException refused = assertThrows(IOException.class,
+                    () -> PhotoSplitter.split(input, dir.resolve("out"), PhotoSplitter.Options.defaults()));
+            assertTrue(refused.getMessage().contains("more than 20 pages"), refused.getMessage());
         } finally {
-            writer.dispose();
+            PhotoSplitter.maxPages = maxPages;
         }
-        IOException refused = assertThrows(IOException.class,
-                () -> PhotoSplitter.split(input, dir.resolve("out"), PhotoSplitter.Options.defaults()));
-        assertTrue(refused.getMessage().contains("more than " + PhotoSplitter.MAX_PAGES + " pages"), refused.getMessage());
     }
 
     @Test

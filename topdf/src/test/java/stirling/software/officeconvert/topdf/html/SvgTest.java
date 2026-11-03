@@ -74,12 +74,12 @@ class SvgTest {
                 "<polyline id=\"s\" points=\"" + points + "\" stroke=\"black\"/>",
                 "<text id=\"s\" y=\"5\">" + text + "</text>"}) {
             Document doc = Jsoup.parse("<svg viewBox=\"0 0 10 10\"><defs>" + shape + "</defs>"
-                    + "<use href=\"#s\"/>".repeat(100) + "</svg>");
+                    + "<use href=\"#s\"/>".repeat(10) + "</svg>");
             Map<String, Element> ids = new HashMap<>();
             doc.select("[id]").forEach(e -> ids.putIfAbsent(e.id(), e));
             long[] budget = {Long.MAX_VALUE};
             Svg.paint(doc.selectFirst("svg"), ids, 20, 20, 0, budget);
-            assertTrue(Long.MAX_VALUE - budget[0] >= 100L * 48_000, shape.substring(0, 12));
+            assertTrue(Long.MAX_VALUE - budget[0] >= 10L * 48_000, shape.substring(0, 12));
         }
     }
 

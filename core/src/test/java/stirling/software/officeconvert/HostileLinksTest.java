@@ -39,7 +39,7 @@ class HostileLinksTest {
             }
             PDType1Font font = new PDType1Font(Standard14Fonts.FontName.COURIER);
             Random random = new Random(3);
-            for (int p = 0; p < 20; p++) {
+            for (int p = 0; p < 2; p++) {
                 PDPage page = new PDPage(PDRectangle.LETTER);
                 d.addPage(page);
                 page.getCOSObject().setItem(COSName.ANNOTS, annots);

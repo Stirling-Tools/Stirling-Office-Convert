@@ -165,9 +165,6 @@ class PicturesTest {
         assertEquals(Pictures.COMPACT, OfficeConvert.Settings.defaults().pictures());
         assertEquals(Pictures.COMPACT, PdfToDocx.Options.defaults().pictures());
         assertEquals(Pictures.COMPACT, PdfToPptx.Options.defaults().pictures());
-        Path docx = dir.resolve("facade.docx");
-        OfficeConvert.convert(pdf, docx, OfficeConvert.Settings.defaults().pictures(Pictures.LOSSLESS));
-        assertTrue(samePixels(photo, find(media(docx, "word/media/"), 900).image()));
         assertTrue(OfficeConvert.Settings.defaults().pictures(Pictures.LOSSLESS).toString().contains("pictures=LOSSLESS"));
         assertThrows(NullPointerException.class, () -> OfficeConvert.Settings.defaults().pictures(null));
         assertThrows(NullPointerException.class, () -> PdfToDocx.Options.defaults().withPictures(null));

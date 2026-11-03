@@ -176,7 +176,7 @@ public final class OfficeConvert {
 
     public static final String TOO_DEEP = "The document nests too deeply to convert";
 
-    private static final long STOP_MILLIS = 5_000;
+    static volatile long stopMillis = 5_000;
 
     private static final long STACK_BYTES = 8L << 20;
 
@@ -342,7 +342,7 @@ public final class OfficeConvert {
 
     private static void join(Thread worker) {
         try {
-            worker.join(STOP_MILLIS);
+            worker.join(stopMillis);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
