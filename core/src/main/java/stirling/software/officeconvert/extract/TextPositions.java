@@ -1,5 +1,6 @@
 package stirling.software.officeconvert.extract;
 
+import java.awt.geom.Point2D;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
@@ -30,6 +31,9 @@ import org.apache.pdfbox.util.Vector;
 final class TextPositions {
 
     private static final Log LOG = LogFactory.getLog(TextPositions.class);
+
+    // Two bounded affine products stay below 5 * limit^3, safely below Float.MAX_VALUE.
+    private static final float POINT_TRANSFORM_LIMIT = 1e12f;
 
     static final GlyphList GLYPHS = glyphs();
 
@@ -77,9 +81,19 @@ final class TextPositions {
         }
         float tx = displacementX * fontSize * horizontalScaling;
         float ty = displacement.getY() * fontSize;
-        Matrix next = Matrix.getTranslateInstance(tx, ty).multiply(textMatrix).multiply(ctm);
-        float nextX = next.getTranslateX();
-        float nextY = next.getTranslateY();
+        float nextX;
+        float nextY;
+        if (Math.abs(tx) <= POINT_TRANSFORM_LIMIT && Math.abs(ty) <= POINT_TRANSFORM_LIMIT
+                && boundedAffine(textMatrix) && boundedAffine(ctm)) {
+            Point2D.Float advanced = textMatrix.transformPoint(tx, ty);
+            Point2D.Float next = ctm.transformPoint(advanced.x, advanced.y);
+            nextX = next.x;
+            nextY = next.y;
+        } else {
+            Matrix next = Matrix.getTranslateInstance(tx, ty).multiply(textMatrix).multiply(ctm);
+            nextX = next.getTranslateX();
+            nextY = next.getTranslateY();
+        }
         float dxDisplay = nextX - trm.getTranslateX();
         Float fontHeight = fontHeights.get(font.getCOSObject());
         if (fontHeight == null) {
@@ -152,6 +166,16 @@ final class TextPositions {
     boolean mapped(PDFont font, int code) {
         return builtInText(font, code) != null || font.toUnicode(code, GLYPHS) != null
                 || LigatureNames.text(font, code, GLYPHS) != null;
+    }
+
+    private static boolean boundedAffine(Matrix matrix) {
+        return matrix.getValue(0, 2) == 0 && matrix.getValue(1, 2) == 0 && matrix.getValue(2, 2) == 1
+                && Math.abs(matrix.getScaleX()) <= POINT_TRANSFORM_LIMIT
+                && Math.abs(matrix.getShearY()) <= POINT_TRANSFORM_LIMIT
+                && Math.abs(matrix.getShearX()) <= POINT_TRANSFORM_LIMIT
+                && Math.abs(matrix.getScaleY()) <= POINT_TRANSFORM_LIMIT
+                && Math.abs(matrix.getTranslateX()) <= POINT_TRANSFORM_LIMIT
+                && Math.abs(matrix.getTranslateY()) <= POINT_TRANSFORM_LIMIT;
     }
 
     private String builtInText(PDFont font, int code) {

@@ -68,6 +68,8 @@ public final class PdfFonts implements Closeable {
 
     private static final int LISTED_UNCOVERED = 12;
 
+    private static final int GLYPH_TEXT_CACHE_SIZE = 256;
+
     private boolean closed;
 
     private boolean finished;
@@ -78,7 +80,12 @@ public final class PdfFonts implements Closeable {
 
         final BitSet glyphs = new BitSet();
 
+        // Registrations are append-only; the positive lookup cache relies on this.
         final Map<Integer, String> text = new HashMap<>();
+
+        private int[] textKeys;
+
+        private String[] textValues;
 
         final BitSet trailing = new BitSet();
 
@@ -98,6 +105,26 @@ public final class PdfFonts implements Closeable {
 
         Use(FontProgram program) {
             this.program = program;
+        }
+
+        String assigned(int glyph) {
+            if (glyph <= 127) {
+                return text.get(glyph);
+            }
+            if (textKeys == null) {
+                textKeys = new int[GLYPH_TEXT_CACHE_SIZE];
+                textValues = new String[GLYPH_TEXT_CACHE_SIZE];
+            }
+            int slot = glyph & (GLYPH_TEXT_CACHE_SIZE - 1);
+            if (textKeys[slot] == glyph) {
+                return textValues[slot];
+            }
+            String assigned = text.get(glyph);
+            if (assigned != null) {
+                textKeys[slot] = glyph;
+                textValues[slot] = assigned;
+            }
+            return assigned;
         }
     }
 
@@ -261,7 +288,7 @@ public final class PdfFonts implements Closeable {
             return glyph;
         }
         int canonical = u.program.codePointOf(glyph);
-        String assigned = u.text.get(glyph);
+        String assigned = u.assigned(glyph);
         if (canonical == codePoint && !presentationForm(canonical)
                 && (assigned == null || assigned.codePointCount(0, assigned.length()) == 1
                         && assigned.codePointAt(0) == codePoint)) {
@@ -292,6 +319,7 @@ public final class PdfFonts implements Closeable {
         return text == null ? known : alias(u, glyph, text, width);
     }
 
+    /** Consumes the first {@code count} entries synchronously; the caller retains ownership of both arrays. */
     public void used(Embedded font, int[] glyphs, int[] codePoints, int count) {
         Use u = uses.get(font.font());
         if (u == null) {

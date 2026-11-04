@@ -1,10 +1,12 @@
 package stirling.software.officeconvert.topdf.rtf;
 
 import java.io.ByteArrayOutputStream;
+import java.util.Arrays;
 
 final class Picture {
 
     static final int MAX_BYTES = 64 << 20;
+    private static final byte[] HEX_DIGITS = hexDigits();
 
     String type;
     int picw;
@@ -24,6 +26,8 @@ final class Picture {
     final ByteArrayOutputStream data = new ByteArrayOutputStream();
 
     private int nibble = -1;
+
+    private byte[] decoded;
 
     boolean truncated;
 
@@ -74,6 +78,51 @@ final class Picture {
             truncated = true;
         }
         nibble = -1;
+    }
+
+    void hex(byte[] text, int offset, int length) {
+        if (length == 0) {
+            return;
+        }
+        if (decoded == null) {
+            decoded = new byte[8192];
+        }
+        int count = 0;
+        int remaining = MAX_BYTES - data.size();
+        for (int i = offset; i < offset + length; i++) {
+            int value = HEX_DIGITS[text[i] & 0xFF];
+            if (value < 0) {
+                continue;
+            }
+            if (nibble < 0) {
+                nibble = value;
+                continue;
+            }
+            if (remaining > 0) {
+                decoded[count++] = (byte) (nibble << 4 | value);
+                remaining--;
+                if (count == decoded.length) {
+                    data.write(decoded, 0, count);
+                    count = 0;
+                }
+            } else {
+                truncated = true;
+            }
+            nibble = -1;
+        }
+        data.write(decoded, 0, count);
+    }
+
+    private static byte[] hexDigits() {
+        byte[] digits = new byte[256];
+        Arrays.fill(digits, (byte) -1);
+        String lower = "0123456789abcdef";
+        String upper = "0123456789ABCDEF";
+        for (int i = 0; i < 16; i++) {
+            digits[lower.charAt(i)] = (byte) i;
+            digits[upper.charAt(i)] = (byte) i;
+        }
+        return digits;
     }
 
     long room() {

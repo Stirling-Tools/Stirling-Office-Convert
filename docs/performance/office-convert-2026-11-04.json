@@ -1,0 +1,6383 @@
+{
+  "baseline_revision": "68bd2ad26656c9a15f5f834e9a0f0d0c99f4e96c",
+  "candidate": "iteration-21-review-fixes",
+  "candidate_jar_sha256": "37cdf3a4c594e01190ac559336348c02ce46f4290f5efd984e88c08376b3bfd7",
+  "timing": {
+    "host": {
+      "platform": "Windows-11-10.0.26300-SP0",
+      "logical_cpus": 16,
+      "affinity": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "physical_memory_bytes": 33442177024
+    },
+    "heap": "1024m",
+    "gc": "SerialGC",
+    "warmups": 12,
+    "repeats": 25,
+    "cases": [
+      {
+        "name": "manual-100p-docx",
+        "extension": "docx",
+        "kind": "office",
+        "source_sha256": "c643cac93505bf5205fd31b088e2363946ed0b393d9e5a0a523bf32563faab6a"
+      },
+      {
+        "name": "manual-100p-pptx",
+        "extension": "pptx",
+        "kind": "office",
+        "source_sha256": "c643cac93505bf5205fd31b088e2363946ed0b393d9e5a0a523bf32563faab6a"
+      },
+      {
+        "name": "illustrated-20p-docx",
+        "extension": "docx",
+        "kind": "office",
+        "source_sha256": "b147bd4b935db8e2115dc85357dc80146f50287bc36c6ba4f88dd7391fc3ca29"
+      },
+      {
+        "name": "illustrated-20p-pptx",
+        "extension": "pptx",
+        "kind": "office",
+        "source_sha256": "b147bd4b935db8e2115dc85357dc80146f50287bc36c6ba4f88dd7391fc3ca29"
+      }
+    ],
+    "summary": {
+      "manual-100p-docx": {
+        "baseline": {
+          "forks": 3,
+          "all_quality_exact": true,
+          "errors": [],
+          "fork_medians_ms": [
+            635.6141,
+            714.5026,
+            762.4017
+          ],
+          "median_ms": 714.5026,
+          "range_ms": [
+            635.6141,
+            762.4017
+          ],
+          "median_allocated_mib": 850.6906509399414
+        },
+        "candidate": {
+          "forks": 3,
+          "all_quality_exact": true,
+          "errors": [],
+          "fork_medians_ms": [
+            672.5908000000001,
+            707.072,
+            684.8843999999999
+          ],
+          "median_ms": 684.8843999999999,
+          "range_ms": [
+            672.5908000000001,
+            707.072
+          ],
+          "median_allocated_mib": 850.6874618530273
+        },
+        "speedup": 1.0432455462556895
+      },
+      "manual-100p-pptx": {
+        "baseline": {
+          "forks": 3,
+          "all_quality_exact": true,
+          "errors": [],
+          "fork_medians_ms": [
+            1140.0262,
+            1073.3801,
+            1197.1782
+          ],
+          "median_ms": 1140.0262,
+          "range_ms": [
+            1073.3801,
+            1197.1782
+          ],
+          "median_allocated_mib": 1800.0285034179688
+        },
+        "candidate": {
+          "forks": 3,
+          "all_quality_exact": true,
+          "errors": [],
+          "fork_medians_ms": [
+            874.3353999999999,
+            712.4674,
+            812.7929
+          ],
+          "median_ms": 812.7929,
+          "range_ms": [
+            712.4674,
+            874.3353999999999
+          ],
+          "median_allocated_mib": 1200.0474014282227
+        },
+        "speedup": 1.4026035414433369
+      },
+      "illustrated-20p-docx": {
+        "baseline": {
+          "forks": 3,
+          "all_quality_exact": true,
+          "errors": [],
+          "fork_medians_ms": [
+            423.9558,
+            429.80469999999997,
+            439.1778
+          ],
+          "median_ms": 429.80469999999997,
+          "range_ms": [
+            423.9558,
+            439.1778
+          ],
+          "median_allocated_mib": 49.97090148925781
+        },
+        "candidate": {
+          "forks": 3,
+          "all_quality_exact": true,
+          "errors": [],
+          "fork_medians_ms": [
+            208.8787,
+            215.8356,
+            235.7769
+          ],
+          "median_ms": 215.8356,
+          "range_ms": [
+            208.8787,
+            235.7769
+          ],
+          "median_allocated_mib": 50.05718994140625
+        },
+        "speedup": 1.991352214370567
+      },
+      "illustrated-20p-pptx": {
+        "baseline": {
+          "forks": 3,
+          "all_quality_exact": true,
+          "errors": [],
+          "fork_medians_ms": [
+            409.1827,
+            484.2912,
+            441.8772
+          ],
+          "median_ms": 441.8772,
+          "range_ms": [
+            409.1827,
+            484.2912
+          ],
+          "median_allocated_mib": 78.59258270263672
+        },
+        "candidate": {
+          "forks": 3,
+          "all_quality_exact": true,
+          "errors": [],
+          "fork_medians_ms": [
+            242.6971,
+            227.7245,
+            242.60909999999998
+          ],
+          "median_ms": 242.60909999999998,
+          "range_ms": [
+            227.7245,
+            242.6971
+          ],
+          "median_allocated_mib": 60.88529968261719
+        },
+        "speedup": 1.8213545988176043
+      }
+    }
+  },
+  "quality": {
+    "families": 41,
+    "pdf_holdout": 240,
+    "large_cases": 4,
+    "memory_output_comparisons": 378,
+    "output_differences": 0
+  },
+  "memory": {
+    "jars": {
+      "baseline": {
+        "file": "baseline.jar",
+        "sha256": "d1dad6c30476ce269cba3806e02d629e4d1c76944efb8bcd2b3b8bad05002eb9"
+      },
+      "pre_fix": {
+        "file": "iteration-20.jar",
+        "sha256": "663aec3f4a9a6a1732c60757a52b5023c0907ab9c7bff6aa0f44210881f165e9"
+      },
+      "fixed": {
+        "file": "iteration-21-review-fixes.jar",
+        "sha256": "37cdf3a4c594e01190ac559336348c02ce46f4290f5efd984e88c08376b3bfd7"
+      }
+    },
+    "host": {
+      "affinity": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "heap": "128m initial, 1024m max",
+      "gc": "SerialGC",
+      "memory_bytes": 33442177024,
+      "sampling_interval_seconds": 0.02
+    },
+    "variants": {
+      "baseline": {
+        "forks": 2,
+        "cases": {
+          "docx-pdf": {
+            "allocation_mib": [
+              17.248863220214844,
+              17.258949279785156
+            ],
+            "median_ms": [
+              109.7757,
+              112.1441
+            ],
+            "natural_gc_count": [
+              2,
+              2
+            ],
+            "natural_gc_ms": [
+              2,
+              2
+            ],
+            "heap_pool_peak_sum_mib": [
+              53.09425354003906,
+              53.078704833984375
+            ],
+            "stage_rss_mib": [
+              185.1875,
+              184.3984375
+            ],
+            "post_gc_heap_mib": [
+              18.162757873535156,
+              18.14312744140625
+            ]
+          },
+          "odt-pdf": {
+            "allocation_mib": [
+              82.21863555908203,
+              82.1616439819336
+            ],
+            "median_ms": [
+              103.95219999999999,
+              98.6907
+            ],
+            "natural_gc_count": [
+              12,
+              12
+            ],
+            "natural_gc_ms": [
+              22,
+              23
+            ],
+            "heap_pool_peak_sum_mib": [
+              76.32014465332031,
+              76.28836822509766
+            ],
+            "stage_rss_mib": [
+              209.52734375,
+              205.46484375
+            ],
+            "post_gc_heap_mib": [
+              20.899024963378906,
+              20.899879455566406
+            ]
+          },
+          "doc-pdf": {
+            "allocation_mib": [
+              70.7137451171875,
+              70.70368957519531
+            ],
+            "median_ms": [
+              152.65290000000002,
+              153.302
+            ],
+            "natural_gc_count": [
+              10,
+              10
+            ],
+            "natural_gc_ms": [
+              19,
+              17
+            ],
+            "heap_pool_peak_sum_mib": [
+              68.96967315673828,
+              68.6324691772461
+            ],
+            "stage_rss_mib": [
+              224.44921875,
+              222.55078125
+            ],
+            "post_gc_heap_mib": [
+              27.120468139648438,
+              28.552955627441406
+            ]
+          },
+          "rtf-pdf": {
+            "allocation_mib": [
+              71.99335479736328,
+              72.08416748046875
+            ],
+            "median_ms": [
+              235.7426,
+              234.88129999999998
+            ],
+            "natural_gc_count": [
+              10,
+              10
+            ],
+            "natural_gc_ms": [
+              15,
+              13
+            ],
+            "heap_pool_peak_sum_mib": [
+              68.23460388183594,
+              68.38353729248047
+            ],
+            "stage_rss_mib": [
+              222.23046875,
+              203.4375
+            ],
+            "post_gc_heap_mib": [
+              24.451431274414062,
+              24.451942443847656
+            ]
+          },
+          "txt-pdf": {
+            "allocation_mib": [
+              4.1388702392578125,
+              4.1411590576171875
+            ],
+            "median_ms": [
+              18.351699999999997,
+              16.9332
+            ],
+            "natural_gc_count": [
+              0,
+              0
+            ],
+            "natural_gc_ms": [
+              0,
+              0
+            ],
+            "heap_pool_peak_sum_mib": [
+              46.57429504394531,
+              46.582916259765625
+            ],
+            "stage_rss_mib": [
+              219.8203125,
+              213.16796875
+            ],
+            "post_gc_heap_mib": [
+              25.685012817382812,
+              25.694740295410156
+            ]
+          },
+          "html-pdf": {
+            "allocation_mib": [
+              13.371681213378906,
+              13.330398559570312
+            ],
+            "median_ms": [
+              58.9404,
+              41.3715
+            ],
+            "natural_gc_count": [
+              1,
+              1
+            ],
+            "natural_gc_ms": [
+              1,
+              1
+            ],
+            "heap_pool_peak_sum_mib": [
+              74.66277313232422,
+              74.68850708007812
+            ],
+            "stage_rss_mib": [
+              223.8671875,
+              216.88671875
+            ],
+            "post_gc_heap_mib": [
+              39.355918884277344,
+              39.4056396484375
+            ]
+          },
+          "xlsx-pdf": {
+            "allocation_mib": [
+              36.834373474121094,
+              36.77922058105469
+            ],
+            "median_ms": [
+              80.1521,
+              74.09989999999999
+            ],
+            "natural_gc_count": [
+              5,
+              5
+            ],
+            "natural_gc_ms": [
+              14,
+              12
+            ],
+            "heap_pool_peak_sum_mib": [
+              85.41893005371094,
+              85.46929168701172
+            ],
+            "stage_rss_mib": [
+              248.328125,
+              239.796875
+            ],
+            "post_gc_heap_mib": [
+              48.024085998535156,
+              48.181724548339844
+            ]
+          },
+          "xls-pdf": {
+            "allocation_mib": [
+              53.82563018798828,
+              53.777122497558594
+            ],
+            "median_ms": [
+              102.0418,
+              89.6004
+            ],
+            "natural_gc_count": [
+              7,
+              7
+            ],
+            "natural_gc_ms": [
+              15,
+              13
+            ],
+            "heap_pool_peak_sum_mib": [
+              90.1273193359375,
+              90.41927337646484
+            ],
+            "stage_rss_mib": [
+              255.2734375,
+              252.59765625
+            ],
+            "post_gc_heap_mib": [
+              51.11377716064453,
+              51.11421203613281
+            ]
+          },
+          "ods-pdf": {
+            "allocation_mib": [
+              75.40685272216797,
+              75.55809020996094
+            ],
+            "median_ms": [
+              113.71090000000001,
+              107.5454
+            ],
+            "natural_gc_count": [
+              10,
+              10
+            ],
+            "natural_gc_ms": [
+              88,
+              85
+            ],
+            "heap_pool_peak_sum_mib": [
+              143.14676666259766,
+              143.0234603881836
+            ],
+            "stage_rss_mib": [
+              309.0,
+              290.25390625
+            ],
+            "post_gc_heap_mib": [
+              52.312950134277344,
+              52.340972900390625
+            ]
+          },
+          "pptx-pdf": {
+            "allocation_mib": [
+              7.836570739746094,
+              7.836402893066406
+            ],
+            "median_ms": [
+              62.23950000000001,
+              65.431
+            ],
+            "natural_gc_count": [
+              0,
+              0
+            ],
+            "natural_gc_ms": [
+              0,
+              0
+            ],
+            "heap_pool_peak_sum_mib": [
+              95.0729751586914,
+              95.04405975341797
+            ],
+            "stage_rss_mib": [
+              332.0625,
+              317.21484375
+            ],
+            "post_gc_heap_mib": [
+              53.69000244140625,
+              53.690269470214844
+            ]
+          },
+          "ppt-pdf": {
+            "allocation_mib": [
+              88.62897491455078,
+              88.63462829589844
+            ],
+            "median_ms": [
+              165.7098,
+              159.2906
+            ],
+            "natural_gc_count": [
+              5,
+              5
+            ],
+            "natural_gc_ms": [
+              50,
+              37
+            ],
+            "heap_pool_peak_sum_mib": [
+              372.59596252441406,
+              369.84971618652344
+            ],
+            "stage_rss_mib": [
+              574.94921875,
+              557.99609375
+            ],
+            "post_gc_heap_mib": [
+              144.65245056152344,
+              144.6451187133789
+            ]
+          },
+          "odp-pdf": {
+            "allocation_mib": [
+              17.83100128173828,
+              17.824363708496094
+            ],
+            "median_ms": [
+              72.8304,
+              68.2697
+            ],
+            "natural_gc_count": [
+              0,
+              0
+            ],
+            "natural_gc_ms": [
+              0,
+              0
+            ],
+            "heap_pool_peak_sum_mib": [
+              191.3331069946289,
+              191.81624603271484
+            ],
+            "stage_rss_mib": [
+              581.37109375,
+              565.625
+            ],
+            "post_gc_heap_mib": [
+              90.6733169555664,
+              90.67320251464844
+            ]
+          },
+          "pdf-docx": {
+            "allocation_mib": [
+              62.810096740722656,
+              62.69676971435547
+            ],
+            "median_ms": [
+              300.4423,
+              286.2386
+            ],
+            "natural_gc_count": [
+              2,
+              2
+            ],
+            "natural_gc_ms": [
+              6,
+              4
+            ],
+            "heap_pool_peak_sum_mib": [
+              217.3882293701172,
+              216.0245819091797
+            ],
+            "stage_rss_mib": [
+              639.9453125,
+              632.828125
+            ],
+            "post_gc_heap_mib": [
+              101.34278869628906,
+              101.32737731933594
+            ]
+          },
+          "pdf-odt": {
+            "allocation_mib": [
+              65.28530883789062,
+              65.03267669677734
+            ],
+            "median_ms": [
+              147.2369,
+              147.3077
+            ],
+            "natural_gc_count": [
+              2,
+              2
+            ],
+            "natural_gc_ms": [
+              5,
+              5
+            ],
+            "heap_pool_peak_sum_mib": [
+              217.6473617553711,
+              216.11534881591797
+            ],
+            "stage_rss_mib": [
+              637.3515625,
+              632.98828125
+            ],
+            "post_gc_heap_mib": [
+              101.33551788330078,
+              101.33769989013672
+            ]
+          },
+          "pdf-fodt": {
+            "allocation_mib": [
+              93.12046813964844,
+              92.79449462890625
+            ],
+            "median_ms": [
+              108.0243,
+              108.57469999999999
+            ],
+            "natural_gc_count": [
+              4,
+              4
+            ],
+            "natural_gc_ms": [
+              8,
+              7
+            ],
+            "heap_pool_peak_sum_mib": [
+              218.3007354736328,
+              217.48333740234375
+            ],
+            "stage_rss_mib": [
+              631.0234375,
+              632.5859375
+            ],
+            "post_gc_heap_mib": [
+              102.47515869140625,
+              102.43814849853516
+            ]
+          },
+          "pdf-xml": {
+            "allocation_mib": [
+              92.8975830078125,
+              92.60562896728516
+            ],
+            "median_ms": [
+              105.04429999999999,
+              95.1824
+            ],
+            "natural_gc_count": [
+              4,
+              4
+            ],
+            "natural_gc_ms": [
+              7,
+              7
+            ],
+            "heap_pool_peak_sum_mib": [
+              218.30171966552734,
+              217.48818969726562
+            ],
+            "stage_rss_mib": [
+              639.328125,
+              621.20703125
+            ],
+            "post_gc_heap_mib": [
+              101.34163665771484,
+              101.34342956542969
+            ]
+          },
+          "pdf-rtf": {
+            "allocation_mib": [
+              96.84085845947266,
+              96.83578491210938
+            ],
+            "median_ms": [
+              94.0289,
+              93.625
+            ],
+            "natural_gc_count": [
+              4,
+              4
+            ],
+            "natural_gc_ms": [
+              6,
+              7
+            ],
+            "heap_pool_peak_sum_mib": [
+              218.68191528320312,
+              217.6363754272461
+            ],
+            "stage_rss_mib": [
+              627.1953125,
+              625.1484375
+            ],
+            "post_gc_heap_mib": [
+              101.36945343017578,
+              101.37124633789062
+            ]
+          },
+          "pdf-txt": {
+            "allocation_mib": [
+              57.71839141845703,
+              57.716102600097656
+            ],
+            "median_ms": [
+              58.738699999999994,
+              62.70100000000001
+            ],
+            "natural_gc_count": [
+              2,
+              2
+            ],
+            "natural_gc_ms": [
+              2,
+              3
+            ],
+            "heap_pool_peak_sum_mib": [
+              215.78182983398438,
+              214.712158203125
+            ],
+            "stage_rss_mib": [
+              633.546875,
+              635.08203125
+            ],
+            "post_gc_heap_mib": [
+              101.37324523925781,
+              101.37503814697266
+            ]
+          },
+          "pdf-html": {
+            "allocation_mib": [
+              94.99396514892578,
+              94.99014282226562
+            ],
+            "median_ms": [
+              112.24549999999999,
+              111.2161
+            ],
+            "natural_gc_count": [
+              4,
+              4
+            ],
+            "natural_gc_ms": [
+              8,
+              6
+            ],
+            "heap_pool_peak_sum_mib": [
+              218.45398712158203,
+              217.31431579589844
+            ],
+            "stage_rss_mib": [
+              625.5859375,
+              625.09765625
+            ],
+            "post_gc_heap_mib": [
+              101.40280151367188,
+              101.40461730957031
+            ]
+          },
+          "pdf-json": {
+            "allocation_mib": [
+              60.59827423095703,
+              60.59089660644531
+            ],
+            "median_ms": [
+              63.460699999999996,
+              61.3802
+            ],
+            "natural_gc_count": [
+              2,
+              2
+            ],
+            "natural_gc_ms": [
+              3,
+              3
+            ],
+            "heap_pool_peak_sum_mib": [
+              216.67224884033203,
+              215.76748657226562
+            ],
+            "stage_rss_mib": [
+              631.9765625,
+              627.765625
+            ],
+            "post_gc_heap_mib": [
+              101.40970611572266,
+              101.41221618652344
+            ]
+          },
+          "pdf-md": {
+            "allocation_mib": [
+              87.76956939697266,
+              87.76341247558594
+            ],
+            "median_ms": [
+              154.1665,
+              152.199
+            ],
+            "natural_gc_count": [
+              3,
+              3
+            ],
+            "natural_gc_ms": [
+              4,
+              5
+            ],
+            "heap_pool_peak_sum_mib": [
+              218.80423736572266,
+              217.3282928466797
+            ],
+            "stage_rss_mib": [
+              630.41796875,
+              628.171875
+            ],
+            "post_gc_heap_mib": [
+              101.421875,
+              101.42379760742188
+            ]
+          },
+          "pdf-epub": {
+            "allocation_mib": [
+              73.87583923339844,
+              73.87409973144531
+            ],
+            "median_ms": [
+              148.03140000000002,
+              139.5228
+            ],
+            "natural_gc_count": [
+              3,
+              3
+            ],
+            "natural_gc_ms": [
+              8,
+              6
+            ],
+            "heap_pool_peak_sum_mib": [
+              219.6976776123047,
+              218.81879425048828
+            ],
+            "stage_rss_mib": [
+              628.21484375,
+              630.11328125
+            ],
+            "post_gc_heap_mib": [
+              101.63655090332031,
+              101.63714599609375
+            ]
+          },
+          "pdf-azw3": {
+            "allocation_mib": [
+              81.85508728027344,
+              81.85778045654297
+            ],
+            "median_ms": [
+              141.9803,
+              138.0136
+            ],
+            "natural_gc_count": [
+              3,
+              3
+            ],
+            "natural_gc_ms": [
+              4,
+              5
+            ],
+            "heap_pool_peak_sum_mib": [
+              218.03726196289062,
+              216.9519271850586
+            ],
+            "stage_rss_mib": [
+              629.18359375,
+              631.37890625
+            ],
+            "post_gc_heap_mib": [
+              101.7079849243164,
+              101.71014404296875
+            ]
+          },
+          "pdf-pptx": {
+            "allocation_mib": [
+              109.25901794433594,
+              109.28141784667969
+            ],
+            "median_ms": [
+              117.3773,
+              113.5421
+            ],
+            "natural_gc_count": [
+              4,
+              4
+            ],
+            "natural_gc_ms": [
+              3,
+              2
+            ],
+            "heap_pool_peak_sum_mib": [
+              215.95650482177734,
+              213.5517578125
+            ],
+            "stage_rss_mib": [
+              631.76171875,
+              632.7890625
+            ],
+            "post_gc_heap_mib": [
+              101.76856231689453,
+              101.77115631103516
+            ]
+          },
+          "pdf-odp": {
+            "allocation_mib": [
+              123.68036651611328,
+              123.7059326171875
+            ],
+            "median_ms": [
+              107.1173,
+              109.05
+            ],
+            "natural_gc_count": [
+              5,
+              5
+            ],
+            "natural_gc_ms": [
+              7,
+              6
+            ],
+            "heap_pool_peak_sum_mib": [
+              217.03826904296875,
+              215.9726333618164
+            ],
+            "stage_rss_mib": [
+              633.375,
+              633.16796875
+            ],
+            "post_gc_heap_mib": [
+              101.80607604980469,
+              101.80867004394531
+            ]
+          },
+          "pdf-ppt": {
+            "allocation_mib": [
+              464.1835479736328,
+              463.2020950317383
+            ],
+            "median_ms": [
+              221.3116,
+              236.62349999999998
+            ],
+            "natural_gc_count": [
+              20,
+              20
+            ],
+            "natural_gc_ms": [
+              146,
+              150
+            ],
+            "heap_pool_peak_sum_mib": [
+              279.25823974609375,
+              277.8173065185547
+            ],
+            "stage_rss_mib": [
+              696.31640625,
+              661.30859375
+            ],
+            "post_gc_heap_mib": [
+              104.07752990722656,
+              104.06132507324219
+            ]
+          },
+          "pdf-xlsx": {
+            "allocation_mib": [
+              72.82769775390625,
+              72.84532928466797
+            ],
+            "median_ms": [
+              78.5401,
+              86.6169
+            ],
+            "natural_gc_count": [
+              3,
+              3
+            ],
+            "natural_gc_ms": [
+              3,
+              4
+            ],
+            "heap_pool_peak_sum_mib": [
+              217.59696197509766,
+              216.64189910888672
+            ],
+            "stage_rss_mib": [
+              676.328125,
+              654.1015625
+            ],
+            "post_gc_heap_mib": [
+              102.3785629272461,
+              103.30687713623047
+            ]
+          },
+          "pdf-ods": {
+            "allocation_mib": [
+              73.85308837890625,
+              73.87347412109375
+            ],
+            "median_ms": [
+              81.2414,
+              82.4743
+            ],
+            "natural_gc_count": [
+              3,
+              3
+            ],
+            "natural_gc_ms": [
+              4,
+              5
+            ],
+            "heap_pool_peak_sum_mib": [
+              217.76195526123047,
+              216.78487396240234
+            ],
+            "stage_rss_mib": [
+              675.18359375,
+              656.27734375
+            ],
+            "post_gc_heap_mib": [
+              103.04351043701172,
+              102.09700775146484
+            ]
+          },
+          "pdf-pdfa2": {
+            "allocation_mib": [
+              9.909317016601562,
+              9.903297424316406
+            ],
+            "median_ms": [
+              31.8919,
+              36.0635
+            ],
+            "natural_gc_count": [
+              0,
+              0
+            ],
+            "natural_gc_ms": [
+              0,
+              0
+            ],
+            "heap_pool_peak_sum_mib": [
+              154.4511947631836,
+              154.03165435791016
+            ],
+            "stage_rss_mib": [
+              681.43359375,
+              660.7109375
+            ],
+            "post_gc_heap_mib": [
+              103.59526062011719,
+              103.59602355957031
+            ]
+          },
+          "fodt-pdf": {
+            "allocation_mib": [
+              80.4145736694336,
+              80.3033447265625
+            ],
+            "median_ms": [
+              161.3782,
+              137.0018
+            ],
+            "natural_gc_count": [
+              3,
+              3
+            ],
+            "natural_gc_ms": [
+              5,
+              4
+            ],
+            "heap_pool_peak_sum_mib": [
+              224.6732406616211,
+              223.26272583007812
+            ],
+            "stage_rss_mib": [
+              688.078125,
+              675.31640625
+            ],
+            "post_gc_heap_mib": [
+              103.586669921875,
+              103.58995056152344
+            ]
+          },
+          "xml-pdf": {
+            "allocation_mib": [
+              80.08572387695312,
+              80.07075500488281
+            ],
+            "median_ms": [
+              67.903,
+              67.6561
+            ],
+            "natural_gc_count": [
+              3,
+              3
+            ],
+            "natural_gc_ms": [
+              5,
+              4
+            ],
+            "heap_pool_peak_sum_mib": [
+              224.89765167236328,
+              223.53763580322266
+            ],
+            "stage_rss_mib": [
+              683.31640625,
+              655.47265625
+            ],
+            "post_gc_heap_mib": [
+              103.70130920410156,
+              103.70382690429688
+            ]
+          },
+          "epub-pdf": {
+            "allocation_mib": [
+              121.34972381591797,
+              121.20964813232422
+            ],
+            "median_ms": [
+              197.8896,
+              160.8674
+            ],
+            "natural_gc_count": [
+              5,
+              5
+            ],
+            "natural_gc_ms": [
+              11,
+              8
+            ],
+            "heap_pool_peak_sum_mib": [
+              219.35953521728516,
+              218.0736083984375
+            ],
+            "stage_rss_mib": [
+              688.828125,
+              677.61328125
+            ],
+            "post_gc_heap_mib": [
+              103.66358947753906,
+              103.66755676269531
+            ]
+          },
+          "azw3-pdf": {
+            "allocation_mib": [
+              133.88846588134766,
+              133.798828125
+            ],
+            "median_ms": [
+              198.7746,
+              187.1586
+            ],
+            "natural_gc_count": [
+              5,
+              6
+            ],
+            "natural_gc_ms": [
+              12,
+              9
+            ],
+            "heap_pool_peak_sum_mib": [
+              219.60218811035156,
+              218.41951751708984
+            ],
+            "stage_rss_mib": [
+              688.61328125,
+              681.265625
+            ],
+            "post_gc_heap_mib": [
+              103.80865478515625,
+              103.81267547607422
+            ]
+          },
+          "json-pdf": {
+            "allocation_mib": [
+              33.357452392578125,
+              33.269020080566406
+            ],
+            "median_ms": [
+              59.9345,
+              54.7338
+            ],
+            "natural_gc_count": [
+              1,
+              1
+            ],
+            "natural_gc_ms": [
+              5,
+              4
+            ],
+            "heap_pool_peak_sum_mib": [
+              223.15728759765625,
+              222.0358657836914
+            ],
+            "stage_rss_mib": [
+              685.02734375,
+              659.609375
+            ],
+            "post_gc_heap_mib": [
+              103.69662475585938,
+              103.70161437988281
+            ]
+          },
+          "csv-pdf": {
+            "allocation_mib": [
+              28.795387268066406,
+              28.765457153320312
+            ],
+            "median_ms": [
+              63.7577,
+              60.9419
+            ],
+            "natural_gc_count": [
+              1,
+              1
+            ],
+            "natural_gc_ms": [
+              4,
+              4
+            ],
+            "heap_pool_peak_sum_mib": [
+              218.9829864501953,
+              217.83971405029297
+            ],
+            "stage_rss_mib": [
+              686.875,
+              671.44921875
+            ],
+            "post_gc_heap_mib": [
+              103.91410827636719,
+              103.91909790039062
+            ]
+          },
+          "tsv-pdf": {
+            "allocation_mib": [
+              28.690467834472656,
+              28.688766479492188
+            ],
+            "median_ms": [
+              53.6817,
+              44.2339
+            ],
+            "natural_gc_count": [
+              1,
+              1
+            ],
+            "natural_gc_ms": [
+              3,
+              3
+            ],
+            "heap_pool_peak_sum_mib": [
+              219.1491928100586,
+              218.00080108642578
+            ],
+            "stage_rss_mib": [
+              684.43359375,
+              668.36328125
+            ],
+            "post_gc_heap_mib": [
+              103.79109191894531,
+              103.79511260986328
+            ]
+          },
+          "xlsb-pdf": {
+            "allocation_mib": [
+              3.7656631469726562,
+              3.7656478881835938
+            ],
+            "median_ms": [
+              9.000599999999999,
+              8.1494
+            ],
+            "natural_gc_count": [
+              0,
+              0
+            ],
+            "natural_gc_ms": [
+              0,
+              0
+            ],
+            "heap_pool_peak_sum_mib": [
+              130.43084716796875,
+              130.26558685302734
+            ],
+            "stage_rss_mib": [
+              684.57421875,
+              668.51953125
+            ],
+            "post_gc_heap_mib": [
+              107.13603210449219,
+              107.1399917602539
+            ]
+          },
+          "slk-pdf": {
+            "allocation_mib": [
+              25.291648864746094,
+              25.280364990234375
+            ],
+            "median_ms": [
+              45.380900000000004,
+              44.0435
+            ],
+            "natural_gc_count": [
+              1,
+              1
+            ],
+            "natural_gc_ms": [
+              1,
+              2
+            ],
+            "heap_pool_peak_sum_mib": [
+              220.81085205078125,
+              219.55955505371094
+            ],
+            "stage_rss_mib": [
+              684.90625,
+              669.171875
+            ],
+            "post_gc_heap_mib": [
+              107.06532287597656,
+              107.15888977050781
+            ]
+          },
+          "dif-pdf": {
+            "allocation_mib": [
+              22.489044189453125,
+              22.391746520996094
+            ],
+            "median_ms": [
+              38.8268,
+              40.2507
+            ],
+            "natural_gc_count": [
+              1,
+              1
+            ],
+            "natural_gc_ms": [
+              3,
+              2
+            ],
+            "heap_pool_peak_sum_mib": [
+              222.3905258178711,
+              221.34276580810547
+            ],
+            "stage_rss_mib": [
+              689.9453125,
+              673.93359375
+            ],
+            "post_gc_heap_mib": [
+              107.19688415527344,
+              107.29045104980469
+            ]
+          },
+          "dbf-pdf": {
+            "allocation_mib": [
+              23.95531463623047,
+              23.877655029296875
+            ],
+            "median_ms": [
+              42.0124,
+              41.3661
+            ],
+            "natural_gc_count": [
+              1,
+              1
+            ],
+            "natural_gc_ms": [
+              3,
+              3
+            ],
+            "heap_pool_peak_sum_mib": [
+              222.37664031982422,
+              221.11875915527344
+            ],
+            "stage_rss_mib": [
+              687.04296875,
+              671.1796875
+            ],
+            "post_gc_heap_mib": [
+              107.06985473632812,
+              107.07391357421875
+            ]
+          },
+          "pdf-doc": {
+            "allocation_mib": [
+              96.77117919921875,
+              96.78636169433594
+            ],
+            "median_ms": [
+              88.85650000000001,
+              89.79379999999999
+            ],
+            "natural_gc_count": [
+              4,
+              4
+            ],
+            "natural_gc_ms": [
+              8,
+              6
+            ],
+            "heap_pool_peak_sum_mib": [
+              224.10762786865234,
+              223.21446228027344
+            ],
+            "stage_rss_mib": [
+              689.45703125,
+              671.3359375
+            ],
+            "post_gc_heap_mib": [
+              107.07190704345703,
+              107.07515716552734
+            ]
+          },
+          "manual-100p-docx": {
+            "allocation_mib": [
+              861.6667594909668,
+              861.5975532531738
+            ],
+            "median_ms": [
+              604.0246000000001,
+              598.7428500000001
+            ],
+            "natural_gc_count": [
+              61,
+              61
+            ],
+            "natural_gc_ms": [
+              215,
+              206
+            ],
+            "heap_pool_peak_sum_mib": [
+              321.44386291503906,
+              330.7791442871094
+            ],
+            "stage_rss_mib": [
+              693.47265625,
+              679.3203125
+            ],
+            "post_gc_heap_mib": [
+              107.08146667480469,
+              107.08538818359375
+            ]
+          },
+          "manual-100p-pptx": {
+            "allocation_mib": [
+              1814.5153007507324,
+              1814.4794425964355
+            ],
+            "median_ms": [
+              970.7105499999999,
+              992.18775
+            ],
+            "natural_gc_count": [
+              129,
+              130
+            ],
+            "natural_gc_ms": [
+              239,
+              251
+            ],
+            "heap_pool_peak_sum_mib": [
+              309.9085388183594,
+              312.7642593383789
+            ],
+            "stage_rss_mib": [
+              691.421875,
+              666.7109375
+            ],
+            "post_gc_heap_mib": [
+              119.87474822998047,
+              116.63777160644531
+            ]
+          },
+          "manual-100p-xlsx": {
+            "allocation_mib": [
+              845.0563545227051,
+              845.1044158935547
+            ],
+            "median_ms": [
+              709.9045500000001,
+              619.4779
+            ],
+            "natural_gc_count": [
+              60,
+              60
+            ],
+            "natural_gc_ms": [
+              265,
+              209
+            ],
+            "heap_pool_peak_sum_mib": [
+              334.9156951904297,
+              328.5843276977539
+            ],
+            "stage_rss_mib": [
+              678.28515625,
+              668.6953125
+            ],
+            "post_gc_heap_mib": [
+              107.07378387451172,
+              107.07782745361328
+            ]
+          },
+          "illustrated-20p-docx": {
+            "allocation_mib": [
+              50.21077346801758,
+              50.1879768371582
+            ],
+            "median_ms": [
+              416.38929999999993,
+              383.29979999999995
+            ],
+            "natural_gc_count": [
+              3,
+              3
+            ],
+            "natural_gc_ms": [
+              6,
+              5
+            ],
+            "heap_pool_peak_sum_mib": [
+              226.08386993408203,
+              224.88414764404297
+            ],
+            "stage_rss_mib": [
+              686.44140625,
+              670.58203125
+            ],
+            "post_gc_heap_mib": [
+              107.09552001953125,
+              107.09956359863281
+            ]
+          },
+          "illustrated-20p-pptx": {
+            "allocation_mib": [
+              78.9130973815918,
+              78.90187454223633
+            ],
+            "median_ms": [
+              422.01085,
+              428.1851
+            ],
+            "natural_gc_count": [
+              5,
+              5
+            ],
+            "natural_gc_ms": [
+              9,
+              10
+            ],
+            "heap_pool_peak_sum_mib": [
+              225.3987274169922,
+              224.70216369628906
+            ],
+            "stage_rss_mib": [
+              687.6875,
+              674.0859375
+            ],
+            "post_gc_heap_mib": [
+              107.08504486083984,
+              107.0890121459961
+            ]
+          },
+          "illustrated-20p-xlsx": {
+            "allocation_mib": [
+              36.59629440307617,
+              36.60906219482422
+            ],
+            "median_ms": [
+              139.02595000000002,
+              154.9351
+            ],
+            "natural_gc_count": [
+              2,
+              2
+            ],
+            "natural_gc_ms": [
+              1,
+              3
+            ],
+            "heap_pool_peak_sum_mib": [
+              219.84099578857422,
+              223.3452377319336
+            ],
+            "stage_rss_mib": [
+              640.34375,
+              670.2421875
+            ],
+            "post_gc_heap_mib": [
+              107.09538269042969,
+              107.10232543945312
+            ]
+          },
+          "ledger-8000-pdf": {
+            "allocation_mib": [
+              231.4097785949707,
+              231.36993789672852
+            ],
+            "median_ms": [
+              300.29335000000003,
+              327.07925000000006
+            ],
+            "natural_gc_count": [
+              16,
+              16
+            ],
+            "natural_gc_ms": [
+              228,
+              253
+            ],
+            "heap_pool_peak_sum_mib": [
+              337.2774887084961,
+              333.1439208984375
+            ],
+            "stage_rss_mib": [
+              668.41015625,
+              674.70703125
+            ],
+            "post_gc_heap_mib": [
+              107.11922454833984,
+              107.12652587890625
+            ]
+          },
+          "report-docx-pdf": {
+            "allocation_mib": [
+              16.35358428955078,
+              16.271610260009766
+            ],
+            "median_ms": [
+              25.0103,
+              30.414099999999998
+            ],
+            "natural_gc_count": [
+              1,
+              1
+            ],
+            "natural_gc_ms": [
+              2,
+              3
+            ],
+            "heap_pool_peak_sum_mib": [
+              222.01599884033203,
+              220.8182830810547
+            ],
+            "stage_rss_mib": [
+              666.71484375,
+              671.578125
+            ],
+            "post_gc_heap_mib": [
+              107.24073028564453,
+              107.24809265136719
+            ]
+          },
+          "slides-pptx-pdf": {
+            "allocation_mib": [
+              7.428295135498047,
+              7.430500030517578
+            ],
+            "median_ms": [
+              23.981749999999998,
+              35.87635
+            ],
+            "natural_gc_count": [
+              0,
+              0
+            ],
+            "natural_gc_ms": [
+              0,
+              0
+            ],
+            "heap_pool_peak_sum_mib": [
+              175.55419158935547,
+              172.27598571777344
+            ],
+            "stage_rss_mib": [
+              673.4921875,
+              672.29296875
+            ],
+            "post_gc_heap_mib": [
+              107.15628814697266,
+              107.16036987304688
+            ]
+          },
+          "docx-loc-d02_security_policy_long": {
+            "allocation_mib": [
+              8.96535873413086,
+              8.927543640136719
+            ],
+            "median_ms": [
+              31.41745,
+              25.34715
+            ],
+            "natural_gc_count": [
+              0,
+              0
+            ],
+            "natural_gc_ms": [
+              0,
+              0
+            ],
+            "heap_pool_peak_sum_mib": [
+              187.1872100830078,
+              182.7050552368164
+            ],
+            "stage_rss_mib": [
+              684.984375,
+              677.15234375
+            ],
+            "post_gc_heap_mib": [
+              109.88871765136719,
+              109.89639282226562
+            ]
+          },
+          "pptx-syn-p08_mixed": {
+            "allocation_mib": [
+              19.507957458496094,
+              19.509113311767578
+            ],
+            "median_ms": [
+              199.2354,
+              194.6166
+            ],
+            "natural_gc_count": [
+              1,
+              1
+            ],
+            "natural_gc_ms": [
+              2,
+              2
+            ],
+            "heap_pool_peak_sum_mib": [
+              225.7958984375,
+              226.27244567871094
+            ],
+            "stage_rss_mib": [
+              690.83203125,
+              681.8359375
+            ],
+            "post_gc_heap_mib": [
+              111.45672607421875,
+              111.46018981933594
+            ]
+          },
+          "report-rtf-pdf": {
+            "allocation_mib": [
+              72.17149353027344,
+              72.08909606933594
+            ],
+            "median_ms": [
+              198.0416,
+              207.79295
+            ],
+            "natural_gc_count": [
+              5,
+              5
+            ],
+            "natural_gc_ms": [
+              6,
+              5
+            ],
+            "heap_pool_peak_sum_mib": [
+              227.2765350341797,
+              226.02984619140625
+            ],
+            "stage_rss_mib": [
+              679.12109375,
+              681.87109375
+            ],
+            "post_gc_heap_mib": [
+              111.57279968261719,
+              111.5761947631836
+            ]
+          },
+          "illustrated-rtf-pdf": {
+            "allocation_mib": [
+              31.895301818847656,
+              31.87615203857422
+            ],
+            "median_ms": [
+              209.00875,
+              195.97815000000003
+            ],
+            "natural_gc_count": [
+              2,
+              2
+            ],
+            "natural_gc_ms": [
+              1,
+              1
+            ],
+            "heap_pool_peak_sum_mib": [
+              227.8970718383789,
+              226.15879821777344
+            ],
+            "stage_rss_mib": [
+              678.0546875,
+              649.08984375
+            ],
+            "post_gc_heap_mib": [
+              111.47160339355469,
+              111.4749984741211
+            ]
+          },
+          "manual-rtf-pdf": {
+            "allocation_mib": [
+              151.03084182739258,
+              150.61832427978516
+            ],
+            "median_ms": [
+              179.10935,
+              168.20850000000002
+            ],
+            "natural_gc_count": [
+              10,
+              10
+            ],
+            "natural_gc_ms": [
+              42,
+              47
+            ],
+            "heap_pool_peak_sum_mib": [
+              233.60980987548828,
+              232.41647338867188
+            ],
+            "stage_rss_mib": [
+              688.29296875,
+              676.58984375
+            ],
+            "post_gc_heap_mib": [
+              111.601806640625,
+              111.604248046875
+            ]
+          }
+        },
+        "soak": [
+          {
+            "retained_heap_mib": [
+              124.03728485107422,
+              111.61115264892578,
+              124.15461730957031,
+              122.41313934326172,
+              126.48536682128906,
+              113.14887237548828,
+              123.27086639404297,
+              123.24185943603516,
+              125.57772827148438
+            ],
+            "nonheap_mib": [
+              95.91814422607422,
+              95.90370178222656,
+              96.033203125,
+              96.27799987792969,
+              95.9726333618164,
+              96.121826171875,
+              96.27716064453125,
+              96.51378631591797,
+              97.29008483886719
+            ],
+            "direct_mapped_bytes": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "threads": [
+              12,
+              12,
+              12,
+              12,
+              12,
+              12,
+              12,
+              12,
+              12
+            ],
+            "late_heap_growth_mib": -0.9076385498046875,
+            "late_half_median_heap_mib": 123.27086639404297,
+            "finished_heap_mib": 112.54589080810547,
+            "finished_threads": 8,
+            "allocation_mib_per_batch": 470.84691619873047,
+            "median_batch_ms": 273.92135,
+            "natural_gc_count": 129,
+            "natural_gc_ms": 458
+          },
+          {
+            "retained_heap_mib": [
+              120.79912567138672,
+              111.59645080566406,
+              124.31928253173828,
+              125.0736312866211,
+              125.40979766845703,
+              112.52183532714844,
+              124.33340454101562,
+              124.54481506347656,
+              125.22638702392578
+            ],
+            "nonheap_mib": [
+              96.61497497558594,
+              96.6131591796875,
+              96.73221588134766,
+              96.16954040527344,
+              96.31236267089844,
+              96.16541290283203,
+              96.31831359863281,
+              97.06322479248047,
+              97.12759399414062
+            ],
+            "direct_mapped_bytes": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "threads": [
+              12,
+              12,
+              12,
+              12,
+              12,
+              12,
+              12,
+              12,
+              12
+            ],
+            "late_heap_growth_mib": -0.18341064453125,
+            "late_half_median_heap_mib": 124.54481506347656,
+            "finished_heap_mib": 112.53063201904297,
+            "finished_threads": 8,
+            "allocation_mib_per_batch": 470.74806213378906,
+            "median_batch_ms": 281.5005,
+            "natural_gc_count": 136,
+            "natural_gc_ms": 536
+          }
+        ],
+        "peak_rss_mib": [
+          698.40234375,
+          683.08984375
+        ],
+        "peak_private_commit_mib": [
+          689.86328125,
+          671.05859375
+        ],
+        "case_workload_allocated_mib": [
+          48511.64971923828,
+          46767.80354309082
+        ],
+        "case_workload_natural_gc_count": [
+          451,
+          453
+        ],
+        "case_workload_natural_gc_ms": [
+          1526,
+          1472
+        ]
+      },
+      "pre_fix": {
+        "forks": 2,
+        "cases": {
+          "docx-pdf": {
+            "allocation_mib": [
+              17.005889892578125,
+              17.012229919433594
+            ],
+            "median_ms": [
+              115.0008,
+              110.13080000000001
+            ],
+            "natural_gc_count": [
+              2,
+              2
+            ],
+            "natural_gc_ms": [
+              1,
+              2
+            ],
+            "heap_pool_peak_sum_mib": [
+              50.67120361328125,
+              52.986289978027344
+            ],
+            "stage_rss_mib": [
+              179.83203125,
+              180.59375
+            ],
+            "post_gc_heap_mib": [
+              15.9224853515625,
+              18.14360809326172
+            ]
+          },
+          "odt-pdf": {
+            "allocation_mib": [
+              81.9739761352539,
+              81.92021942138672
+            ],
+            "median_ms": [
+              109.1703,
+              96.5051
+            ],
+            "natural_gc_count": [
+              12,
+              12
+            ],
+            "natural_gc_ms": [
+              22,
+              23
+            ],
+            "heap_pool_peak_sum_mib": [
+              74.06555938720703,
+              76.28976440429688
+            ],
+            "stage_rss_mib": [
+              205.7734375,
+              210.5390625
+            ],
+            "post_gc_heap_mib": [
+              20.89965057373047,
+              20.90021514892578
+            ]
+          },
+          "doc-pdf": {
+            "allocation_mib": [
+              70.47077178955078,
+              70.46087646484375
+            ],
+            "median_ms": [
+              144.12810000000002,
+              153.1249
+            ],
+            "natural_gc_count": [
+              10,
+              10
+            ],
+            "natural_gc_ms": [
+              17,
+              18
+            ],
+            "heap_pool_peak_sum_mib": [
+              68.89828491210938,
+              68.81936645507812
+            ],
+            "stage_rss_mib": [
+              223.0546875,
+              224.80078125
+            ],
+            "post_gc_heap_mib": [
+              29.023696899414062,
+              28.551368713378906
+            ]
+          },
+          "rtf-pdf": {
+            "allocation_mib": [
+              71.33191680908203,
+              71.41718292236328
+            ],
+            "median_ms": [
+              176.74110000000002,
+              182.82780000000002
+            ],
+            "natural_gc_count": [
+              10,
+              10
+            ],
+            "natural_gc_ms": [
+              16,
+              16
+            ],
+            "heap_pool_peak_sum_mib": [
+              68.9560546875,
+              68.76599884033203
+            ],
+            "stage_rss_mib": [
+              220.9375,
+              212.72265625
+            ],
+            "post_gc_heap_mib": [
+              24.45343017578125,
+              24.453445434570312
+            ]
+          },
+          "txt-pdf": {
+            "allocation_mib": [
+              3.892791748046875,
+              3.8915863037109375
+            ],
+            "median_ms": [
+              20.458099999999998,
+              19.867900000000002
+            ],
+            "natural_gc_count": [
+              0,
+              0
+            ],
+            "natural_gc_ms": [
+              0,
+              0
+            ],
+            "heap_pool_peak_sum_mib": [
+              46.58600616455078,
+              46.58238220214844
+            ],
+            "stage_rss_mib": [
+              221.953125,
+              219.2578125
+            ],
+            "post_gc_heap_mib": [
+              25.69622802734375,
+              25.687057495117188
+            ]
+          },
+          "html-pdf": {
+            "allocation_mib": [
+              13.326484680175781,
+              13.284408569335938
+            ],
+            "median_ms": [
+              47.7496,
+              54.897
+            ],
+            "natural_gc_count": [
+              1,
+              1
+            ],
+            "natural_gc_ms": [
+              1,
+              1
+            ],
+            "heap_pool_peak_sum_mib": [
+              74.70771026611328,
+              74.74398803710938
+            ],
+            "stage_rss_mib": [
+              224.49609375,
+              223.5390625
+            ],
+            "post_gc_heap_mib": [
+              39.357879638671875,
+              39.35792541503906
+            ]
+          },
+          "xlsx-pdf": {
+            "allocation_mib": [
+              34.60237121582031,
+              34.55712127685547
+            ],
+            "median_ms": [
+              80.5192,
+              75.8561
+            ],
+            "natural_gc_count": [
+              5,
+              5
+            ],
+            "natural_gc_ms": [
+              7,
+              8
+            ],
+            "heap_pool_peak_sum_mib": [
+              83.90705871582031,
+              83.91791534423828
+            ],
+            "stage_rss_mib": [
+              250.359375,
+              247.72265625
+            ],
+            "post_gc_heap_mib": [
+              48.02134704589844,
+              48.02238464355469
+            ]
+          },
+          "xls-pdf": {
+            "allocation_mib": [
+              51.13165283203125,
+              51.031402587890625
+            ],
+            "median_ms": [
+              94.5441,
+              99.0128
+            ],
+            "natural_gc_count": [
+              7,
+              7
+            ],
+            "natural_gc_ms": [
+              13,
+              14
+            ],
+            "heap_pool_peak_sum_mib": [
+              90.14128112792969,
+              90.1234359741211
+            ],
+            "stage_rss_mib": [
+              258.28515625,
+              254.61328125
+            ],
+            "post_gc_heap_mib": [
+              51.11451721191406,
+              51.115638732910156
+            ]
+          },
+          "ods-pdf": {
+            "allocation_mib": [
+              72.9570541381836,
+              73.20024108886719
+            ],
+            "median_ms": [
+              121.2912,
+              126.0491
+            ],
+            "natural_gc_count": [
+              10,
+              10
+            ],
+            "natural_gc_ms": [
+              96,
+              99
+            ],
+            "heap_pool_peak_sum_mib": [
+              140.8046112060547,
+              140.61402130126953
+            ],
+            "stage_rss_mib": [
+              295.78515625,
+              309.9609375
+            ],
+            "post_gc_heap_mib": [
+              52.161712646484375,
+              52.16283416748047
+            ]
+          },
+          "pptx-pdf": {
+            "allocation_mib": [
+              7.802452087402344,
+              7.802490234375
+            ],
+            "median_ms": [
+              77.5992,
+              62.9778
+            ],
+            "natural_gc_count": [
+              0,
+              0
+            ],
+            "natural_gc_ms": [
+              0,
+              0
+            ],
+            "heap_pool_peak_sum_mib": [
+              94.59996795654297,
+              94.86449432373047
+            ],
+            "stage_rss_mib": [
+              321.7265625,
+              330.28125
+            ],
+            "post_gc_heap_mib": [
+              53.690521240234375,
+              53.69169616699219
+            ]
+          },
+          "ppt-pdf": {
+            "allocation_mib": [
+              88.62979125976562,
+              88.61405181884766
+            ],
+            "median_ms": [
+              170.1861,
+              181.4545
+            ],
+            "natural_gc_count": [
+              6,
+              6
+            ],
+            "natural_gc_ms": [
+              46,
+              43
+            ],
+            "heap_pool_peak_sum_mib": [
+              361.9882354736328,
+              361.98907470703125
+            ],
+            "stage_rss_mib": [
+              560.046875,
+              563.36328125
+            ],
+            "post_gc_heap_mib": [
+              134.77233123779297,
+              134.7730712890625
+            ]
+          },
+          "odp-pdf": {
+            "allocation_mib": [
+              17.80816650390625,
+              17.80816650390625
+            ],
+            "median_ms": [
+              74.4233,
+              75.526
+            ],
+            "natural_gc_count": [
+              0,
+              0
+            ],
+            "natural_gc_ms": [
+              0,
+              0
+            ],
+            "heap_pool_peak_sum_mib": [
+              193.07275390625,
+              193.05487060546875
+            ],
+            "stage_rss_mib": [
+              559.03515625,
+              565.83203125
+            ],
+            "post_gc_heap_mib": [
+              91.29329681396484,
+              91.29412078857422
+            ]
+          },
+          "pdf-docx": {
+            "allocation_mib": [
+              62.68212127685547,
+              62.636268615722656
+            ],
+            "median_ms": [
+              293.8789,
+              301.8808
+            ],
+            "natural_gc_count": [
+              2,
+              2
+            ],
+            "natural_gc_ms": [
+              6,
+              6
+            ],
+            "heap_pool_peak_sum_mib": [
+              217.0313949584961,
+              216.4926528930664
+            ],
+            "stage_rss_mib": [
+              626.6953125,
+              627.0859375
+            ],
+            "post_gc_heap_mib": [
+              101.46553039550781,
+              101.46469116210938
+            ]
+          },
+          "pdf-odt": {
+            "allocation_mib": [
+              65.3650131225586,
+              65.37821960449219
+            ],
+            "median_ms": [
+              143.3249,
+              153.18470000000002
+            ],
+            "natural_gc_count": [
+              2,
+              2
+            ],
+            "natural_gc_ms": [
+              5,
+              4
+            ],
+            "heap_pool_peak_sum_mib": [
+              216.72894287109375,
+              216.66179656982422
+            ],
+            "stage_rss_mib": [
+              624.3125,
+              625.0390625
+            ],
+            "post_gc_heap_mib": [
+              101.3387222290039,
+              101.33955383300781
+            ]
+          },
+          "pdf-fodt": {
+            "allocation_mib": [
+              93.17879486083984,
+              93.0509262084961
+            ],
+            "median_ms": [
+              90.14659999999999,
+              109.7143
+            ],
+            "natural_gc_count": [
+              4,
+              4
+            ],
+            "natural_gc_ms": [
+              8,
+              7
+            ],
+            "heap_pool_peak_sum_mib": [
+              217.77163696289062,
+              217.82389068603516
+            ],
+            "stage_rss_mib": [
+              625.734375,
+              628.0234375
+            ],
+            "post_gc_heap_mib": [
+              101.34526062011719,
+              101.3460464477539
+            ]
+          },
+          "pdf-xml": {
+            "allocation_mib": [
+              92.91584014892578,
+              92.924072265625
+            ],
+            "median_ms": [
+              93.21409999999999,
+              81.758
+            ],
+            "natural_gc_count": [
+              4,
+              4
+            ],
+            "natural_gc_ms": [
+              7,
+              6
+            ],
+            "heap_pool_peak_sum_mib": [
+              217.7635955810547,
+              217.82779693603516
+            ],
+            "stage_rss_mib": [
+              633.609375,
+              627.46875
+            ],
+            "post_gc_heap_mib": [
+              102.6207504272461,
+              101.3452377319336
+            ]
+          },
+          "pdf-rtf": {
+            "allocation_mib": [
+              96.94268035888672,
+              96.94768524169922
+            ],
+            "median_ms": [
+              93.3634,
+              89.4691
+            ],
+            "natural_gc_count": [
+              4,
+              4
+            ],
+            "natural_gc_ms": [
+              7,
+              7
+            ],
+            "heap_pool_peak_sum_mib": [
+              217.55223083496094,
+              217.97782135009766
+            ],
+            "stage_rss_mib": [
+              624.4296875,
+              628.88671875
+            ],
+            "post_gc_heap_mib": [
+              101.37348937988281,
+              101.37305450439453
+            ]
+          },
+          "pdf-txt": {
+            "allocation_mib": [
+              57.74452209472656,
+              57.787322998046875
+            ],
+            "median_ms": [
+              59.8799,
+              62.021699999999996
+            ],
+            "natural_gc_count": [
+              2,
+              2
+            ],
+            "natural_gc_ms": [
+              3,
+              3
+            ],
+            "heap_pool_peak_sum_mib": [
+              214.9390106201172,
+              214.9369659423828
+            ],
+            "stage_rss_mib": [
+              626.23828125,
+              628.703125
+            ],
+            "post_gc_heap_mib": [
+              102.88993072509766,
+              102.89075469970703
+            ]
+          },
+          "pdf-html": {
+            "allocation_mib": [
+              95.00822448730469,
+              95.03311920166016
+            ],
+            "median_ms": [
+              100.65490000000001,
+              103.8242
+            ],
+            "natural_gc_count": [
+              4,
+              4
+            ],
+            "natural_gc_ms": [
+              6,
+              7
+            ],
+            "heap_pool_peak_sum_mib": [
+              217.71881103515625,
+              217.8379898071289
+            ],
+            "stage_rss_mib": [
+              620.2421875,
+              624.98828125
+            ],
+            "post_gc_heap_mib": [
+              101.4068603515625,
+              101.40787506103516
+            ]
+          },
+          "pdf-json": {
+            "allocation_mib": [
+              60.622100830078125,
+              60.63166046142578
+            ],
+            "median_ms": [
+              58.7433,
+              61.032000000000004
+            ],
+            "natural_gc_count": [
+              2,
+              2
+            ],
+            "natural_gc_ms": [
+              3,
+              3
+            ],
+            "heap_pool_peak_sum_mib": [
+              215.978271484375,
+              216.01128387451172
+            ],
+            "stage_rss_mib": [
+              623.6015625,
+              625.2265625
+            ],
+            "post_gc_heap_mib": [
+              101.41380310058594,
+              101.41355895996094
+            ]
+          },
+          "pdf-md": {
+            "allocation_mib": [
+              87.79668426513672,
+              87.80748748779297
+            ],
+            "median_ms": [
+              148.99509999999998,
+              152.0882
+            ],
+            "natural_gc_count": [
+              3,
+              3
+            ],
+            "natural_gc_ms": [
+              5,
+              5
+            ],
+            "heap_pool_peak_sum_mib": [
+              217.85276794433594,
+              217.88060760498047
+            ],
+            "stage_rss_mib": [
+              624.4921875,
+              625.28125
+            ],
+            "post_gc_heap_mib": [
+              101.42538452148438,
+              101.42514038085938
+            ]
+          },
+          "pdf-epub": {
+            "allocation_mib": [
+              73.90835571289062,
+              73.91292572021484
+            ],
+            "median_ms": [
+              136.072,
+              153.0056
+            ],
+            "natural_gc_count": [
+              3,
+              3
+            ],
+            "natural_gc_ms": [
+              7,
+              6
+            ],
+            "heap_pool_peak_sum_mib": [
+              218.94512176513672,
+              218.91617584228516
+            ],
+            "stage_rss_mib": [
+              618.6875,
+              624.59375
+            ],
+            "post_gc_heap_mib": [
+              101.63947296142578,
+              101.64068603515625
+            ]
+          },
+          "pdf-azw3": {
+            "allocation_mib": [
+              81.87349700927734,
+              81.89664459228516
+            ],
+            "median_ms": [
+              123.972,
+              142.2161
+            ],
+            "natural_gc_count": [
+              3,
+              3
+            ],
+            "natural_gc_ms": [
+              5,
+              5
+            ],
+            "heap_pool_peak_sum_mib": [
+              217.27586364746094,
+              217.28128814697266
+            ],
+            "stage_rss_mib": [
+              621.8125,
+              624.91015625
+            ],
+            "post_gc_heap_mib": [
+              101.71102905273438,
+              101.7120132446289
+            ]
+          },
+          "pdf-pptx": {
+            "allocation_mib": [
+              84.0350341796875,
+              84.03435516357422
+            ],
+            "median_ms": [
+              98.9451,
+              98.2402
+            ],
+            "natural_gc_count": [
+              3,
+              3
+            ],
+            "natural_gc_ms": [
+              5,
+              5
+            ],
+            "heap_pool_peak_sum_mib": [
+              216.858642578125,
+              217.03433990478516
+            ],
+            "stage_rss_mib": [
+              627.8984375,
+              626.56640625
+            ],
+            "post_gc_heap_mib": [
+              101.77301025390625,
+              101.77458190917969
+            ]
+          },
+          "pdf-odp": {
+            "allocation_mib": [
+              98.44491577148438,
+              98.44586181640625
+            ],
+            "median_ms": [
+              80.2641,
+              89.4478
+            ],
+            "natural_gc_count": [
+              4,
+              4
+            ],
+            "natural_gc_ms": [
+              7,
+              6
+            ],
+            "heap_pool_peak_sum_mib": [
+              216.98490142822266,
+              216.85034942626953
+            ],
+            "stage_rss_mib": [
+              621.56640625,
+              626.87890625
+            ],
+            "post_gc_heap_mib": [
+              101.8106918334961,
+              101.81226348876953
+            ]
+          },
+          "pdf-ppt": {
+            "allocation_mib": [
+              439.1568069458008,
+              438.93094635009766
+            ],
+            "median_ms": [
+              198.8974,
+              192.35569999999998
+            ],
+            "natural_gc_count": [
+              19,
+              19
+            ],
+            "natural_gc_ms": [
+              96,
+              93
+            ],
+            "heap_pool_peak_sum_mib": [
+              235.83455657958984,
+              235.8584442138672
+            ],
+            "stage_rss_mib": [
+              669.14453125,
+              710.26953125
+            ],
+            "post_gc_heap_mib": [
+              104.06339263916016,
+              104.08500671386719
+            ]
+          },
+          "pdf-xlsx": {
+            "allocation_mib": [
+              72.8786392211914,
+              72.87922668457031
+            ],
+            "median_ms": [
+              73.044,
+              86.1965
+            ],
+            "natural_gc_count": [
+              3,
+              3
+            ],
+            "natural_gc_ms": [
+              4,
+              4
+            ],
+            "heap_pool_peak_sum_mib": [
+              216.98131561279297,
+              216.98321533203125
+            ],
+            "stage_rss_mib": [
+              657.6953125,
+              682.8828125
+            ],
+            "post_gc_heap_mib": [
+              102.3792495727539,
+              103.31451416015625
+            ]
+          },
+          "pdf-ods": {
+            "allocation_mib": [
+              73.89659118652344,
+              73.90550994873047
+            ],
+            "median_ms": [
+              69.0631,
+              79.977
+            ],
+            "natural_gc_count": [
+              3,
+              3
+            ],
+            "natural_gc_ms": [
+              4,
+              4
+            ],
+            "heap_pool_peak_sum_mib": [
+              217.54212188720703,
+              217.54318237304688
+            ],
+            "stage_rss_mib": [
+              660.109375,
+              685.1953125
+            ],
+            "post_gc_heap_mib": [
+              103.01156616210938,
+              103.01408386230469
+            ]
+          },
+          "pdf-pdfa2": {
+            "allocation_mib": [
+              9.936187744140625,
+              9.936492919921875
+            ],
+            "median_ms": [
+              31.2313,
+              29.963
+            ],
+            "natural_gc_count": [
+              0,
+              0
+            ],
+            "natural_gc_ms": [
+              0,
+              0
+            ],
+            "heap_pool_peak_sum_mib": [
+              154.23509979248047,
+              154.15840911865234
+            ],
+            "stage_rss_mib": [
+              665.56640625,
+              689.03515625
+            ],
+            "post_gc_heap_mib": [
+              103.59701538085938,
+              103.60014343261719
+            ]
+          },
+          "fodt-pdf": {
+            "allocation_mib": [
+              79.81520080566406,
+              79.71792602539062
+            ],
+            "median_ms": [
+              154.19240000000002,
+              128.04299999999998
+            ],
+            "natural_gc_count": [
+              3,
+              3
+            ],
+            "natural_gc_ms": [
+              7,
+              6
+            ],
+            "heap_pool_peak_sum_mib": [
+              223.85943603515625,
+              223.81388092041016
+            ],
+            "stage_rss_mib": [
+              684.3984375,
+              697.30078125
+            ],
+            "post_gc_heap_mib": [
+              103.58949279785156,
+              103.59163665771484
+            ]
+          },
+          "xml-pdf": {
+            "allocation_mib": [
+              79.60591888427734,
+              79.48155975341797
+            ],
+            "median_ms": [
+              72.6645,
+              77.4041
+            ],
+            "natural_gc_count": [
+              3,
+              3
+            ],
+            "natural_gc_ms": [
+              4,
+              6
+            ],
+            "heap_pool_peak_sum_mib": [
+              224.09706115722656,
+              224.09854125976562
+            ],
+            "stage_rss_mib": [
+              667.62890625,
+              682.08203125
+            ],
+            "post_gc_heap_mib": [
+              103.70418548583984,
+              103.70511627197266
+            ]
+          },
+          "epub-pdf": {
+            "allocation_mib": [
+              120.75924682617188,
+              120.64674377441406
+            ],
+            "median_ms": [
+              169.2496,
+              161.5823
+            ],
+            "natural_gc_count": [
+              5,
+              5
+            ],
+            "natural_gc_ms": [
+              11,
+              11
+            ],
+            "heap_pool_peak_sum_mib": [
+              218.47672271728516,
+              218.47663116455078
+            ],
+            "stage_rss_mib": [
+              681.984375,
+              690.328125
+            ],
+            "post_gc_heap_mib": [
+              103.66706085205078,
+              103.66844940185547
+            ]
+          },
+          "azw3-pdf": {
+            "allocation_mib": [
+              133.33128356933594,
+              133.2420425415039
+            ],
+            "median_ms": [
+              188.4102,
+              204.6918
+            ],
+            "natural_gc_count": [
+              5,
+              5
+            ],
+            "natural_gc_ms": [
+              11,
+              10
+            ],
+            "heap_pool_peak_sum_mib": [
+              218.8194122314453,
+              218.8253631591797
+            ],
+            "stage_rss_mib": [
+              684.01171875,
+              693.90234375
+            ],
+            "post_gc_heap_mib": [
+              103.81212615966797,
+              103.81356811523438
+            ]
+          },
+          "json-pdf": {
+            "allocation_mib": [
+              32.61412048339844,
+              32.521240234375
+            ],
+            "median_ms": [
+              55.6708,
+              62.1676
+            ],
+            "natural_gc_count": [
+              1,
+              1
+            ],
+            "natural_gc_ms": [
+              3,
+              4
+            ],
+            "heap_pool_peak_sum_mib": [
+              222.3401870727539,
+              222.3280029296875
+            ],
+            "stage_rss_mib": [
+              681.140625,
+              669.74609375
+            ],
+            "post_gc_heap_mib": [
+              104.81881713867188,
+              104.82025909423828
+            ]
+          },
+          "csv-pdf": {
+            "allocation_mib": [
+              27.79876708984375,
+              27.816810607910156
+            ],
+            "median_ms": [
+              56.1706,
+              52.65389999999999
+            ],
+            "natural_gc_count": [
+              1,
+              1
+            ],
+            "natural_gc_ms": [
+              4,
+              0
+            ],
+            "heap_pool_peak_sum_mib": [
+              218.4065933227539,
+              215.73068237304688
+            ],
+            "stage_rss_mib": [
+              664.4921875,
+              677.6328125
+            ],
+            "post_gc_heap_mib": [
+              104.00909423828125,
+              103.92021179199219
+            ]
+          },
+          "tsv-pdf": {
+            "allocation_mib": [
+              27.686294555664062,
+              27.669898986816406
+            ],
+            "median_ms": [
+              43.9163,
+              43.8589
+            ],
+            "natural_gc_count": [
+              1,
+              1
+            ],
+            "natural_gc_ms": [
+              0,
+              1
+            ],
+            "heap_pool_peak_sum_mib": [
+              215.97975158691406,
+              215.89047241210938
+            ],
+            "stage_rss_mib": [
+              664.6328125,
+              675.8203125
+            ],
+            "post_gc_heap_mib": [
+              103.79456329345703,
+              103.79600524902344
+            ]
+          },
+          "xlsb-pdf": {
+            "allocation_mib": [
+              3.7487030029296875,
+              3.7502059936523438
+            ],
+            "median_ms": [
+              9.7642,
+              9.7717
+            ],
+            "natural_gc_count": [
+              0,
+              0
+            ],
+            "natural_gc_ms": [
+              0,
+              0
+            ],
+            "heap_pool_peak_sum_mib": [
+              130.30850219726562,
+              130.30724334716797
+            ],
+            "stage_rss_mib": [
+              665.2421875,
+              676.0859375
+            ],
+            "post_gc_heap_mib": [
+              107.13944244384766,
+              107.14088439941406
+            ]
+          },
+          "slk-pdf": {
+            "allocation_mib": [
+              24.170814514160156,
+              24.183143615722656
+            ],
+            "median_ms": [
+              39.4566,
+              42.7742
+            ],
+            "natural_gc_count": [
+              1,
+              1
+            ],
+            "natural_gc_ms": [
+              2,
+              2
+            ],
+            "heap_pool_peak_sum_mib": [
+              220.58617401123047,
+              220.30796813964844
+            ],
+            "stage_rss_mib": [
+              666.5078125,
+              678.4609375
+            ],
+            "post_gc_heap_mib": [
+              107.06883239746094,
+              107.07017517089844
+            ]
+          },
+          "dif-pdf": {
+            "allocation_mib": [
+              21.282363891601562,
+              21.284622192382812
+            ],
+            "median_ms": [
+              37.0824,
+              43.9706
+            ],
+            "natural_gc_count": [
+              1,
+              0
+            ],
+            "natural_gc_ms": [
+              1,
+              0
+            ],
+            "heap_pool_peak_sum_mib": [
+              220.07596588134766,
+              216.6215591430664
+            ],
+            "stage_rss_mib": [
+              671.43359375,
+              680.578125
+            ],
+            "post_gc_heap_mib": [
+              107.20106506347656,
+              107.29083251953125
+            ]
+          },
+          "dbf-pdf": {
+            "allocation_mib": [
+              22.758926391601562,
+              22.722618103027344
+            ],
+            "median_ms": [
+              43.1234,
+              41.295
+            ],
+            "natural_gc_count": [
+              1,
+              1
+            ],
+            "natural_gc_ms": [
+              4,
+              3
+            ],
+            "heap_pool_peak_sum_mib": [
+              221.63756561279297,
+              221.72722625732422
+            ],
+            "stage_rss_mib": [
+              671.01953125,
+              678.4453125
+            ],
+            "post_gc_heap_mib": [
+              107.0733642578125,
+              107.07470703125
+            ]
+          },
+          "pdf-doc": {
+            "allocation_mib": [
+              96.81961059570312,
+              96.8212890625
+            ],
+            "median_ms": [
+              81.8214,
+              82.2306
+            ],
+            "natural_gc_count": [
+              4,
+              4
+            ],
+            "natural_gc_ms": [
+              8,
+              6
+            ],
+            "heap_pool_peak_sum_mib": [
+              223.25371551513672,
+              223.25505828857422
+            ],
+            "stage_rss_mib": [
+              669.70703125,
+              680.62890625
+            ],
+            "post_gc_heap_mib": [
+              107.07527923583984,
+              107.07662200927734
+            ]
+          },
+          "manual-100p-docx": {
+            "allocation_mib": [
+              861.7421760559082,
+              861.7936820983887
+            ],
+            "median_ms": [
+              601.16755,
+              721.5322
+            ],
+            "natural_gc_count": [
+              61,
+              61
+            ],
+            "natural_gc_ms": [
+              214,
+              225
+            ],
+            "heap_pool_peak_sum_mib": [
+              325.3444366455078,
+              325.3264389038086
+            ],
+            "stage_rss_mib": [
+              683.8359375,
+              692.52734375
+            ],
+            "post_gc_heap_mib": [
+              107.08468627929688,
+              107.08602905273438
+            ]
+          },
+          "manual-100p-pptx": {
+            "allocation_mib": [
+              1214.8712463378906,
+              1214.9607849121094
+            ],
+            "median_ms": [
+              811.40135,
+              972.3154499999999
+            ],
+            "natural_gc_count": [
+              87,
+              87
+            ],
+            "natural_gc_ms": [
+              229,
+              253
+            ],
+            "heap_pool_peak_sum_mib": [
+              329.8538513183594,
+              328.6816101074219
+            ],
+            "stage_rss_mib": [
+              673.48046875,
+              672.4140625
+            ],
+            "post_gc_heap_mib": [
+              118.18379974365234,
+              118.16771697998047
+            ]
+          },
+          "manual-100p-xlsx": {
+            "allocation_mib": [
+              845.2132568359375,
+              845.192008972168
+            ],
+            "median_ms": [
+              623.4515,
+              726.4902
+            ],
+            "natural_gc_count": [
+              60,
+              60
+            ],
+            "natural_gc_ms": [
+              229,
+              251
+            ],
+            "heap_pool_peak_sum_mib": [
+              336.2854309082031,
+              337.6985778808594
+            ],
+            "stage_rss_mib": [
+              674.41015625,
+              680.3984375
+            ],
+            "post_gc_heap_mib": [
+              107.07718658447266,
+              107.07855987548828
+            ]
+          },
+          "illustrated-20p-docx": {
+            "allocation_mib": [
+              50.27972412109375,
+              50.304779052734375
+            ],
+            "median_ms": [
+              206.73475000000002,
+              224.42620000000002
+            ],
+            "natural_gc_count": [
+              3,
+              3
+            ],
+            "natural_gc_ms": [
+              4,
+              5
+            ],
+            "heap_pool_peak_sum_mib": [
+              225.42993927001953,
+              225.4400634765625
+            ],
+            "stage_rss_mib": [
+              679.43359375,
+              687.109375
+            ],
+            "post_gc_heap_mib": [
+              107.09886932373047,
+              107.10111236572266
+            ]
+          },
+          "illustrated-20p-pptx": {
+            "allocation_mib": [
+              61.1855354309082,
+              61.21577835083008
+            ],
+            "median_ms": [
+              212.016,
+              222.57309999999998
+            ],
+            "natural_gc_count": [
+              4,
+              4
+            ],
+            "natural_gc_ms": [
+              7,
+              7
+            ],
+            "heap_pool_peak_sum_mib": [
+              225.51505279541016,
+              225.3020248413086
+            ],
+            "stage_rss_mib": [
+              677.02734375,
+              688.08203125
+            ],
+            "post_gc_heap_mib": [
+              107.08780670166016,
+              107.0899887084961
+            ]
+          },
+          "illustrated-20p-xlsx": {
+            "allocation_mib": [
+              36.718265533447266,
+              36.73074722290039
+            ],
+            "median_ms": [
+              65.09445,
+              65.81215
+            ],
+            "natural_gc_count": [
+              2,
+              2
+            ],
+            "natural_gc_ms": [
+              2,
+              2
+            ],
+            "heap_pool_peak_sum_mib": [
+              223.82362365722656,
+              223.66895294189453
+            ],
+            "stage_rss_mib": [
+              638.57421875,
+              684.4140625
+            ],
+            "post_gc_heap_mib": [
+              107.10111999511719,
+              107.10330200195312
+            ]
+          },
+          "ledger-8000-pdf": {
+            "allocation_mib": [
+              214.46463012695312,
+              214.50884246826172
+            ],
+            "median_ms": [
+              372.3324,
+              292.88355
+            ],
+            "natural_gc_count": [
+              15,
+              15
+            ],
+            "natural_gc_ms": [
+              263,
+              204
+            ],
+            "heap_pool_peak_sum_mib": [
+              259.6523742675781,
+              259.6568069458008
+            ],
+            "stage_rss_mib": [
+              672.03125,
+              687.90625
+            ],
+            "post_gc_heap_mib": [
+              107.12508392333984,
+              107.12738037109375
+            ]
+          },
+          "report-docx-pdf": {
+            "allocation_mib": [
+              15.969619750976562,
+              15.876876831054688
+            ],
+            "median_ms": [
+              26.2674,
+              27.5895
+            ],
+            "natural_gc_count": [
+              1,
+              1
+            ],
+            "natural_gc_ms": [
+              4,
+              3
+            ],
+            "heap_pool_peak_sum_mib": [
+              221.19607543945312,
+              221.18804931640625
+            ],
+            "stage_rss_mib": [
+              669.51953125,
+              652.91015625
+            ],
+            "post_gc_heap_mib": [
+              107.24665069580078,
+              107.24894714355469
+            ]
+          },
+          "slides-pptx-pdf": {
+            "allocation_mib": [
+              7.395328521728516,
+              7.397747039794922
+            ],
+            "median_ms": [
+              26.0591,
+              25.73115
+            ],
+            "natural_gc_count": [
+              0,
+              0
+            ],
+            "natural_gc_ms": [
+              0,
+              0
+            ],
+            "heap_pool_peak_sum_mib": [
+              171.2982177734375,
+              172.41195678710938
+            ],
+            "stage_rss_mib": [
+              673.38671875,
+              665.61328125
+            ],
+            "post_gc_heap_mib": [
+              107.15904235839844,
+              107.16120910644531
+            ]
+          },
+          "docx-loc-d02_security_policy_long": {
+            "allocation_mib": [
+              8.211795806884766,
+              8.241912841796875
+            ],
+            "median_ms": [
+              27.630000000000003,
+              31.282199999999996
+            ],
+            "natural_gc_count": [
+              0,
+              0
+            ],
+            "natural_gc_ms": [
+              0,
+              0
+            ],
+            "heap_pool_peak_sum_mib": [
+              182.29742431640625,
+              182.45989227294922
+            ],
+            "stage_rss_mib": [
+              684.671875,
+              681.8359375
+            ],
+            "post_gc_heap_mib": [
+              109.8944320678711,
+              109.8971939086914
+            ]
+          },
+          "pptx-syn-p08_mixed": {
+            "allocation_mib": [
+              19.49114227294922,
+              19.49193572998047
+            ],
+            "median_ms": [
+              200.41205000000002,
+              193.64355
+            ],
+            "natural_gc_count": [
+              1,
+              1
+            ],
+            "natural_gc_ms": [
+              2,
+              2
+            ],
+            "heap_pool_peak_sum_mib": [
+              225.4110870361328,
+              226.62545013427734
+            ],
+            "stage_rss_mib": [
+              687.7734375,
+              685.671875
+            ],
+            "post_gc_heap_mib": [
+              111.46222686767578,
+              111.46405029296875
+            ]
+          },
+          "report-rtf-pdf": {
+            "allocation_mib": [
+              71.38948059082031,
+              71.29891967773438
+            ],
+            "median_ms": [
+              149.76749999999998,
+              149.09525000000002
+            ],
+            "natural_gc_count": [
+              5,
+              5
+            ],
+            "natural_gc_ms": [
+              8,
+              8
+            ],
+            "heap_pool_peak_sum_mib": [
+              226.32160186767578,
+              226.27003479003906
+            ],
+            "stage_rss_mib": [
+              674.75390625,
+              686.40625
+            ],
+            "post_gc_heap_mib": [
+              111.57820892333984,
+              111.5799560546875
+            ]
+          },
+          "illustrated-rtf-pdf": {
+            "allocation_mib": [
+              31.71477508544922,
+              31.738365173339844
+            ],
+            "median_ms": [
+              128.89440000000002,
+              136.85565
+            ],
+            "natural_gc_count": [
+              2,
+              2
+            ],
+            "natural_gc_ms": [
+              2,
+              2
+            ],
+            "heap_pool_peak_sum_mib": [
+              227.01277923583984,
+              227.13004302978516
+            ],
+            "stage_rss_mib": [
+              676.375,
+              684.3984375
+            ],
+            "post_gc_heap_mib": [
+              111.47701263427734,
+              111.478759765625
+            ]
+          },
+          "manual-rtf-pdf": {
+            "allocation_mib": [
+              143.88527297973633,
+              144.30553436279297
+            ],
+            "median_ms": [
+              187.42340000000002,
+              194.48395000000002
+            ],
+            "natural_gc_count": [
+              10,
+              10
+            ],
+            "natural_gc_ms": [
+              48,
+              50
+            ],
+            "heap_pool_peak_sum_mib": [
+              233.52627563476562,
+              233.44656372070312
+            ],
+            "stage_rss_mib": [
+              684.33984375,
+              690.19140625
+            ],
+            "post_gc_heap_mib": [
+              111.6058120727539,
+              111.6082992553711
+            ]
+          }
+        },
+        "soak": [
+          {
+            "retained_heap_mib": [
+              125.40071868896484,
+              111.5426254272461,
+              122.51976013183594,
+              124.31050872802734,
+              125.546630859375,
+              111.6126708984375,
+              123.60057830810547,
+              124.05892181396484,
+              124.71990966796875
+            ],
+            "nonheap_mib": [
+              102.57518768310547,
+              99.94246673583984,
+              100.11724090576172,
+              100.29425811767578,
+              97.81684112548828,
+              98.02496337890625,
+              98.05068969726562,
+              97.80650329589844,
+              97.96150207519531
+            ],
+            "direct_mapped_bytes": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "threads": [
+              12,
+              12,
+              12,
+              12,
+              12,
+              12,
+              12,
+              12,
+              12
+            ],
+            "late_heap_growth_mib": -0.82672119140625,
+            "late_half_median_heap_mib": 124.05892181396484,
+            "finished_heap_mib": 111.61762237548828,
+            "finished_threads": 8,
+            "allocation_mib_per_batch": 442.3536262512207,
+            "median_batch_ms": 237.98865000000004,
+            "natural_gc_count": 125,
+            "natural_gc_ms": 494
+          },
+          {
+            "retained_heap_mib": [
+              124.18840026855469,
+              111.6319351196289,
+              124.55809783935547,
+              126.3386459350586,
+              126.41107177734375,
+              112.52983093261719,
+              118.02999114990234,
+              125.24518585205078,
+              125.9378662109375
+            ],
+            "nonheap_mib": [
+              99.55935668945312,
+              96.65675354003906,
+              96.91475677490234,
+              96.38790130615234,
+              96.5122299194336,
+              96.67675018310547,
+              96.8301773071289,
+              96.94255828857422,
+              97.1199951171875
+            ],
+            "direct_mapped_bytes": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "threads": [
+              12,
+              12,
+              12,
+              12,
+              12,
+              12,
+              12,
+              12,
+              12
+            ],
+            "late_heap_growth_mib": -0.47320556640625,
+            "late_half_median_heap_mib": 125.24518585205078,
+            "finished_heap_mib": 112.5343017578125,
+            "finished_threads": 8,
+            "allocation_mib_per_batch": 442.1967239379883,
+            "median_batch_ms": 238.8488,
+            "natural_gc_count": 124,
+            "natural_gc_ms": 490
+          }
+        ],
+        "peak_rss_mib": [
+          688.1328125,
+          711.8828125
+        ],
+        "peak_private_commit_mib": [
+          676.27734375,
+          702.66015625
+        ],
+        "case_workload_allocated_mib": [
+          42900.48678588867,
+          42805.32988739014
+        ],
+        "case_workload_natural_gc_count": [
+          405,
+          404
+        ],
+        "case_workload_natural_gc_ms": [
+          1464,
+          1456
+        ]
+      },
+      "fixed": {
+        "forks": 2,
+        "cases": {
+          "docx-pdf": {
+            "allocation_mib": [
+              17.00621795654297,
+              17.016021728515625
+            ],
+            "median_ms": [
+              113.3589,
+              111.27629999999999
+            ],
+            "natural_gc_count": [
+              2,
+              2
+            ],
+            "natural_gc_ms": [
+              2,
+              2
+            ],
+            "heap_pool_peak_sum_mib": [
+              53.50138854980469,
+              52.999916076660156
+            ],
+            "stage_rss_mib": [
+              189.60546875,
+              184.6875
+            ],
+            "post_gc_heap_mib": [
+              18.66564178466797,
+              18.17792510986328
+            ]
+          },
+          "odt-pdf": {
+            "allocation_mib": [
+              82.02611541748047,
+              81.97393035888672
+            ],
+            "median_ms": [
+              116.5207,
+              130.6697
+            ],
+            "natural_gc_count": [
+              12,
+              12
+            ],
+            "natural_gc_ms": [
+              27,
+              30
+            ],
+            "heap_pool_peak_sum_mib": [
+              76.6087875366211,
+              76.31977844238281
+            ],
+            "stage_rss_mib": [
+              213.0546875,
+              216.99609375
+            ],
+            "post_gc_heap_mib": [
+              20.901527404785156,
+              20.898605346679688
+            ]
+          },
+          "doc-pdf": {
+            "allocation_mib": [
+              70.4769287109375,
+              70.47111511230469
+            ],
+            "median_ms": [
+              131.2206,
+              149.32219999999998
+            ],
+            "natural_gc_count": [
+              10,
+              10
+            ],
+            "natural_gc_ms": [
+              19,
+              18
+            ],
+            "heap_pool_peak_sum_mib": [
+              68.8958740234375,
+              68.94639587402344
+            ],
+            "stage_rss_mib": [
+              225.09375,
+              230.00390625
+            ],
+            "post_gc_heap_mib": [
+              28.553138732910156,
+              27.169708251953125
+            ]
+          },
+          "rtf-pdf": {
+            "allocation_mib": [
+              71.33881378173828,
+              71.33170318603516
+            ],
+            "median_ms": [
+              165.7288,
+              168.82639999999998
+            ],
+            "natural_gc_count": [
+              10,
+              10
+            ],
+            "natural_gc_ms": [
+              16,
+              16
+            ],
+            "heap_pool_peak_sum_mib": [
+              68.96744537353516,
+              68.97295379638672
+            ],
+            "stage_rss_mib": [
+              215.89453125,
+              220.53125
+            ],
+            "post_gc_heap_mib": [
+              24.45386505126953,
+              24.452804565429688
+            ]
+          },
+          "txt-pdf": {
+            "allocation_mib": [
+              3.8951568603515625,
+              3.892974853515625
+            ],
+            "median_ms": [
+              20.946099999999998,
+              23.8855
+            ],
+            "natural_gc_count": [
+              0,
+              0
+            ],
+            "natural_gc_ms": [
+              0,
+              0
+            ],
+            "heap_pool_peak_sum_mib": [
+              46.597816467285156,
+              46.93767547607422
+            ],
+            "stage_rss_mib": [
+              219.40234375,
+              221.85546875
+            ],
+            "post_gc_heap_mib": [
+              25.687210083007812,
+              25.696075439453125
+            ]
+          },
+          "html-pdf": {
+            "allocation_mib": [
+              13.285118103027344,
+              13.326820373535156
+            ],
+            "median_ms": [
+              72.029,
+              52.6106
+            ],
+            "natural_gc_count": [
+              1,
+              1
+            ],
+            "natural_gc_ms": [
+              1,
+              1
+            ],
+            "heap_pool_peak_sum_mib": [
+              74.69586944580078,
+              74.70238494873047
+            ],
+            "stage_rss_mib": [
+              222.63671875,
+              225.97265625
+            ],
+            "post_gc_heap_mib": [
+              39.358314514160156,
+              39.35728454589844
+            ]
+          },
+          "xlsx-pdf": {
+            "allocation_mib": [
+              34.51507568359375,
+              34.70451354980469
+            ],
+            "median_ms": [
+              77.999,
+              102.358
+            ],
+            "natural_gc_count": [
+              5,
+              5
+            ],
+            "natural_gc_ms": [
+              8,
+              13
+            ],
+            "heap_pool_peak_sum_mib": [
+              83.90049743652344,
+              83.90026092529297
+            ],
+            "stage_rss_mib": [
+              248.640625,
+              253.47265625
+            ],
+            "post_gc_heap_mib": [
+              48.022674560546875,
+              48.1319580078125
+            ]
+          },
+          "xls-pdf": {
+            "allocation_mib": [
+              51.02686309814453,
+              51.32383728027344
+            ],
+            "median_ms": [
+              102.52650000000001,
+              102.1485
+            ],
+            "natural_gc_count": [
+              7,
+              7
+            ],
+            "natural_gc_ms": [
+              12,
+              16
+            ],
+            "heap_pool_peak_sum_mib": [
+              90.13375854492188,
+              90.38834381103516
+            ],
+            "stage_rss_mib": [
+              257.99609375,
+              257.46875
+            ],
+            "post_gc_heap_mib": [
+              51.115928649902344,
+              51.11412811279297
+            ]
+          },
+          "ods-pdf": {
+            "allocation_mib": [
+              73.1031723022461,
+              73.14940643310547
+            ],
+            "median_ms": [
+              116.7035,
+              132.9992
+            ],
+            "natural_gc_count": [
+              10,
+              10
+            ],
+            "natural_gc_ms": [
+              81,
+              88
+            ],
+            "heap_pool_peak_sum_mib": [
+              141.08250427246094,
+              140.35263061523438
+            ],
+            "stage_rss_mib": [
+              301.109375,
+              301.140625
+            ],
+            "post_gc_heap_mib": [
+              52.29833984375,
+              52.33753967285156
+            ]
+          },
+          "pptx-pdf": {
+            "allocation_mib": [
+              7.8026580810546875,
+              7.802146911621094
+            ],
+            "median_ms": [
+              62.90659999999999,
+              54.7582
+            ],
+            "natural_gc_count": [
+              0,
+              0
+            ],
+            "natural_gc_ms": [
+              0,
+              0
+            ],
+            "heap_pool_peak_sum_mib": [
+              94.81511688232422,
+              95.2989730834961
+            ],
+            "stage_rss_mib": [
+              326.984375,
+              327.296875
+            ],
+            "post_gc_heap_mib": [
+              53.69232940673828,
+              53.689414978027344
+            ]
+          },
+          "ppt-pdf": {
+            "allocation_mib": [
+              88.61409759521484,
+              88.6134033203125
+            ],
+            "median_ms": [
+              177.3639,
+              177.43519999999998
+            ],
+            "natural_gc_count": [
+              6,
+              6
+            ],
+            "natural_gc_ms": [
+              44,
+              39
+            ],
+            "heap_pool_peak_sum_mib": [
+              362.0523681640625,
+              358.9444808959961
+            ],
+            "stage_rss_mib": [
+              560.78125,
+              559.0390625
+            ],
+            "post_gc_heap_mib": [
+              134.77387237548828,
+              134.77117156982422
+            ]
+          },
+          "odp-pdf": {
+            "allocation_mib": [
+              17.80817413330078,
+              17.81114959716797
+            ],
+            "median_ms": [
+              74.89,
+              80.59389999999999
+            ],
+            "natural_gc_count": [
+              0,
+              0
+            ],
+            "natural_gc_ms": [
+              0,
+              0
+            ],
+            "heap_pool_peak_sum_mib": [
+              193.1196060180664,
+              193.6954116821289
+            ],
+            "stage_rss_mib": [
+              563.46484375,
+              563.8203125
+            ],
+            "post_gc_heap_mib": [
+              90.67505645751953,
+              90.67320251464844
+            ]
+          },
+          "pdf-docx": {
+            "allocation_mib": [
+              63.31273651123047,
+              62.70215606689453
+            ],
+            "median_ms": [
+              291.3454,
+              284.1476
+            ],
+            "natural_gc_count": [
+              2,
+              2
+            ],
+            "natural_gc_ms": [
+              6,
+              6
+            ],
+            "heap_pool_peak_sum_mib": [
+              216.91578674316406,
+              215.82588958740234
+            ],
+            "stage_rss_mib": [
+              626.27734375,
+              621.53125
+            ],
+            "post_gc_heap_mib": [
+              101.34418487548828,
+              101.32823944091797
+            ]
+          },
+          "pdf-odt": {
+            "allocation_mib": [
+              66.1471939086914,
+              65.36670684814453
+            ],
+            "median_ms": [
+              162.3028,
+              110.72940000000001
+            ],
+            "natural_gc_count": [
+              3,
+              2
+            ],
+            "natural_gc_ms": [
+              4,
+              4
+            ],
+            "heap_pool_peak_sum_mib": [
+              216.31674194335938,
+              215.04557037353516
+            ],
+            "stage_rss_mib": [
+              622.140625,
+              626.77734375
+            ],
+            "post_gc_heap_mib": [
+              101.3382797241211,
+              101.33584594726562
+            ]
+          },
+          "pdf-fodt": {
+            "allocation_mib": [
+              93.87776184082031,
+              93.12793731689453
+            ],
+            "median_ms": [
+              104.6644,
+              100.7359
+            ],
+            "natural_gc_count": [
+              4,
+              4
+            ],
+            "natural_gc_ms": [
+              8,
+              7
+            ],
+            "heap_pool_peak_sum_mib": [
+              217.77594757080078,
+              216.67013549804688
+            ],
+            "stage_rss_mib": [
+              626.265625,
+              620.39453125
+            ],
+            "post_gc_heap_mib": [
+              101.34510803222656,
+              101.34522247314453
+            ]
+          },
+          "pdf-xml": {
+            "allocation_mib": [
+              93.72433471679688,
+              92.91162109375
+            ],
+            "median_ms": [
+              84.23509999999999,
+              90.9482
+            ],
+            "natural_gc_count": [
+              4,
+              4
+            ],
+            "natural_gc_ms": [
+              7,
+              6
+            ],
+            "heap_pool_peak_sum_mib": [
+              217.74859619140625,
+              216.66997528076172
+            ],
+            "stage_rss_mib": [
+              628.97265625,
+              631.125
+            ],
+            "post_gc_heap_mib": [
+              101.344970703125,
+              101.34386444091797
+            ]
+          },
+          "pdf-rtf": {
+            "allocation_mib": [
+              97.6738510131836,
+              96.91411590576172
+            ],
+            "median_ms": [
+              84.1935,
+              77.6549
+            ],
+            "natural_gc_count": [
+              4,
+              4
+            ],
+            "natural_gc_ms": [
+              6,
+              5
+            ],
+            "heap_pool_peak_sum_mib": [
+              217.64667510986328,
+              216.57083129882812
+            ],
+            "stage_rss_mib": [
+              621.3671875,
+              620.203125
+            ],
+            "post_gc_heap_mib": [
+              101.37211608886719,
+              101.3716812133789
+            ]
+          },
+          "pdf-txt": {
+            "allocation_mib": [
+              58.52433776855469,
+              57.742950439453125
+            ],
+            "median_ms": [
+              56.7235,
+              51.0374
+            ],
+            "natural_gc_count": [
+              2,
+              2
+            ],
+            "natural_gc_ms": [
+              3,
+              4
+            ],
+            "heap_pool_peak_sum_mib": [
+              215.35084533691406,
+              214.18777465820312
+            ],
+            "stage_rss_mib": [
+              627.60546875,
+              627.3203125
+            ],
+            "post_gc_heap_mib": [
+              101.37590789794922,
+              102.8175277709961
+            ]
+          },
+          "pdf-html": {
+            "allocation_mib": [
+              95.79265594482422,
+              95.0090560913086
+            ],
+            "median_ms": [
+              101.3072,
+              98.80890000000001
+            ],
+            "natural_gc_count": [
+              4,
+              4
+            ],
+            "natural_gc_ms": [
+              5,
+              5
+            ],
+            "heap_pool_peak_sum_mib": [
+              217.6088638305664,
+              216.3475570678711
+            ],
+            "stage_rss_mib": [
+              618.84375,
+              623.5703125
+            ],
+            "post_gc_heap_mib": [
+              101.40571594238281,
+              101.40660858154297
+            ]
+          },
+          "pdf-json": {
+            "allocation_mib": [
+              61.402565002441406,
+              60.619361877441406
+            ],
+            "median_ms": [
+              52.8736,
+              54.474799999999995
+            ],
+            "natural_gc_count": [
+              2,
+              2
+            ],
+            "natural_gc_ms": [
+              3,
+              2
+            ],
+            "heap_pool_peak_sum_mib": [
+              216.41875457763672,
+              215.08172607421875
+            ],
+            "stage_rss_mib": [
+              622.73828125,
+              623.87890625
+            ],
+            "post_gc_heap_mib": [
+              101.4126205444336,
+              101.41195678710938
+            ]
+          },
+          "pdf-md": {
+            "allocation_mib": [
+              88.57719421386719,
+              87.79501342773438
+            ],
+            "median_ms": [
+              144.44660000000002,
+              147.5409
+            ],
+            "natural_gc_count": [
+              4,
+              4
+            ],
+            "natural_gc_ms": [
+              5,
+              5
+            ],
+            "heap_pool_peak_sum_mib": [
+              217.321044921875,
+              216.1226348876953
+            ],
+            "stage_rss_mib": [
+              622.73828125,
+              626.25390625
+            ],
+            "post_gc_heap_mib": [
+              101.4245834350586,
+              101.42353820800781
+            ]
+          },
+          "pdf-epub": {
+            "allocation_mib": [
+              74.62984466552734,
+              73.8931655883789
+            ],
+            "median_ms": [
+              148.3227,
+              147.7741
+            ],
+            "natural_gc_count": [
+              3,
+              3
+            ],
+            "natural_gc_ms": [
+              6,
+              6
+            ],
+            "heap_pool_peak_sum_mib": [
+              219.23009490966797,
+              217.79368591308594
+            ],
+            "stage_rss_mib": [
+              623.921875,
+              620.98828125
+            ],
+            "post_gc_heap_mib": [
+              101.63980102539062,
+              101.6468505859375
+            ]
+          },
+          "pdf-azw3": {
+            "allocation_mib": [
+              82.61132049560547,
+              81.86588287353516
+            ],
+            "median_ms": [
+              122.9657,
+              129.21540000000002
+            ],
+            "natural_gc_count": [
+              3,
+              3
+            ],
+            "natural_gc_ms": [
+              5,
+              4
+            ],
+            "heap_pool_peak_sum_mib": [
+              217.3098373413086,
+              215.96195220947266
+            ],
+            "stage_rss_mib": [
+              617.74609375,
+              615.7734375
+            ],
+            "post_gc_heap_mib": [
+              101.71121978759766,
+              101.71846771240234
+            ]
+          },
+          "pdf-pptx": {
+            "allocation_mib": [
+              85.05374908447266,
+              84.02216339111328
+            ],
+            "median_ms": [
+              91.7471,
+              98.4281
+            ],
+            "natural_gc_count": [
+              3,
+              3
+            ],
+            "natural_gc_ms": [
+              5,
+              4
+            ],
+            "heap_pool_peak_sum_mib": [
+              216.87279510498047,
+              215.55877685546875
+            ],
+            "stage_rss_mib": [
+              625.0546875,
+              620.44921875
+            ],
+            "post_gc_heap_mib": [
+              101.77320098876953,
+              101.77217102050781
+            ]
+          },
+          "pdf-odp": {
+            "allocation_mib": [
+              99.46434020996094,
+              98.44419860839844
+            ],
+            "median_ms": [
+              76.85640000000001,
+              95.3007
+            ],
+            "natural_gc_count": [
+              4,
+              4
+            ],
+            "natural_gc_ms": [
+              5,
+              9
+            ],
+            "heap_pool_peak_sum_mib": [
+              216.8584213256836,
+              215.67186737060547
+            ],
+            "stage_rss_mib": [
+              625.875,
+              621.5859375
+            ],
+            "post_gc_heap_mib": [
+              101.81088256835938,
+              101.80985260009766
+            ]
+          },
+          "pdf-ppt": {
+            "allocation_mib": [
+              440.1763381958008,
+              439.15196990966797
+            ],
+            "median_ms": [
+              192.5214,
+              178.0639
+            ],
+            "natural_gc_count": [
+              19,
+              19
+            ],
+            "natural_gc_ms": [
+              93,
+              98
+            ],
+            "heap_pool_peak_sum_mib": [
+              235.81218719482422,
+              233.70252227783203
+            ],
+            "stage_rss_mib": [
+              668.84765625,
+              707.8359375
+            ],
+            "post_gc_heap_mib": [
+              104.06617736816406,
+              104.05599975585938
+            ]
+          },
+          "pdf-xlsx": {
+            "allocation_mib": [
+              73.2580795288086,
+              72.87593078613281
+            ],
+            "median_ms": [
+              80.9623,
+              76.8668
+            ],
+            "natural_gc_count": [
+              3,
+              3
+            ],
+            "natural_gc_ms": [
+              5,
+              6
+            ],
+            "heap_pool_peak_sum_mib": [
+              217.59365844726562,
+              216.3647003173828
+            ],
+            "stage_rss_mib": [
+              663.078125,
+              682.5625
+            ],
+            "post_gc_heap_mib": [
+              102.38096618652344,
+              103.25987243652344
+            ]
+          },
+          "pdf-ods": {
+            "allocation_mib": [
+              74.32562255859375,
+              73.90293884277344
+            ],
+            "median_ms": [
+              78.3779,
+              71.1586
+            ],
+            "natural_gc_count": [
+              3,
+              3
+            ],
+            "natural_gc_ms": [
+              5,
+              4
+            ],
+            "heap_pool_peak_sum_mib": [
+              217.1730728149414,
+              216.4446563720703
+            ],
+            "stage_rss_mib": [
+              662.625,
+              681.5078125
+            ],
+            "post_gc_heap_mib": [
+              103.01565551757812,
+              102.09660339355469
+            ]
+          },
+          "pdf-pdfa2": {
+            "allocation_mib": [
+              9.934616088867188,
+              9.936195373535156
+            ],
+            "median_ms": [
+              30.3132,
+              28.2989
+            ],
+            "natural_gc_count": [
+              0,
+              0
+            ],
+            "natural_gc_ms": [
+              0,
+              0
+            ],
+            "heap_pool_peak_sum_mib": [
+              154.3119888305664,
+              153.6535415649414
+            ],
+            "stage_rss_mib": [
+              668.7890625,
+              688.359375
+            ],
+            "post_gc_heap_mib": [
+              103.59797668457031,
+              103.59480285644531
+            ]
+          },
+          "fodt-pdf": {
+            "allocation_mib": [
+              79.58433532714844,
+              79.79913330078125
+            ],
+            "median_ms": [
+              133.3781,
+              145.0346
+            ],
+            "natural_gc_count": [
+              3,
+              3
+            ],
+            "natural_gc_ms": [
+              6,
+              4
+            ],
+            "heap_pool_peak_sum_mib": [
+              224.12106323242188,
+              222.6522216796875
+            ],
+            "stage_rss_mib": [
+              672.98828125,
+              700.0
+            ],
+            "post_gc_heap_mib": [
+              103.5899658203125,
+              103.58914184570312
+            ]
+          },
+          "xml-pdf": {
+            "allocation_mib": [
+              79.48283386230469,
+              79.56526184082031
+            ],
+            "median_ms": [
+              77.5979,
+              71.8247
+            ],
+            "natural_gc_count": [
+              3,
+              3
+            ],
+            "natural_gc_ms": [
+              6,
+              4
+            ],
+            "heap_pool_peak_sum_mib": [
+              224.11499786376953,
+              222.72671508789062
+            ],
+            "stage_rss_mib": [
+              655.484375,
+              653.1328125
+            ],
+            "post_gc_heap_mib": [
+              103.70458984375,
+              103.70264434814453
+            ]
+          },
+          "epub-pdf": {
+            "allocation_mib": [
+              120.9337158203125,
+              120.8113784790039
+            ],
+            "median_ms": [
+              168.1723,
+              168.03799999999998
+            ],
+            "natural_gc_count": [
+              5,
+              5
+            ],
+            "natural_gc_ms": [
+              9,
+              9
+            ],
+            "heap_pool_peak_sum_mib": [
+              218.4854736328125,
+              217.2627716064453
+            ],
+            "stage_rss_mib": [
+              679.0390625,
+              695.109375
+            ],
+            "post_gc_heap_mib": [
+              103.66693115234375,
+              103.66671752929688
+            ]
+          },
+          "azw3-pdf": {
+            "allocation_mib": [
+              133.42391204833984,
+              133.40353393554688
+            ],
+            "median_ms": [
+              188.935,
+              193.5413
+            ],
+            "natural_gc_count": [
+              6,
+              6
+            ],
+            "natural_gc_ms": [
+              9,
+              11
+            ],
+            "heap_pool_peak_sum_mib": [
+              218.85077667236328,
+              217.5926971435547
+            ],
+            "stage_rss_mib": [
+              679.2734375,
+              696.4140625
+            ],
+            "post_gc_heap_mib": [
+              103.81222534179688,
+              103.81178283691406
+            ]
+          },
+          "json-pdf": {
+            "allocation_mib": [
+              32.91185760498047,
+              32.67799377441406
+            ],
+            "median_ms": [
+              58.740300000000005,
+              50.7683
+            ],
+            "natural_gc_count": [
+              1,
+              1
+            ],
+            "natural_gc_ms": [
+              3,
+              2
+            ],
+            "heap_pool_peak_sum_mib": [
+              222.39205932617188,
+              221.22786712646484
+            ],
+            "stage_rss_mib": [
+              675.40234375,
+              674.31640625
+            ],
+            "post_gc_heap_mib": [
+              103.7001953125,
+              104.89530181884766
+            ]
+          },
+          "csv-pdf": {
+            "allocation_mib": [
+              27.75550079345703,
+              27.759597778320312
+            ],
+            "median_ms": [
+              48.9874,
+              59.3338
+            ],
+            "natural_gc_count": [
+              1,
+              1
+            ],
+            "natural_gc_ms": [
+              1,
+              4
+            ],
+            "heap_pool_peak_sum_mib": [
+              215.7906494140625,
+              217.0488510131836
+            ],
+            "stage_rss_mib": [
+              673.19921875,
+              671.55859375
+            ],
+            "post_gc_heap_mib": [
+              103.91767883300781,
+              103.91893768310547
+            ]
+          },
+          "tsv-pdf": {
+            "allocation_mib": [
+              27.68767547607422,
+              27.686569213867188
+            ],
+            "median_ms": [
+              45.2348,
+              48.495799999999996
+            ],
+            "natural_gc_count": [
+              1,
+              1
+            ],
+            "natural_gc_ms": [
+              0,
+              3
+            ],
+            "heap_pool_peak_sum_mib": [
+              215.95083618164062,
+              217.19345092773438
+            ],
+            "stage_rss_mib": [
+              663.94140625,
+              670.2578125
+            ],
+            "post_gc_heap_mib": [
+              103.79466247558594,
+              103.79421997070312
+            ]
+          },
+          "xlsb-pdf": {
+            "allocation_mib": [
+              3.7490768432617188,
+              3.74920654296875
+            ],
+            "median_ms": [
+              9.976,
+              8.3636
+            ],
+            "natural_gc_count": [
+              0,
+              0
+            ],
+            "natural_gc_ms": [
+              0,
+              0
+            ],
+            "heap_pool_peak_sum_mib": [
+              129.30810546875,
+              130.1439971923828
+            ],
+            "stage_rss_mib": [
+              666.03125,
+              670.44140625
+            ],
+            "post_gc_heap_mib": [
+              107.13954162597656,
+              107.13909912109375
+            ]
+          },
+          "slk-pdf": {
+            "allocation_mib": [
+              24.182098388671875,
+              24.18199920654297
+            ],
+            "median_ms": [
+              44.6584,
+              40.6991
+            ],
+            "natural_gc_count": [
+              1,
+              1
+            ],
+            "natural_gc_ms": [
+              2,
+              2
+            ],
+            "heap_pool_peak_sum_mib": [
+              220.3340835571289,
+              219.47459411621094
+            ],
+            "stage_rss_mib": [
+              667.35546875,
+              672.7890625
+            ],
+            "post_gc_heap_mib": [
+              107.06893157958984,
+              107.06838989257812
+            ]
+          },
+          "dif-pdf": {
+            "allocation_mib": [
+              21.509017944335938,
+              21.233924865722656
+            ],
+            "median_ms": [
+              44.5612,
+              37.843300000000006
+            ],
+            "natural_gc_count": [
+              0,
+              0
+            ],
+            "natural_gc_ms": [
+              0,
+              0
+            ],
+            "heap_pool_peak_sum_mib": [
+              215.4642105102539,
+              217.17608642578125
+            ],
+            "stage_rss_mib": [
+              663.49609375,
+              681.265625
+            ],
+            "post_gc_heap_mib": [
+              107.20116424560547,
+              107.28955841064453
+            ]
+          },
+          "dbf-pdf": {
+            "allocation_mib": [
+              22.71124267578125,
+              22.693023681640625
+            ],
+            "median_ms": [
+              37.9204,
+              38.3597
+            ],
+            "natural_gc_count": [
+              1,
+              1
+            ],
+            "natural_gc_ms": [
+              3,
+              2
+            ],
+            "heap_pool_peak_sum_mib": [
+              221.70600128173828,
+              220.50064086914062
+            ],
+            "stage_rss_mib": [
+              664.2265625,
+              677.75390625
+            ],
+            "post_gc_heap_mib": [
+              107.0734634399414,
+              107.07292175292969
+            ]
+          },
+          "pdf-doc": {
+            "allocation_mib": [
+              97.62530517578125,
+              96.81867218017578
+            ],
+            "median_ms": [
+              88.3133,
+              83.1508
+            ],
+            "natural_gc_count": [
+              4,
+              4
+            ],
+            "natural_gc_ms": [
+              9,
+              6
+            ],
+            "heap_pool_peak_sum_mib": [
+              223.1742401123047,
+              222.39944458007812
+            ],
+            "stage_rss_mib": [
+              666.75390625,
+              680.0546875
+            ],
+            "post_gc_heap_mib": [
+              107.07530975341797,
+              108.14923858642578
+            ]
+          },
+          "manual-100p-docx": {
+            "allocation_mib": [
+              878.1074638366699,
+              861.7174034118652
+            ],
+            "median_ms": [
+              727.78705,
+              614.0453500000001
+            ],
+            "natural_gc_count": [
+              62,
+              62
+            ],
+            "natural_gc_ms": [
+              225,
+              224
+            ],
+            "heap_pool_peak_sum_mib": [
+              322.90313720703125,
+              318.40726470947266
+            ],
+            "stage_rss_mib": [
+              687.6796875,
+              691.33203125
+            ],
+            "post_gc_heap_mib": [
+              107.08478546142578,
+              107.08439636230469
+            ]
+          },
+          "manual-100p-pptx": {
+            "allocation_mib": [
+              1232.3858184814453,
+              1214.9011993408203
+            ],
+            "median_ms": [
+              826.0695000000001,
+              829.323
+            ],
+            "natural_gc_count": [
+              88,
+              87
+            ],
+            "natural_gc_ms": [
+              223,
+              204
+            ],
+            "heap_pool_peak_sum_mib": [
+              313.55804443359375,
+              287.54642486572266
+            ],
+            "stage_rss_mib": [
+              666.55078125,
+              682.85546875
+            ],
+            "post_gc_heap_mib": [
+              119.9612045288086,
+              119.53827667236328
+            ]
+          },
+          "manual-100p-xlsx": {
+            "allocation_mib": [
+              847.0118026733398,
+              845.1160316467285
+            ],
+            "median_ms": [
+              652.45685,
+              638.7661
+            ],
+            "natural_gc_count": [
+              60,
+              61
+            ],
+            "natural_gc_ms": [
+              240,
+              246
+            ],
+            "heap_pool_peak_sum_mib": [
+              333.4078903198242,
+              333.9961700439453
+            ],
+            "stage_rss_mib": [
+              676.421875,
+              685.50390625
+            ],
+            "post_gc_heap_mib": [
+              107.07710266113281,
+              107.07659912109375
+            ]
+          },
+          "illustrated-20p-docx": {
+            "allocation_mib": [
+              50.71147155761719,
+              50.29854202270508
+            ],
+            "median_ms": [
+              239.22875,
+              235.34085
+            ],
+            "natural_gc_count": [
+              3,
+              3
+            ],
+            "natural_gc_ms": [
+              6,
+              5
+            ],
+            "heap_pool_peak_sum_mib": [
+              225.42342376708984,
+              224.0693817138672
+            ],
+            "stage_rss_mib": [
+              677.62890625,
+              682.0234375
+            ],
+            "post_gc_heap_mib": [
+              107.09883880615234,
+              107.09862518310547
+            ]
+          },
+          "illustrated-20p-pptx": {
+            "allocation_mib": [
+              61.63896560668945,
+              61.209075927734375
+            ],
+            "median_ms": [
+              249.18085000000002,
+              255.07405000000006
+            ],
+            "natural_gc_count": [
+              4,
+              4
+            ],
+            "natural_gc_ms": [
+              7,
+              6
+            ],
+            "heap_pool_peak_sum_mib": [
+              225.03707885742188,
+              223.83163452148438
+            ],
+            "stage_rss_mib": [
+              675.67578125,
+              680.375
+            ],
+            "post_gc_heap_mib": [
+              107.08836364746094,
+              107.08802795410156
+            ]
+          },
+          "illustrated-20p-xlsx": {
+            "allocation_mib": [
+              36.7843017578125,
+              36.73188400268555
+            ],
+            "median_ms": [
+              79.97735,
+              65.8663
+            ],
+            "natural_gc_count": [
+              2,
+              2
+            ],
+            "natural_gc_ms": [
+              3,
+              3
+            ],
+            "heap_pool_peak_sum_mib": [
+              223.826171875,
+              222.84741973876953
+            ],
+            "stage_rss_mib": [
+              675.99609375,
+              654.45703125
+            ],
+            "post_gc_heap_mib": [
+              107.10167694091797,
+              107.1013412475586
+            ]
+          },
+          "ledger-8000-pdf": {
+            "allocation_mib": [
+              214.4730682373047,
+              214.46373748779297
+            ],
+            "median_ms": [
+              350.79729999999995,
+              355.7941
+            ],
+            "natural_gc_count": [
+              15,
+              15
+            ],
+            "natural_gc_ms": [
+              229,
+              199
+            ],
+            "heap_pool_peak_sum_mib": [
+              260.4404754638672,
+              243.73529052734375
+            ],
+            "stage_rss_mib": [
+              681.58984375,
+              675.015625
+            ],
+            "post_gc_heap_mib": [
+              107.1256332397461,
+              107.12541961669922
+            ]
+          },
+          "report-docx-pdf": {
+            "allocation_mib": [
+              16.028839111328125,
+              16.02593994140625
+            ],
+            "median_ms": [
+              28.248099999999997,
+              24.795499999999997
+            ],
+            "natural_gc_count": [
+              1,
+              1
+            ],
+            "natural_gc_ms": [
+              2,
+              2
+            ],
+            "heap_pool_peak_sum_mib": [
+              221.1721420288086,
+              220.04500579833984
+            ],
+            "stage_rss_mib": [
+              679.03125,
+              675.52734375
+            ],
+            "post_gc_heap_mib": [
+              107.24720001220703,
+              107.24698638916016
+            ]
+          },
+          "slides-pptx-pdf": {
+            "allocation_mib": [
+              7.3993377685546875,
+              7.3993072509765625
+            ],
+            "median_ms": [
+              28.67405,
+              26.7581
+            ],
+            "natural_gc_count": [
+              0,
+              0
+            ],
+            "natural_gc_ms": [
+              0,
+              0
+            ],
+            "heap_pool_peak_sum_mib": [
+              171.3596954345703,
+              170.6327667236328
+            ],
+            "stage_rss_mib": [
+              680.29296875,
+              678.5546875
+            ],
+            "post_gc_heap_mib": [
+              107.15961456298828,
+              107.15943145751953
+            ]
+          },
+          "docx-loc-d02_security_policy_long": {
+            "allocation_mib": [
+              8.218650817871094,
+              8.363346099853516
+            ],
+            "median_ms": [
+              30.73305,
+              31.729849999999995
+            ],
+            "natural_gc_count": [
+              0,
+              0
+            ],
+            "natural_gc_ms": [
+              0,
+              0
+            ],
+            "heap_pool_peak_sum_mib": [
+              182.33224487304688,
+              181.07349395751953
+            ],
+            "stage_rss_mib": [
+              673.19921875,
+              688.55078125
+            ],
+            "post_gc_heap_mib": [
+              109.89559173583984,
+              109.89482116699219
+            ]
+          },
+          "pptx-syn-p08_mixed": {
+            "allocation_mib": [
+              19.492740631103516,
+              19.496753692626953
+            ],
+            "median_ms": [
+              211.92595,
+              208.38195
+            ],
+            "natural_gc_count": [
+              1,
+              1
+            ],
+            "natural_gc_ms": [
+              2,
+              2
+            ],
+            "heap_pool_peak_sum_mib": [
+              226.1498565673828,
+              225.78585815429688
+            ],
+            "stage_rss_mib": [
+              679.92578125,
+              689.0078125
+            ],
+            "post_gc_heap_mib": [
+              111.46318054199219,
+              111.4623794555664
+            ]
+          },
+          "report-rtf-pdf": {
+            "allocation_mib": [
+              71.37921524047852,
+              71.45371627807617
+            ],
+            "median_ms": [
+              158.1992,
+              162.2202
+            ],
+            "natural_gc_count": [
+              5,
+              5
+            ],
+            "natural_gc_ms": [
+              7,
+              6
+            ],
+            "heap_pool_peak_sum_mib": [
+              226.34796905517578,
+              225.22733306884766
+            ],
+            "stage_rss_mib": [
+              680.34765625,
+              688.3359375
+            ],
+            "post_gc_heap_mib": [
+              111.57916259765625,
+              111.5783462524414
+            ]
+          },
+          "illustrated-rtf-pdf": {
+            "allocation_mib": [
+              31.723957061767578,
+              31.723529815673828
+            ],
+            "median_ms": [
+              141.79825000000002,
+              135.155
+            ],
+            "natural_gc_count": [
+              2,
+              2
+            ],
+            "natural_gc_ms": [
+              2,
+              1
+            ],
+            "heap_pool_peak_sum_mib": [
+              227.2524642944336,
+              225.56741333007812
+            ],
+            "stage_rss_mib": [
+              647.6796875,
+              685.81640625
+            ],
+            "post_gc_heap_mib": [
+              111.47796630859375,
+              111.4771499633789
+            ]
+          },
+          "manual-rtf-pdf": {
+            "allocation_mib": [
+              143.97198486328125,
+              143.90762329101562
+            ],
+            "median_ms": [
+              205.57195000000002,
+              219.167
+            ],
+            "natural_gc_count": [
+              10,
+              10
+            ],
+            "natural_gc_ms": [
+              59,
+              48
+            ],
+            "heap_pool_peak_sum_mib": [
+              233.5908432006836,
+              232.0213851928711
+            ],
+            "stage_rss_mib": [
+              678.75,
+              684.36328125
+            ],
+            "post_gc_heap_mib": [
+              111.60676574707031,
+              111.60578918457031
+            ]
+          }
+        },
+        "soak": [
+          {
+            "retained_heap_mib": [
+              117.5764389038086,
+              111.59923553466797,
+              124.40704345703125,
+              125.12664794921875,
+              125.38719940185547,
+              112.52525329589844,
+              126.10564422607422,
+              124.36763763427734,
+              125.67692565917969
+            ],
+            "nonheap_mib": [
+              96.34760284423828,
+              96.35098266601562,
+              96.56407165527344,
+              96.54853057861328,
+              96.64627075195312,
+              96.84922790527344,
+              97.01548767089844,
+              97.22341918945312,
+              97.38509368896484
+            ],
+            "direct_mapped_bytes": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "threads": [
+              12,
+              12,
+              12,
+              12,
+              12,
+              12,
+              12,
+              12,
+              12
+            ],
+            "late_heap_growth_mib": 0.28972625732421875,
+            "late_half_median_heap_mib": 125.38719940185547,
+            "finished_heap_mib": 112.54654693603516,
+            "finished_threads": 8,
+            "allocation_mib_per_batch": 445.5208282470703,
+            "median_batch_ms": 249.93785000000003,
+            "natural_gc_count": 128,
+            "natural_gc_ms": 586
+          },
+          {
+            "retained_heap_mib": [
+              125.16511535644531,
+              111.58290100097656,
+              122.37540435791016,
+              123.06829071044922,
+              123.52188110351562,
+              111.59639739990234,
+              121.37950897216797,
+              124.86569213867188,
+              125.1334457397461
+            ],
+            "nonheap_mib": [
+              102.3285903930664,
+              98.64132690429688,
+              98.80221557617188,
+              98.48983001708984,
+              98.65860748291016,
+              98.83832550048828,
+              99.08148193359375,
+              99.19863891601562,
+              99.30091094970703
+            ],
+            "direct_mapped_bytes": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "threads": [
+              12,
+              12,
+              12,
+              12,
+              12,
+              12,
+              12,
+              12,
+              12
+            ],
+            "late_heap_growth_mib": 1.6115646362304688,
+            "late_half_median_heap_mib": 123.52188110351562,
+            "finished_heap_mib": 111.63212585449219,
+            "finished_threads": 8,
+            "allocation_mib_per_batch": 442.4250831604004,
+            "median_batch_ms": 238.65225,
+            "natural_gc_count": 128,
+            "natural_gc_ms": 520
+          }
+        ],
+        "peak_rss_mib": [
+          687.6796875,
+          709.57421875
+        ],
+        "peak_private_commit_mib": [
+          675.92578125,
+          702.33984375
+        ],
+        "case_workload_allocated_mib": [
+          42989.77851867676,
+          42847.99217224121
+        ],
+        "case_workload_natural_gc_count": [
+          409,
+          408
+        ],
+        "case_workload_natural_gc_ms": [
+          1434,
+          1391
+        ]
+      }
+    },
+    "comparisons": {
+      "baseline": {
+        "allocation_changes": [
+          {
+            "case": "manual-100p-docx",
+            "before_mib": 861.6321563720703,
+            "after_mib": 869.9124336242676,
+            "delta_mib": 8.280277252197266,
+            "percent": 0.9609990981605865
+          },
+          {
+            "case": "manual-100p-xlsx",
+            "before_mib": 845.0803852081299,
+            "after_mib": 846.0639171600342,
+            "delta_mib": 0.9835319519042969,
+            "percent": 0.11638324224767516
+          },
+          {
+            "case": "pdf-odt",
+            "before_mib": 65.15899276733398,
+            "after_mib": 65.75695037841797,
+            "delta_mib": 0.5979576110839844,
+            "percent": 0.9176900772839502
+          },
+          {
+            "case": "pdf-xml",
+            "before_mib": 92.75160598754883,
+            "after_mib": 93.31797790527344,
+            "delta_mib": 0.5663719177246094,
+            "percent": 0.6106330038108787
+          },
+          {
+            "case": "pdf-fodt",
+            "before_mib": 92.95748138427734,
+            "after_mib": 93.50284957885742,
+            "delta_mib": 0.5453681945800781,
+            "percent": 0.5866856399923126
+          },
+          {
+            "case": "pdf-rtf",
+            "before_mib": 96.83832168579102,
+            "after_mib": 97.29398345947266,
+            "delta_mib": 0.4556617736816406,
+            "percent": 0.4705386935144551
+          },
+          {
+            "case": "pdf-doc",
+            "before_mib": 96.77877044677734,
+            "after_mib": 97.22198867797852,
+            "delta_mib": 0.4432182312011719,
+            "percent": 0.4579705127013556
+          },
+          {
+            "case": "pdf-md",
+            "before_mib": 87.7664909362793,
+            "after_mib": 88.18610382080078,
+            "delta_mib": 0.4196128845214844,
+            "percent": 0.4781014713532761
+          },
+          {
+            "case": "pdf-txt",
+            "before_mib": 57.717247009277344,
+            "after_mib": 58.133644104003906,
+            "delta_mib": 0.4163970947265625,
+            "percent": 0.721443097692509
+          },
+          {
+            "case": "pdf-json",
+            "before_mib": 60.59458541870117,
+            "after_mib": 61.010963439941406,
+            "delta_mib": 0.4163780212402344,
+            "percent": 0.68715384116107
+          },
+          {
+            "case": "pdf-html",
+            "before_mib": 94.9920539855957,
+            "after_mib": 95.4008560180664,
+            "delta_mib": 0.4088020324707031,
+            "percent": 0.4303539246900412
+          },
+          {
+            "case": "pdf-epub",
+            "before_mib": 73.87496948242188,
+            "after_mib": 74.26150512695312,
+            "delta_mib": 0.38653564453125,
+            "percent": 0.5232295150026767
+          },
+          {
+            "case": "pdf-azw3",
+            "before_mib": 81.8564338684082,
+            "after_mib": 82.23860168457031,
+            "delta_mib": 0.3821678161621094,
+            "percent": 0.46687572143258027
+          },
+          {
+            "case": "illustrated-20p-docx",
+            "before_mib": 50.19937515258789,
+            "after_mib": 50.50500679016113,
+            "delta_mib": 0.3056316375732422,
+            "percent": 0.608835541566477
+          },
+          {
+            "case": "pdf-docx",
+            "before_mib": 62.75343322753906,
+            "after_mib": 63.0074462890625,
+            "delta_mib": 0.2540130615234375,
+            "percent": 0.40477954505278024
+          },
+          {
+            "case": "pdf-ods",
+            "before_mib": 73.86328125,
+            "after_mib": 74.1142807006836,
+            "delta_mib": 0.25099945068359375,
+            "percent": 0.33981627465757835
+          },
+          {
+            "case": "pdf-xlsx",
+            "before_mib": 72.83651351928711,
+            "after_mib": 73.0670051574707,
+            "delta_mib": 0.23049163818359375,
+            "percent": 0.31645067432086726
+          },
+          {
+            "case": "illustrated-20p-xlsx",
+            "before_mib": 36.602678298950195,
+            "after_mib": 36.75809288024902,
+            "delta_mib": 0.15541458129882812,
+            "percent": 0.4245989324319188
+          },
+          {
+            "case": "pdf-pdfa2",
+            "before_mib": 9.906307220458984,
+            "after_mib": 9.935405731201172,
+            "delta_mib": 0.0290985107421875,
+            "percent": 0.2937372130160876
+          },
+          {
+            "case": "pptx-syn-p08_mixed",
+            "before_mib": 19.508535385131836,
+            "after_mib": 19.494747161865234,
+            "delta_mib": -0.013788223266601562,
+            "percent": -0.07067790069524849
+          },
+          {
+            "case": "xlsb-pdf",
+            "before_mib": 3.765655517578125,
+            "after_mib": 3.7491416931152344,
+            "delta_mib": -0.016513824462890625,
+            "percent": -0.43853784250321715
+          },
+          {
+            "case": "odp-pdf",
+            "before_mib": 17.827682495117188,
+            "after_mib": 17.809661865234375,
+            "delta_mib": -0.0180206298828125,
+            "percent": -0.10108229091329024
+          },
+          {
+            "case": "ppt-pdf",
+            "before_mib": 88.63180160522461,
+            "after_mib": 88.61375045776367,
+            "delta_mib": -0.0180511474609375,
+            "percent": -0.020366445377406617
+          },
+          {
+            "case": "slides-pptx-pdf",
+            "before_mib": 7.4293975830078125,
+            "after_mib": 7.399322509765625,
+            "delta_mib": -0.0300750732421875,
+            "percent": -0.40481173481647925
+          },
+          {
+            "case": "pptx-pdf",
+            "before_mib": 7.83648681640625,
+            "after_mib": 7.802402496337891,
+            "delta_mib": -0.034084320068359375,
+            "percent": -0.4349438832335073
+          },
+          {
+            "case": "html-pdf",
+            "before_mib": 13.35103988647461,
+            "after_mib": 13.30596923828125,
+            "delta_mib": -0.045070648193359375,
+            "percent": -0.33758155601810724
+          },
+          {
+            "case": "illustrated-rtf-pdf",
+            "before_mib": 31.885726928710938,
+            "after_mib": 31.723743438720703,
+            "delta_mib": -0.16198348999023438,
+            "percent": -0.5080125359926413
+          },
+          {
+            "case": "odt-pdf",
+            "before_mib": 82.19013977050781,
+            "after_mib": 82.0000228881836,
+            "delta_mib": -0.19011688232421875,
+            "percent": -0.23131349192867523
+          },
+          {
+            "case": "doc-pdf",
+            "before_mib": 70.7087173461914,
+            "after_mib": 70.4740219116211,
+            "delta_mib": -0.2346954345703125,
+            "percent": -0.3319186705385113
+          },
+          {
+            "case": "docx-pdf",
+            "before_mib": 17.25390625,
+            "after_mib": 17.011119842529297,
+            "delta_mib": -0.24278640747070312,
+            "percent": -1.4071387890536524
+          },
+          {
+            "case": "txt-pdf",
+            "before_mib": 4.1400146484375,
+            "after_mib": 3.8940658569335938,
+            "delta_mib": -0.24594879150390625,
+            "percent": -5.940771045260207
+          },
+          {
+            "case": "report-docx-pdf",
+            "before_mib": 16.312597274780273,
+            "after_mib": 16.027389526367188,
+            "delta_mib": -0.28520774841308594,
+            "percent": -1.7483895642665392
+          },
+          {
+            "case": "epub-pdf",
+            "before_mib": 121.2796859741211,
+            "after_mib": 120.8725471496582,
+            "delta_mib": -0.4071388244628906,
+            "percent": -0.33570240654298145
+          },
+          {
+            "case": "azw3-pdf",
+            "before_mib": 133.84364700317383,
+            "after_mib": 133.41372299194336,
+            "delta_mib": -0.42992401123046875,
+            "percent": -0.3212136106992669
+          },
+          {
+            "case": "json-pdf",
+            "before_mib": 33.313236236572266,
+            "after_mib": 32.794925689697266,
+            "delta_mib": -0.518310546875,
+            "percent": -1.5558696945389583
+          },
+          {
+            "case": "xml-pdf",
+            "before_mib": 80.07823944091797,
+            "after_mib": 79.5240478515625,
+            "delta_mib": -0.5541915893554688,
+            "percent": -0.6920626542549768
+          },
+          {
+            "case": "docx-loc-d02_security_policy_long",
+            "before_mib": 8.946451187133789,
+            "after_mib": 8.290998458862305,
+            "delta_mib": -0.6554527282714844,
+            "percent": -7.326399200770406
+          },
+          {
+            "case": "fodt-pdf",
+            "before_mib": 80.35895919799805,
+            "after_mib": 79.69173431396484,
+            "delta_mib": -0.6672248840332031,
+            "percent": -0.8303055324412778
+          },
+          {
+            "case": "rtf-pdf",
+            "before_mib": 72.03876113891602,
+            "after_mib": 71.33525848388672,
+            "delta_mib": -0.7035026550292969,
+            "percent": -0.9765612899320875
+          },
+          {
+            "case": "report-rtf-pdf",
+            "before_mib": 72.13029479980469,
+            "after_mib": 71.41646575927734,
+            "delta_mib": -0.7138290405273438,
+            "percent": -0.9896383239643702
+          },
+          {
+            "case": "tsv-pdf",
+            "before_mib": 28.689617156982422,
+            "after_mib": 27.687122344970703,
+            "delta_mib": -1.0024948120117188,
+            "percent": -3.4942774123694953
+          },
+          {
+            "case": "csv-pdf",
+            "before_mib": 28.78042221069336,
+            "after_mib": 27.757549285888672,
+            "delta_mib": -1.0228729248046875,
+            "percent": -3.55405809309024
+          },
+          {
+            "case": "dif-pdf",
+            "before_mib": 22.44039535522461,
+            "after_mib": 21.371471405029297,
+            "delta_mib": -1.0689239501953125,
+            "percent": -4.76339179089571
+          },
+          {
+            "case": "slk-pdf",
+            "before_mib": 25.286006927490234,
+            "after_mib": 24.182048797607422,
+            "delta_mib": -1.1039581298828125,
+            "percent": -4.3658855787254485
+          },
+          {
+            "case": "dbf-pdf",
+            "before_mib": 23.916484832763672,
+            "after_mib": 22.702133178710938,
+            "delta_mib": -1.2143516540527344,
+            "percent": -5.077467121711676
+          },
+          {
+            "case": "xlsx-pdf",
+            "before_mib": 36.80679702758789,
+            "after_mib": 34.60979461669922,
+            "delta_mib": -2.197002410888672,
+            "percent": -5.969012759360581
+          },
+          {
+            "case": "ods-pdf",
+            "before_mib": 75.48247146606445,
+            "after_mib": 73.12628936767578,
+            "delta_mib": -2.356182098388672,
+            "percent": -3.121495696451815
+          },
+          {
+            "case": "xls-pdf",
+            "before_mib": 53.80137634277344,
+            "after_mib": 51.175350189208984,
+            "delta_mib": -2.626026153564453,
+            "percent": -4.880964637101104
+          },
+          {
+            "case": "manual-rtf-pdf",
+            "before_mib": 150.82458305358887,
+            "after_mib": 143.93980407714844,
+            "delta_mib": -6.88477897644043,
+            "percent": -4.564759163958188
+          },
+          {
+            "case": "ledger-8000-pdf",
+            "before_mib": 231.3898582458496,
+            "after_mib": 214.46840286254883,
+            "delta_mib": -16.92145538330078,
+            "percent": -7.312963286974272
+          },
+          {
+            "case": "illustrated-20p-pptx",
+            "before_mib": 78.90748596191406,
+            "after_mib": 61.424020767211914,
+            "delta_mib": -17.48346519470215,
+            "percent": -22.156915762264706
+          },
+          {
+            "case": "pdf-ppt",
+            "before_mib": 463.69282150268555,
+            "after_mib": 439.6641540527344,
+            "delta_mib": -24.028667449951172,
+            "percent": -5.182022739123216
+          },
+          {
+            "case": "pdf-pptx",
+            "before_mib": 109.27021789550781,
+            "after_mib": 84.53795623779297,
+            "delta_mib": -24.732261657714844,
+            "percent": -22.634037099995208
+          },
+          {
+            "case": "pdf-odp",
+            "before_mib": 123.69314956665039,
+            "after_mib": 98.95426940917969,
+            "delta_mib": -24.738880157470703,
+            "percent": -20.00020231042827
+          },
+          {
+            "case": "manual-100p-pptx",
+            "before_mib": 1814.497371673584,
+            "after_mib": 1223.6435089111328,
+            "delta_mib": -590.8538627624512,
+            "percent": -32.56294949699943
+          }
+        ],
+        "peak_rss_delta_mib": 7.880859375
+      },
+      "pre_fix": {
+        "allocation_changes": [
+          {
+            "case": "manual-100p-pptx",
+            "before_mib": 1214.916015625,
+            "after_mib": 1223.6435089111328,
+            "delta_mib": 8.727493286132812,
+            "percent": 0.7183618599054364
+          },
+          {
+            "case": "manual-100p-docx",
+            "before_mib": 861.7679290771484,
+            "after_mib": 869.9124336242676,
+            "delta_mib": 8.14450454711914,
+            "percent": 0.945092555932181
+          },
+          {
+            "case": "manual-100p-xlsx",
+            "before_mib": 845.2026329040527,
+            "after_mib": 846.0639171600342,
+            "delta_mib": 0.8612842559814453,
+            "percent": 0.10190269438965505
+          },
+          {
+            "case": "pdf-ppt",
+            "before_mib": 439.0438766479492,
+            "after_mib": 439.6641540527344,
+            "delta_mib": 0.6202774047851562,
+            "percent": 0.14127913809456327
+          },
+          {
+            "case": "pdf-odp",
+            "before_mib": 98.44538879394531,
+            "after_mib": 98.95426940917969,
+            "delta_mib": 0.508880615234375,
+            "percent": 0.5169166595496932
+          },
+          {
+            "case": "pdf-pptx",
+            "before_mib": 84.03469467163086,
+            "after_mib": 84.53795623779297,
+            "delta_mib": 0.5032615661621094,
+            "percent": 0.5988735582709293
+          },
+          {
+            "case": "pdf-doc",
+            "before_mib": 96.82044982910156,
+            "after_mib": 97.22198867797852,
+            "delta_mib": 0.4015388488769531,
+            "percent": 0.414725246149672
+          },
+          {
+            "case": "pdf-xml",
+            "before_mib": 92.91995620727539,
+            "after_mib": 93.31797790527344,
+            "delta_mib": 0.3980216979980469,
+            "percent": 0.42834899438628504
+          },
+          {
+            "case": "pdf-fodt",
+            "before_mib": 93.11486053466797,
+            "after_mib": 93.50284957885742,
+            "delta_mib": 0.3879890441894531,
+            "percent": 0.41667789863144566
+          },
+          {
+            "case": "pdf-odt",
+            "before_mib": 65.37161636352539,
+            "after_mib": 65.75695037841797,
+            "delta_mib": 0.3853340148925781,
+            "percent": 0.5894515637333564
+          },
+          {
+            "case": "pdf-json",
+            "before_mib": 60.62688064575195,
+            "after_mib": 61.010963439941406,
+            "delta_mib": 0.3840827941894531,
+            "percent": 0.6335189772234573
+          },
+          {
+            "case": "pdf-md",
+            "before_mib": 87.80208587646484,
+            "after_mib": 88.18610382080078,
+            "delta_mib": 0.3840179443359375,
+            "percent": 0.43736767811670685
+          },
+          {
+            "case": "pdf-html",
+            "before_mib": 95.02067184448242,
+            "after_mib": 95.4008560180664,
+            "delta_mib": 0.3801841735839844,
+            "percent": 0.40010680434487966
+          },
+          {
+            "case": "pdf-txt",
+            "before_mib": 57.76592254638672,
+            "after_mib": 58.133644104003906,
+            "delta_mib": 0.3677215576171875,
+            "percent": 0.6365717734740706
+          },
+          {
+            "case": "pdf-azw3",
+            "before_mib": 81.88507080078125,
+            "after_mib": 82.23860168457031,
+            "delta_mib": 0.3535308837890625,
+            "percent": 0.43174034086039814
+          },
+          {
+            "case": "pdf-epub",
+            "before_mib": 73.91064071655273,
+            "after_mib": 74.26150512695312,
+            "delta_mib": 0.3508644104003906,
+            "percent": 0.4747143401800047
+          },
+          {
+            "case": "pdf-rtf",
+            "before_mib": 96.94518280029297,
+            "after_mib": 97.29398345947266,
+            "delta_mib": 0.3488006591796875,
+            "percent": 0.3597916359580511
+          },
+          {
+            "case": "pdf-docx",
+            "before_mib": 62.65919494628906,
+            "after_mib": 63.0074462890625,
+            "delta_mib": 0.3482513427734375,
+            "percent": 0.5557864940204826
+          },
+          {
+            "case": "json-pdf",
+            "before_mib": 32.56768035888672,
+            "after_mib": 32.794925689697266,
+            "delta_mib": 0.22724533081054688,
+            "percent": 0.697763329492207
+          },
+          {
+            "case": "illustrated-20p-pptx",
+            "before_mib": 61.20065689086914,
+            "after_mib": 61.424020767211914,
+            "delta_mib": 0.22336387634277344,
+            "percent": 0.36496973674819966
+          },
+          {
+            "case": "pdf-ods",
+            "before_mib": 73.90105056762695,
+            "after_mib": 74.1142807006836,
+            "delta_mib": 0.21323013305664062,
+            "percent": 0.2885346438499026
+          },
+          {
+            "case": "illustrated-20p-docx",
+            "before_mib": 50.29225158691406,
+            "after_mib": 50.50500679016113,
+            "delta_mib": 0.2127552032470703,
+            "percent": 0.4230377374920158
+          },
+          {
+            "case": "pdf-xlsx",
+            "before_mib": 72.87893295288086,
+            "after_mib": 73.0670051574707,
+            "delta_mib": 0.18807220458984375,
+            "percent": 0.25806113916546636
+          },
+          {
+            "case": "epub-pdf",
+            "before_mib": 120.70299530029297,
+            "after_mib": 120.8725471496582,
+            "delta_mib": 0.16955184936523438,
+            "percent": 0.1404702915146494
+          },
+          {
+            "case": "azw3-pdf",
+            "before_mib": 133.28666305541992,
+            "after_mib": 133.41372299194336,
+            "delta_mib": 0.1270599365234375,
+            "percent": 0.09532831988643409
+          },
+          {
+            "case": "report-docx-pdf",
+            "before_mib": 15.923248291015625,
+            "after_mib": 16.027389526367188,
+            "delta_mib": 0.1041412353515625,
+            "percent": 0.6540200431988552
+          },
+          {
+            "case": "xls-pdf",
+            "before_mib": 51.08152770996094,
+            "after_mib": 51.175350189208984,
+            "delta_mib": 0.09382247924804688,
+            "percent": 0.18367203068154758
+          },
+          {
+            "case": "dif-pdf",
+            "before_mib": 21.283493041992188,
+            "after_mib": 21.371471405029297,
+            "delta_mib": 0.08797836303710938,
+            "percent": 0.41336430473855046
+          },
+          {
+            "case": "report-rtf-pdf",
+            "before_mib": 71.34420013427734,
+            "after_mib": 71.41646575927734,
+            "delta_mib": 0.072265625,
+            "percent": 0.10129152035343036
+          },
+          {
+            "case": "docx-loc-d02_security_policy_long",
+            "before_mib": 8.22685432434082,
+            "after_mib": 8.290998458862305,
+            "delta_mib": 0.06414413452148438,
+            "percent": 0.7796921155112768
+          },
+          {
+            "case": "odt-pdf",
+            "before_mib": 81.94709777832031,
+            "after_mib": 82.0000228881836,
+            "delta_mib": 0.05292510986328125,
+            "percent": 0.06458448352431034
+          },
+          {
+            "case": "ods-pdf",
+            "before_mib": 73.07864761352539,
+            "after_mib": 73.12628936767578,
+            "delta_mib": 0.047641754150390625,
+            "percent": 0.06519244089235876
+          },
+          {
+            "case": "illustrated-20p-xlsx",
+            "before_mib": 36.72450637817383,
+            "after_mib": 36.75809288024902,
+            "delta_mib": 0.03358650207519531,
+            "percent": 0.09145528527827462
+          },
+          {
+            "case": "xlsx-pdf",
+            "before_mib": 34.57974624633789,
+            "after_mib": 34.60979461669922,
+            "delta_mib": 0.030048370361328125,
+            "percent": 0.08689586715666664
+          },
+          {
+            "case": "tsv-pdf",
+            "before_mib": 27.678096771240234,
+            "after_mib": 27.687122344970703,
+            "delta_mib": 0.00902557373046875,
+            "percent": 0.03260908365581017
+          },
+          {
+            "case": "doc-pdf",
+            "before_mib": 70.46582412719727,
+            "after_mib": 70.4740219116211,
+            "delta_mib": 0.008197784423828125,
+            "percent": 0.011633702614521901
+          },
+          {
+            "case": "slk-pdf",
+            "before_mib": 24.176979064941406,
+            "after_mib": 24.182048797607422,
+            "delta_mib": 0.005069732666015625,
+            "percent": 0.02096925613574996
+          },
+          {
+            "case": "pptx-syn-p08_mixed",
+            "before_mib": 19.491539001464844,
+            "after_mib": 19.494747161865234,
+            "delta_mib": 0.003208160400390625,
+            "percent": 0.01645924624089634
+          },
+          {
+            "case": "slides-pptx-pdf",
+            "before_mib": 7.396537780761719,
+            "after_mib": 7.399322509765625,
+            "delta_mib": 0.00278472900390625,
+            "percent": 0.03764908780901077
+          },
+          {
+            "case": "docx-pdf",
+            "before_mib": 17.00905990600586,
+            "after_mib": 17.011119842529297,
+            "delta_mib": 0.0020599365234375,
+            "percent": 0.012110819379906879
+          },
+          {
+            "case": "txt-pdf",
+            "before_mib": 3.8921890258789062,
+            "after_mib": 3.8940658569335938,
+            "delta_mib": 0.0018768310546875,
+            "percent": 0.048220449783098474
+          },
+          {
+            "case": "odp-pdf",
+            "before_mib": 17.80816650390625,
+            "after_mib": 17.809661865234375,
+            "delta_mib": 0.001495361328125,
+            "percent": 0.008397053833686385
+          },
+          {
+            "case": "html-pdf",
+            "before_mib": 13.30544662475586,
+            "after_mib": 13.30596923828125,
+            "delta_mib": 0.000522613525390625,
+            "percent": 0.0039278164809530836
+          },
+          {
+            "case": "pptx-pdf",
+            "before_mib": 7.802471160888672,
+            "after_mib": 7.802402496337891,
+            "delta_mib": -6.866455078125e-05,
+            "percent": -0.0008800359445837458
+          },
+          {
+            "case": "xlsb-pdf",
+            "before_mib": 3.7494544982910156,
+            "after_mib": 3.7491416931152344,
+            "delta_mib": -0.00031280517578125,
+            "percent": -0.008342684940543243
+          },
+          {
+            "case": "pdf-pdfa2",
+            "before_mib": 9.93634033203125,
+            "after_mib": 9.935405731201172,
+            "delta_mib": -0.000934600830078125,
+            "percent": -0.009405885857849405
+          },
+          {
+            "case": "illustrated-rtf-pdf",
+            "before_mib": 31.72657012939453,
+            "after_mib": 31.723743438720703,
+            "delta_mib": -0.002826690673828125,
+            "percent": -0.008909537533685619
+          },
+          {
+            "case": "ppt-pdf",
+            "before_mib": 88.62192153930664,
+            "after_mib": 88.61375045776367,
+            "delta_mib": -0.00817108154296875,
+            "percent": -0.00922015839991408
+          },
+          {
+            "case": "ledger-8000-pdf",
+            "before_mib": 214.48673629760742,
+            "after_mib": 214.46840286254883,
+            "delta_mib": -0.01833343505859375,
+            "percent": -0.008547584515039564
+          },
+          {
+            "case": "xml-pdf",
+            "before_mib": 79.54373931884766,
+            "after_mib": 79.5240478515625,
+            "delta_mib": -0.01969146728515625,
+            "percent": -0.024755521243757794
+          },
+          {
+            "case": "dbf-pdf",
+            "before_mib": 22.740772247314453,
+            "after_mib": 22.702133178710938,
+            "delta_mib": -0.038639068603515625,
+            "percent": -0.16991097832255164
+          },
+          {
+            "case": "rtf-pdf",
+            "before_mib": 71.37454986572266,
+            "after_mib": 71.33525848388672,
+            "delta_mib": -0.0392913818359375,
+            "percent": -0.055049568662579595
+          },
+          {
+            "case": "csv-pdf",
+            "before_mib": 27.807788848876953,
+            "after_mib": 27.757549285888672,
+            "delta_mib": -0.05023956298828125,
+            "percent": -0.18066723413828756
+          },
+          {
+            "case": "fodt-pdf",
+            "before_mib": 79.76656341552734,
+            "after_mib": 79.69173431396484,
+            "delta_mib": -0.0748291015625,
+            "percent": -0.09381011085145552
+          },
+          {
+            "case": "manual-rtf-pdf",
+            "before_mib": 144.09540367126465,
+            "after_mib": 143.93980407714844,
+            "delta_mib": -0.15559959411621094,
+            "percent": -0.10798373171652109
+          }
+        ],
+        "peak_rss_delta_mib": -1.380859375
+      }
+    },
+    "notes": [
+      "Explicit full GC only outside timed calls/batches; same collector and settings for all builds",
+      "Heap pool peak sum is a conservative sum of per-pool peaks, not a simultaneous heap peak",
+      "RSS and private memory per stage sampled; OS lifetime peaks also recorded",
+      "Same JVM runs all families, then 4 warmup and 32 measured four-worker batches of 8 requests",
+      "Bounded soak checks retention; does not prove absence of all leaks",
+      "Threshold flags are screening aids, not proof of equivalence or no leaks",
+      "Two isolated forks per build, reverse build order; other host activity can vary timings",
+      "2 warmups/5 repeats for families, 4/8 for stress cases; resource stress figures do not replace high-warmup latency measurements"
+    ]
+  },
+  "checks": {
+    "java": {
+      "tests": 4942,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 6
+    },
+    "validator_tests": 15
+  }
+}
