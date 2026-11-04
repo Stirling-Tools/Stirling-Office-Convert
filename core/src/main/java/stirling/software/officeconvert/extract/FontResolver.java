@@ -18,6 +18,8 @@ import org.apache.pdfbox.pdmodel.font.PDType3Font;
 public final class FontResolver {
 
     private final Map<COSDictionary, FontInfo> cache = new WeakHashMap<>();
+    private COSDictionary lastFont;
+    private FontInfo lastInfo;
     private final UnmappedGlyphs unmapped = new UnmappedGlyphs(TextPositions.GLYPHS);
     private Boolean namelessSerif;
 
@@ -29,11 +31,17 @@ public final class FontResolver {
         if (font == null) {
             return FontInfo.DEFAULT;
         }
-        FontInfo info = cache.get(font.getCOSObject());
+        COSDictionary key = font.getCOSObject();
+        if (key == lastFont) {
+            return lastInfo;
+        }
+        FontInfo info = cache.get(key);
         if (info == null) {
             info = compute(font);
-            cache.put(font.getCOSObject(), info);
+            cache.put(key, info);
         }
+        lastFont = key;
+        lastInfo = info;
         return info;
     }
 

@@ -26,6 +26,12 @@ import stirling.software.officeconvert.topdf.io.DecodedPicture;
 
 final class CanvasText {
 
+    private static final int MAX_CACHED_GLYPHS = 1024;
+    private static final int MAX_CACHED_TEXT_CAPACITY = 4096;
+    private StringBuilder textBuffer;
+    private int[] glyphBuffer;
+    private int[] codeBuffer;
+
     private static final int SKIPPED = -1;
 
     private static final int GLYPHS = 0;
@@ -170,13 +176,36 @@ final class CanvasText {
         boolean placed = face.emulated() && !perGlyph;
         float scale = perGlyph ? 1 : face.glyphStretch();
         float unit = size * th * scale / 1000f;
-        StringBuilder tj = new StringBuilder(text.length() * 4 + 32);
+        int textCapacity = text.length() * 4 + 32;
+        StringBuilder tj;
+        if (textCapacity >= 0 && textCapacity <= MAX_CACHED_TEXT_CAPACITY) {
+            if (textBuffer == null) {
+                textBuffer = new StringBuilder(textCapacity);
+            }
+            textBuffer.setLength(0);
+            tj = textBuffer;
+        } else {
+            tj = new StringBuilder(textCapacity);
+        }
         if (!perGlyph) {
             tj.append('[');
         }
         boolean segment = !perGlyph;
-        int[] glyphs = new int[text.length()];
-        int[] codes = new int[text.length()];
+        int[] glyphs;
+        int[] codes;
+        if (text.length() <= MAX_CACHED_GLYPHS) {
+            if (glyphBuffer == null || glyphBuffer.length < text.length()) {
+                int capacity = Math.min(MAX_CACHED_GLYPHS,
+                        Math.max(text.length(), glyphBuffer == null ? text.length() : glyphBuffer.length * 2));
+                glyphBuffer = new int[capacity];
+                codeBuffer = new int[capacity];
+            }
+            glyphs = glyphBuffer;
+            codes = codeBuffer;
+        } else {
+            glyphs = new int[text.length()];
+            codes = new int[text.length()];
+        }
         int used = 0;
         boolean open = false;
         boolean any = false;
@@ -295,6 +324,9 @@ final class CanvasText {
             Numbers.append(ops, th * scale * 100).append(" Tz\n");
         }
         matrix(ops, 1, face.syntheticItalic() ? PdfCanvas.ITALIC_SKEW : 0, -1, x, baseline).append(tj).append("ET\nQ\n");
+        if (tj == textBuffer && tj.capacity() > MAX_CACHED_TEXT_CAPACITY) {
+            textBuffer = null;
+        }
         return drawn;
     }
 
@@ -918,6 +950,12 @@ final class CanvasText {
         int rotated = AffineTransform.TYPE_FLIP | AffineTransform.TYPE_QUADRANT_ROTATION
                 | AffineTransform.TYPE_GENERAL_ROTATION | AffineTransform.TYPE_GENERAL_TRANSFORM;
         return (ctm.getType() & rotated) == 0;
+    }
+
+    void releaseGlyphBuffers() {
+        textBuffer = null;
+        glyphBuffer = null;
+        codeBuffer = null;
     }
 
     void flush() throws IOException {

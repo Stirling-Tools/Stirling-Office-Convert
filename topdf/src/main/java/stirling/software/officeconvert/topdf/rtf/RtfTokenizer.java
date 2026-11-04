@@ -2,6 +2,7 @@ package stirling.software.officeconvert.topdf.rtf;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InterruptedIOException;
 import java.io.OutputStream;
 
 final class RtfTokenizer {
@@ -148,6 +149,34 @@ final class RtfTokenizer {
         }
         symbol = (char) c;
         return SYMBOL;
+    }
+
+    void pictureHex(Picture picture) throws IOException {
+        while (true) {
+            if (Thread.currentThread().isInterrupted()) {
+                throw new InterruptedIOException("Conversion interrupted");
+            }
+            if (pushedCount > 0) {
+                int c = read();
+                if (c == '{' || c == '}' || c == '\\') {
+                    unread(c);
+                    return;
+                }
+                picture.hex(c);
+                continue;
+            }
+            if (pos >= len && !fill()) {
+                return;
+            }
+            int start = pos;
+            while (pos < len && buf[pos] != '{' && buf[pos] != '}' && buf[pos] != '\\') {
+                pos++;
+            }
+            picture.hex(buf, start, pos - start);
+            if (pos < len) {
+                return;
+            }
+        }
     }
 
     void skipBinary(long n) throws IOException {
