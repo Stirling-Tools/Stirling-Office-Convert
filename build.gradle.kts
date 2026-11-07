@@ -96,6 +96,10 @@ subprojects {
                 }
             }
             maven {
+                name = "r2Staging"
+                url = uri(rootProject.layout.buildDirectory.dir("r2-repo"))
+            }
+            maven {
                 name = "githubPackages"
                 val targetRepo = findProperty("githubPackagesRepo")?.toString()
                     ?: System.getenv("GITHUB_REPOSITORY")
@@ -119,10 +123,12 @@ subprojects {
 }
 
 gradle.taskGraph.whenReady {
-    val releasing = allTasks.any { it.name.contains("ToCentralPortalRepository") }
+    val releasing = allTasks.any {
+        it.name.contains("ToCentralPortalRepository") || it.name.contains("ToR2StagingRepository")
+    }
     if (releasing && !version.toString().endsWith("SNAPSHOT")
             && (findProperty("signing.key") ?: System.getenv("GPG_SIGNING_KEY")) == null) {
-        throw GradleException("Releases to Maven Central must be signed: set GPG_SIGNING_KEY and GPG_SIGNING_PASSWORD")
+        throw GradleException("Releases must be signed: set GPG_SIGNING_KEY and GPG_SIGNING_PASSWORD")
     }
 }
 
@@ -159,6 +165,15 @@ tasks.register("finalizePortalDeployment") {
         println(if (autoRelease) "Finalized; artifacts reach Maven Central after validation (10-30 min)"
                 else "Finalized; review and publish at https://central.sonatype.com/publishing/deployments")
     }
+}
+
+tasks.register("publishAllToR2Staging") {
+    group = "publishing"
+    description = "Publish every published module into build/r2-repo for upload to maven.stirlingpdf.com"
+    dependsOn(provider {
+        subprojects.filter { it.plugins.hasPlugin("maven-publish") }
+            .map { "${it.path}:publishAllPublicationsToR2StagingRepository" }
+    })
 }
 
 tasks.register("publishAllToCentralPortal") {

@@ -1,4 +1,4 @@
-name: Release to Central Portal
+name: Release to maven.stirlingpdf.com
 
 on:
   push:
@@ -8,8 +8,8 @@ on:
       version:
         description: 'Version to publish (e.g. 1.0.0). If omitted on tag push, derived from the tag.'
         required: false
-      autoRelease:
-        description: 'Auto-release to Maven Central without the manual Publish click'
+      dryRun:
+        description: 'Build, stage and verify, then delete the staging copy without releasing'
         required: false
         default: false
         type: boolean
@@ -24,13 +24,21 @@ concurrency:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    environment: maven
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      staging-url: ${{ steps.stage.outputs.staging-url }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '25'
       - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-disabled: true
 
       - name: Resolve version
         id: v
@@ -55,20 +63,23 @@ jobs:
           VERSION: ${{ steps.v.outputs.version }}
         run: ./gradlew build "-Pofficeconvert.version=$VERSION" --no-daemon --stacktrace
 
-      - name: Publish to Central Portal
+      - name: Build the signed release repo
         env:
-          CENTRAL_PORTAL_USERNAME: ${{ secrets.CENTRAL_PORTAL_USERNAME }}
-          CENTRAL_PORTAL_PASSWORD: ${{ secrets.CENTRAL_PORTAL_PASSWORD }}
           GPG_SIGNING_KEY: ${{ secrets.GPG_SIGNING_KEY }}
           GPG_SIGNING_PASSWORD: ${{ secrets.GPG_SIGNING_PASSWORD }}
           VERSION: ${{ steps.v.outputs.version }}
-          AUTO_RELEASE: ${{ inputs.autoRelease }}
-        run: |
-          ARGS=(publishAllToCentralPortal "-Pofficeconvert.version=$VERSION")
-          if [ "$AUTO_RELEASE" = "true" ]; then
-            ARGS+=(-PautoRelease=true)
-          fi
-          ./gradlew "${ARGS[@]}" --no-daemon --stacktrace
+        run: ./gradlew publishAllToR2Staging "-Pofficeconvert.version=$VERSION" --no-daemon --stacktrace
+
+      - name: Stage on the Stirling Maven repo
+        id: stage
+        uses: Stirling-Tools/maven-r2-publish/release@v1
+        with:
+          step: stage
+          repo-dir: build/r2-repo
+          endpoint: ${{ secrets.R2_ENDPOINT }}
+          access-key-id: ${{ secrets.R2_ACCESS_KEY_ID }}
+          secret-access-key: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          bucket: ${{ vars.R2_BUCKET || 'stirling-maven' }}
 
       - name: Keep the command-line jar
         uses: actions/upload-artifact@v4
@@ -76,14 +87,87 @@ jobs:
           name: stirling-office-convert-cli-${{ steps.v.outputs.version }}
           path: cli/build/libs/stirling-office-convert-cli.jar
 
+  verify:
+    name: Verify the staged release
+    needs: publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '25'
+      - name: Check every staged file and run a conversion from them
+        env:
+          REPO_URL: ${{ needs.publish.outputs.staging-url }}
+          VERSION: ${{ needs.publish.outputs.version }}
+        run: bash .github/scripts/verify-staged.sh
+
+  promote:
+    name: Release to maven.stirlingpdf.com
+    needs: [publish, verify]
+    if: ${{ !inputs.dryRun }}
+    runs-on: ubuntu-latest
+    environment: maven
+    concurrency:
+      group: stirling-maven
+      cancel-in-progress: false
+    steps:
+      - name: Release the verified staging set
+        uses: Stirling-Tools/maven-r2-publish/release@v1
+        with:
+          step: promote
+          endpoint: ${{ secrets.R2_ENDPOINT }}
+          access-key-id: ${{ secrets.R2_ACCESS_KEY_ID }}
+          secret-access-key: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          bucket: ${{ vars.R2_BUCKET || 'stirling-maven' }}
+
+  publish-central:
+    name: Publish to Maven Central
+    needs: [publish, promote]
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    concurrency:
+      group: central-portal-office-convert
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-disabled: true
+      - name: Publish to Central Portal
+        env:
+          CENTRAL_PORTAL_USERNAME: ${{ secrets.CENTRAL_PORTAL_USERNAME }}
+          CENTRAL_PORTAL_PASSWORD: ${{ secrets.CENTRAL_PORTAL_PASSWORD }}
+          GPG_SIGNING_KEY: ${{ secrets.GPG_SIGNING_KEY }}
+          GPG_SIGNING_PASSWORD: ${{ secrets.GPG_SIGNING_PASSWORD }}
+          VERSION: ${{ needs.publish.outputs.version }}
+        run: ./gradlew publishAllToCentralPortal "-Pofficeconvert.version=$VERSION" -PautoRelease=true --no-daemon --stacktrace
       - name: Summary
         env:
-          VERSION: ${{ steps.v.outputs.version }}
-          AUTO_RELEASE: ${{ inputs.autoRelease }}
-        run: |
-          echo "### Published com.stirling:stirling-office-convert:$VERSION" >> "$GITHUB_STEP_SUMMARY"
-          if [ "$AUTO_RELEASE" = "true" ]; then
-            echo "Auto-release enabled: artifacts reach Maven Central in 10-30 min." >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "Review and click **Publish** at https://central.sonatype.com/publishing/deployments" >> "$GITHUB_STEP_SUMMARY"
-          fi
+          VERSION: ${{ needs.publish.outputs.version }}
+        run: echo "### Sent com.stirling:stirling-office-convert:$VERSION to Maven Central; it appears there in 10-30 min" >> "$GITHUB_STEP_SUMMARY"
+
+  cleanup-staging:
+    name: Delete the staging copy
+    needs: [publish, verify, promote]
+    if: ${{ always() && needs.publish.result == 'success' && needs.verify.result != 'failure' && needs.promote.result != 'failure' }}
+    runs-on: ubuntu-latest
+    environment: maven
+    steps:
+      - name: Delete this run's staging copy
+        uses: Stirling-Tools/maven-r2-publish/release@v1
+        with:
+          step: cleanup
+          endpoint: ${{ secrets.R2_ENDPOINT }}
+          access-key-id: ${{ secrets.R2_ACCESS_KEY_ID }}
+          secret-access-key: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          bucket: ${{ vars.R2_BUCKET || 'stirling-maven' }}
