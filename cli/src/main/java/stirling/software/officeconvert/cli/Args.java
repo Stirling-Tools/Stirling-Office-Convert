@@ -49,8 +49,12 @@ record Args(
         boolean lineArtTuned,
         PdfOptimizer.Effort effort,
         boolean keepPrivateData,
+        PdfOptimizer.Images images,
+        boolean grayscale,
         boolean quiet,
         boolean overwrite) {
+
+    static final float DEFAULT_IMAGE_QUALITY = 0.75f;
 
     boolean asksForPdf() {
         return formatGiven && OutputFormat.PDF.equals(format);
@@ -89,6 +93,9 @@ record Args(
         boolean lineArtTuned = false;
         PdfOptimizer.Effort effort = null;
         boolean keepPrivateData = false;
+        Integer imageDpi = null;
+        Float imageQuality = null;
+        boolean grayscale = false;
         for (int i = 0; i < args.length; i++) {
             String a = args[i];
             switch (a) {
@@ -156,6 +163,9 @@ record Args(
                 case "--optimize" -> rewrites.add(Mode.OPTIMIZE);
                 case "--effort" -> effort = effort(value(args, ++i, a));
                 case "--keep-private-data" -> keepPrivateData = true;
+                case "--image-dpi" -> imageDpi = imageDpi(value(args, ++i, a));
+                case "--image-quality" -> imageQuality = imageQuality(value(args, ++i, a));
+                case "--grayscale" -> grayscale = true;
                 case "--pictures" -> pictures = pictures(value(args, ++i, a));
                 case "--no-chapters" -> ebook = ebook.chapters(false);
                 case "--device" -> ebook = ebook.device(device(value(args, ++i, a)));
@@ -188,11 +198,16 @@ record Args(
         if (inputs.isEmpty() && urls.isEmpty()) {
             throw new Usage("no PDF or Office document given");
         }
+        if (imageDpi == null && imageQuality != null) {
+            throw new Usage("--image-quality goes with --image-dpi");
+        }
+        PdfOptimizer.Images images = imageDpi == null ? null
+                : new PdfOptimizer.Images(imageDpi, imageQuality == null ? DEFAULT_IMAGE_QUALITY : imageQuality);
         FontSet fonts = fontSet.directories(fontDirs).build();
         office = office.fonts(fonts).password(password);
         return new Args(List.copyOf(inputs), List.copyOf(urls), output, format, formatGiven, first, last, pagesGiven, tables,
                 pictureFallback, dpi, password, pictures, sheets, ebook, office, fonts, web, localFiles, Set.copyOf(rewrites),
-                pdfaLevel, lineArt, lineArtTuned, effort, keepPrivateData, quiet, overwrite);
+                pdfaLevel, lineArt, lineArtTuned, effort, keepPrivateData, images, grayscale, quiet, overwrite);
     }
 
     static int[] pages(String s) throws Usage {
@@ -281,6 +296,32 @@ record Args(
             case "flate" -> LineArt.Codec.FLATE;
             default -> throw new Usage("--codec is smallest, jbig2, g4 or flate, not '" + s + "'");
         };
+    }
+
+    private static int imageDpi(String s) throws Usage {
+        int dpi;
+        try {
+            dpi = Integer.parseInt(s.strip());
+        } catch (NumberFormatException e) {
+            dpi = 0;
+        }
+        if (dpi < 1 || dpi > 2400) {
+            throw new Usage("--image-dpi is a resolution from 1 to 2400, not '" + s + "'");
+        }
+        return dpi;
+    }
+
+    private static float imageQuality(String s) throws Usage {
+        float quality;
+        try {
+            quality = Float.parseFloat(s.strip());
+        } catch (NumberFormatException e) {
+            quality = Float.NaN;
+        }
+        if (!(quality > 0 && quality <= 1)) {
+            throw new Usage("--image-quality is above 0 and at most 1, not '" + s + "'");
+        }
+        return quality;
     }
 
     private static PdfOptimizer.Effort effort(String s) throws Usage {

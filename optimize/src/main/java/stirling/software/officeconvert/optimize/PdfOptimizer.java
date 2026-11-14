@@ -33,8 +33,20 @@ public final class PdfOptimizer {
         FAST, DEFAULT, MAX
     }
 
+    public record Images(int targetDpi, float quality) {
+
+        public Images {
+            if (targetDpi < 1) {
+                throw new IllegalArgumentException("The target resolution must be at least 1 dpi, was " + targetDpi);
+            }
+            if (!(quality > 0 && quality <= 1)) {
+                throw new IllegalArgumentException("The image quality must be above 0 and at most 1, was " + quality);
+            }
+        }
+    }
+
     public record Options(String password, Duration timeout, Effort effort, boolean keepPrivateData,
-            boolean alwaysRewrite) {
+            boolean alwaysRewrite, Images images, boolean grayscale) {
 
         public Options {
             Objects.requireNonNull(timeout, "timeout");
@@ -45,33 +57,42 @@ public final class PdfOptimizer {
         }
 
         public static Options defaults() {
-            return new Options(null, Duration.ofMinutes(5), Effort.DEFAULT, false, false);
+            return new Options(null, Duration.ofMinutes(5), Effort.DEFAULT, false, false, null, false);
         }
 
         public Options password(String secret) {
-            return new Options(secret, timeout, effort, keepPrivateData, alwaysRewrite);
+            return new Options(secret, timeout, effort, keepPrivateData, alwaysRewrite, images, grayscale);
         }
 
         public Options timeout(Duration limit) {
-            return new Options(password, limit, effort, keepPrivateData, alwaysRewrite);
+            return new Options(password, limit, effort, keepPrivateData, alwaysRewrite, images, grayscale);
         }
 
         public Options effort(Effort level) {
-            return new Options(password, timeout, level, keepPrivateData, alwaysRewrite);
+            return new Options(password, timeout, level, keepPrivateData, alwaysRewrite, images, grayscale);
         }
 
         public Options keepPrivateData(boolean keep) {
-            return new Options(password, timeout, effort, keep, alwaysRewrite);
+            return new Options(password, timeout, effort, keep, alwaysRewrite, images, grayscale);
         }
 
         public Options alwaysRewrite(boolean always) {
-            return new Options(password, timeout, effort, keepPrivateData, always);
+            return new Options(password, timeout, effort, keepPrivateData, always, images, grayscale);
+        }
+
+        public Options grayscale(boolean gray) {
+            return new Options(password, timeout, effort, keepPrivateData, alwaysRewrite, images, gray);
+        }
+
+        public Options images(Images lossy) {
+            return new Options(password, timeout, effort, keepPrivateData, alwaysRewrite, lossy, grayscale);
         }
 
         @Override
         public String toString() {
             return "Options[password=" + (password == null ? "none" : "given") + ", timeout=" + timeout + ", effort="
-                    + effort + ", keepPrivateData=" + keepPrivateData + ", alwaysRewrite=" + alwaysRewrite + "]";
+                    + effort + ", keepPrivateData=" + keepPrivateData + ", alwaysRewrite=" + alwaysRewrite
+                    + ", images=" + images + ", grayscale=" + grayscale + "]";
         }
     }
 
@@ -145,7 +166,8 @@ public final class PdfOptimizer {
                 PdfFiles.moveIntoPlace(part, out);
                 return result;
             }
-            if (!result.rewritten() || !options.alwaysRewrite() && result.outputBytes() >= size) {
+            if (!result.rewritten()
+                    || !options.alwaysRewrite() && !options.grayscale() && result.outputBytes() >= size) {
                 Files.copy(in, part, StandardCopyOption.REPLACE_EXISTING);
                 result = new Result(size, size, false, result.objects(), result.mergedObjects(),
                         result.recodedStreams(), result.warnings());

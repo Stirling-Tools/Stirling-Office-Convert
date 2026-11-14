@@ -36,6 +36,29 @@ class ArgsTest {
     }
 
     @Test
+    void imageOptionsMakeOptimizationLossy() throws Usage {
+        assertNull(Args.parse(new String[] {"in.pdf", "--optimize"}).images());
+        assertEquals(new stirling.software.officeconvert.optimize.PdfOptimizer.Images(150, 0.75f),
+                Args.parse(new String[] {"in.pdf", "--optimize", "--image-dpi", "150"}).images());
+        assertEquals(new stirling.software.officeconvert.optimize.PdfOptimizer.Images(96, 0.4f),
+                Args.parse(new String[] {"in.pdf", "--optimize", "--image-dpi", "96", "--image-quality", "0.4"})
+                        .images());
+        assertTrue(Args.parse(new String[] {"in.pdf", "--optimize", "--grayscale"}).grayscale());
+        assertNull(Args.parse(new String[] {"in.pdf", "--optimize", "--grayscale"}).images());
+    }
+
+    @Test
+    void badImageOptions() {
+        assertEquals("--image-dpi is a resolution from 1 to 2400, not '0'", assertThrows(Usage.class,
+                () -> Args.parse(new String[] {"in.pdf", "--optimize", "--image-dpi", "0"})).getMessage());
+        assertEquals("--image-quality is above 0 and at most 1, not 'high'", assertThrows(Usage.class,
+                () -> Args.parse(new String[] {"in.pdf", "--optimize", "--image-dpi", "150", "--image-quality",
+                        "high"})).getMessage());
+        assertEquals("--image-quality goes with --image-dpi", assertThrows(Usage.class,
+                () -> Args.parse(new String[] {"in.pdf", "--optimize", "--image-quality", "0.5"})).getMessage());
+    }
+
+    @Test
     void helpWinsOnlyBeforeAMistake() throws Usage {
         assertNull(Args.parse(new String[] {"in.pdf", "--help", "--bogus"}));
         assertEquals("unknown option --bogus",
