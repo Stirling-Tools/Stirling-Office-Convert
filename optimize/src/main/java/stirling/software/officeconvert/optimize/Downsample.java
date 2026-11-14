@@ -89,21 +89,24 @@ final class Downsample {
 
     private final Fresh fresh;
 
+    private final BrotliBudget budget;
+
     private final List<COSStream> masks = new ArrayList<>();
 
     private COSArray srgb;
 
     private int colourKeyed;
 
-    private Downsample(PdfOptimizer.Images settings, boolean gray, Fresh fresh) {
+    private Downsample(PdfOptimizer.Images settings, boolean gray, Fresh fresh, BrotliBudget budget) {
         this.settings = settings;
         this.gray = gray;
         this.fresh = fresh;
+        this.budget = budget;
     }
 
     static Applied apply(PDDocument doc, PdfOptimizer.Images settings, boolean gray, Set<COSStream> more,
             Fresh fresh) throws IOException {
-        Downsample run = new Downsample(settings, gray, fresh);
+        Downsample run = new Downsample(settings, gray, fresh, BrotliBudget.of(doc));
         Map<COSObjectKey, Double> needed = new LinkedHashMap<>();
         Map<COSObjectKey, COSStream> streams = new HashMap<>();
         if (settings != null) {
@@ -223,6 +226,24 @@ final class Downsample {
         }
     }
 
+    private PDImageXObject withoutBrotli(COSStream stream) throws IOException {
+        byte[] data = Recoder.decoded(stream, budget);
+        if (data == null) {
+            return null;
+        }
+        COSStream plain = new COSStream();
+        for (Map.Entry<COSName, COSBase> entry : stream.entrySet()) {
+            COSName key = entry.getKey();
+            if (!COSName.FILTER.equals(key) && !COSName.DECODE_PARMS.equals(key) && !COSName.LENGTH.equals(key)) {
+                plain.setItem(key, entry.getValue());
+            }
+        }
+        try (OutputStream out = plain.createRawOutputStream()) {
+            out.write(data);
+        }
+        return new PDImageXObject(new PDStream(plain), null);
+    }
+
     private boolean rewrite(COSStream stream, double inchesPerPixel) throws IOException {
         PDImageXObject image = new PDImageXObject(new PDStream(stream), null);
         if (image.isStencil()) {
@@ -258,9 +279,13 @@ final class Downsample {
         if (sampled * 4 > Recoder.MAX_DECODED_BYTES) {
             return false;
         }
-        PDImage source = onlyJpx(stream) && ImageBudget.affordable(image) ? ImageBudget.fitted(image) : image;
-        BufferedImage decoded = source != image ? source.getImage(null, subsampling)
-                : image.getOpaqueImage(null, subsampling);
+        PDImageXObject readable = Filters.brotli(stream.getItem(COSName.FILTER)) ? withoutBrotli(stream) : image;
+        if (readable == null) {
+            return false;
+        }
+        PDImage source = onlyJpx(stream) && ImageBudget.affordable(readable) ? ImageBudget.fitted(readable) : readable;
+        BufferedImage decoded = source != readable ? source.getImage(null, subsampling)
+                : readable.getOpaqueImage(null, subsampling);
         if (decoded == null) {
             return false;
         }
