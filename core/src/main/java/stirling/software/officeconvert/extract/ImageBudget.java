@@ -53,8 +53,8 @@ public final class ImageBudget {
     public static PDImage fitted(PDImage image) {
         int step = step(image);
         if (step == 1) {
-            PDIndexed indexed = paletteOverridden(image);
-            return indexed == null ? image : new JpxIndexedImage((PDImageXObject) image, indexed);
+            PDColorSpace space = componentsOverridden(image);
+            return space == null ? image : new JpxSamplesImage((PDImageXObject) image, space);
         }
         if (step < 1 || !(image instanceof PDImageXObject x) || x.getCOSObject().containsKey(COSName.OC)) {
             return null;
@@ -236,32 +236,51 @@ public final class ImageBudget {
         }
     }
 
-    private static final Map<COSBase, Boolean> JP2_PALETTES = Collections.synchronizedMap(new WeakHashMap<>());
+    private static final Map<COSBase, int[]> JP2_SHAPES = Collections.synchronizedMap(new WeakHashMap<>());
 
-    private static PDIndexed paletteOverridden(PDImage image) {
+    private static final int NO_PALETTE = 0;
+
+    private static PDColorSpace componentsOverridden(PDImage image) {
         if (!(image instanceof PDImageXObject x) || !jpx(x.getCOSObject())) {
             return null;
         }
         COSStream stream = x.getCOSObject();
         if (stream.containsKey(COSName.SMASK) || stream.containsKey(COSName.MASK) || stream.containsKey(COSName.DECODE)
+                || stream.getInt(COSName.SMASK_IN_DATA, 0) != 0
                 || !(stream.getDictionaryObject(COSName.COLORSPACE, COSName.CS) instanceof COSArray)) {
             return null;
         }
-        Boolean palette = JP2_PALETTES.computeIfAbsent(stream, s -> {
+        int[] shape = JP2_SHAPES.computeIfAbsent(stream, s -> {
+            byte[] header;
             try {
-                return JpxDecoder.palette(jpxHeader(stream));
+                header = jpxHeader(stream);
             } catch (IOException | RuntimeException e) {
-                return false;
+                return new int[] {NO_PALETTE, 0};
+            }
+            int palette;
+            try {
+                palette = JpxDecoder.palette(header) ? 1 : NO_PALETTE;
+            } catch (RuntimeException e) {
+                palette = NO_PALETTE;
+            }
+            try {
+                return new int[] {palette, JpxDecoder.size(header)[2]};
+            } catch (IOException | RuntimeException e) {
+                return new int[] {palette, 0};
             }
         });
-        if (!palette) {
-            return null;
-        }
+        PDColorSpace space;
         try {
-            return x.getColorSpace() instanceof PDIndexed indexed ? indexed : null;
+            space = x.getColorSpace();
         } catch (IOException | RuntimeException e) {
             return null;
         }
+        if (space instanceof PDIndexed) {
+            return shape[0] != NO_PALETTE ? space : null;
+        }
+        int n = space.getNumberOfComponents();
+        boolean inferable = n == 1 || n == 3 || n == 4;
+        return shape[0] == NO_PALETTE && !inferable && shape[1] == n ? space : null;
     }
 
     private static boolean jpx(PDImage image) {

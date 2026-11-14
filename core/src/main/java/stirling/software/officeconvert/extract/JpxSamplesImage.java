@@ -24,35 +24,47 @@ import stirling.software.officeconvert.jpx.JpxImage;
 import stirling.software.officeconvert.jpx.JpxOptions;
 import stirling.software.officeconvert.jpx.JpxRaster;
 
-record JpxIndexedImage(PDImageXObject image, PDIndexed space) implements PDImage {
+record JpxSamplesImage(PDImageXObject image, PDColorSpace space) implements PDImage {
 
     private static final int MAX_INDEX = 255;
 
+    private static final int MAX_SAMPLE = 255;
+
     private static final List<String> BEFORE_JPX = List.of(COSName.JPX_DECODE.getName());
 
-    WritableRaster indices() throws IOException {
+    WritableRaster samples() throws IOException {
         byte[] data;
         try (InputStream in = image.createInputStream(BEFORE_JPX)) {
             data = in.readAllBytes();
         }
         JpxImage decoded = JpxDecoder.decode(data, new JpxOptions(0, null, ImageBudget.MAX_JPX_SAMPLES));
         JpxRaster raster = decoded.raster();
+        int bands = space.getNumberOfComponents();
+        if (raster.components() < bands) {
+            throw new IOException("The image has " + raster.components() + " components for a " + bands
+                    + " component colour space");
+        }
+        boolean indexed = space instanceof PDIndexed;
         int w = raster.width();
         int h = raster.height();
-        WritableRaster out = Raster.createBandedRaster(DataBuffer.TYPE_BYTE, w, h, 1, null);
+        WritableRaster out = Raster.createBandedRaster(DataBuffer.TYPE_BYTE, w, h, bands, null);
         int[] row = new int[w];
-        for (int y = 0; y < h; y++) {
-            for (int x = 0; x < w; x++) {
-                row[x] = Math.clamp(raster.imageSample(0, x, y), 0, MAX_INDEX);
+        for (int b = 0; b < bands; b++) {
+            int max = (1 << raster.depth(b)) - 1;
+            for (int y = 0; y < h; y++) {
+                for (int x = 0; x < w; x++) {
+                    int v = raster.imageSample(b, x, y);
+                    row[x] = indexed ? Math.clamp(v, 0, MAX_INDEX) : Math.clamp(v * MAX_SAMPLE / max, 0, MAX_SAMPLE);
+                }
+                out.setSamples(0, y, w, 1, b, row);
             }
-            out.setSamples(0, y, w, 1, 0, row);
         }
         return out;
     }
 
     @Override
     public BufferedImage getImage() throws IOException {
-        return space.toRGBImage(indices());
+        return space.toRGBImage(samples());
     }
 
     @Override
@@ -78,12 +90,12 @@ record JpxIndexedImage(PDImageXObject image, PDIndexed space) implements PDImage
 
     @Override
     public WritableRaster getRawRaster() throws IOException {
-        return indices();
+        return samples();
     }
 
     @Override
     public BufferedImage getRawImage() throws IOException {
-        return space.toRawImage(indices());
+        return space.toRawImage(samples());
     }
 
     @Override
