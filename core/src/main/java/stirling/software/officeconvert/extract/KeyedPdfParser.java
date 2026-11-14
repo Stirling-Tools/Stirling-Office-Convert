@@ -21,7 +21,11 @@ final class KeyedPdfParser extends PDFParser {
 
     private final Map<Long, Map<COSObjectKey, COSBase>> decompressed = new HashMap<>();
 
-    private final Map<Long, COSObjectKey> keys = new HashMap<>();
+    private long[] keyHashes = new long[16];
+
+    private COSObjectKey[] keyObjects = new COSObjectKey[16];
+
+    private int keyCount;
 
     private int indexedEntries = -1;
 
@@ -126,12 +130,57 @@ final class KeyedPdfParser extends PDFParser {
         Map<COSObjectKey, Long> xref = doc == null ? Map.of() : doc.getXrefTable();
         if (xref.size() != indexedEntries) {
             for (COSObjectKey k : xref.keySet()) {
-                keys.putIfAbsent(k.getInternalHash(), k);
+                addKey(k);
             }
             indexedEntries = xref.size();
         }
-        COSObjectKey found = keys.get(COSObjectKey.computeInternalHash(num, gen));
+        COSObjectKey found = findKey(COSObjectKey.computeInternalHash(num, gen));
         return found != null ? found : new COSObjectKey(num, gen);
+    }
+
+    private COSObjectKey findKey(long hash) {
+        int mask = keyObjects.length - 1;
+        for (int i = slot(hash, mask); keyObjects[i] != null; i = i + 1 & mask) {
+            if (keyHashes[i] == hash) {
+                return keyObjects[i];
+            }
+        }
+        return null;
+    }
+
+    private void addKey(COSObjectKey key) {
+        if ((keyCount + 1) * 3L > keyObjects.length * 2L) {
+            long[] oldHashes = keyHashes;
+            COSObjectKey[] oldObjects = keyObjects;
+            keyHashes = new long[oldObjects.length * 2];
+            keyObjects = new COSObjectKey[oldObjects.length * 2];
+            keyCount = 0;
+            for (int i = 0; i < oldObjects.length; i++) {
+                if (oldObjects[i] != null) {
+                    insert(oldHashes[i], oldObjects[i]);
+                }
+            }
+        }
+        insert(key.getInternalHash(), key);
+    }
+
+    private void insert(long hash, COSObjectKey key) {
+        int mask = keyObjects.length - 1;
+        int i = slot(hash, mask);
+        while (keyObjects[i] != null) {
+            if (keyHashes[i] == hash) {
+                return;
+            }
+            i = i + 1 & mask;
+        }
+        keyHashes[i] = hash;
+        keyObjects[i] = key;
+        keyCount++;
+    }
+
+    private static int slot(long hash, int mask) {
+        long h = hash * 0x9E3779B97F4A7C15L;
+        return (int) (h ^ h >>> 32) & mask;
     }
 
     @Override
