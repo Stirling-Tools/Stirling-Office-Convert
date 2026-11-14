@@ -10,7 +10,7 @@ final class Matches {
 
     final Scratch scratch;
 
-    int[] pairs;
+    char[] pairs;
 
     int used;
 
@@ -21,7 +21,7 @@ final class Matches {
             scratch.start = new int[n + 1];
         }
         if (scratch.pairs.length < Math.max(1024, 4L * n)) {
-            scratch.pairs = new int[(int) Math.min(Integer.MAX_VALUE - 8, Math.max(1024, 4L * n))];
+            scratch.pairs = new char[(int) Math.min(Integer.MAX_VALUE - 8, Math.max(1024, 4L * n))];
         }
         start = scratch.start;
         pairs = scratch.pairs;
@@ -36,8 +36,8 @@ final class Matches {
             pairs = Arrays.copyOf(pairs, pairs.length * 2);
             scratch.pairs = pairs;
         }
-        pairs[used++] = len;
-        pairs[used++] = dist;
+        pairs[used++] = (char) len;
+        pairs[used++] = (char) dist;
     }
 
     void finish() {
