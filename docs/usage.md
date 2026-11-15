@@ -169,7 +169,15 @@ local app finds an installed LibreOffice by itself. Settings on top of the table
 
 ## Library use
 
-Add the dependency (Java 25 or later):
+Add the dependency (Java 25 or later). Releases are published to https://maven.stirlingpdf.com first and then
+copied to Maven Central on a best-effort basis, so list the Stirling repository to get a release as soon as it is out:
+
+```kotlin
+repositories {
+    maven("https://maven.stirlingpdf.com") { content { includeGroup("com.stirling") } }
+    mavenCentral()
+}
+```
 
 ```kotlin
 implementation("com.stirling:stirling-office-convert:<version>")            // Gradle, Kotlin DSL
@@ -926,18 +934,24 @@ further; the JDK default is 240 MB.
 
 ## Releasing
 
-Published to Maven Central as `com.stirling:stirling-office-convert`, `com.stirling:stirling-office-convert-legacy`
-(the `.ppt` writer), `com.stirling:stirling-office-convert-topdf` (Office to PDF) and
-`com.stirling:stirling-office-convert-pdfa` (PDF to PDF/A), signed, the same way as JPDFium:
+Published to https://maven.stirlingpdf.com and Maven Central as `com.stirling:stirling-office-convert`,
+`com.stirling:stirling-office-convert-legacy` (the `.ppt` writer), `com.stirling:stirling-office-convert-topdf` (Office to
+PDF), `com.stirling:stirling-office-convert-pdfa` (PDF to PDF/A), `-lineart` and `-optimize`, signed, the same way as
+JPDFium:
 
-- A `v1.2.3` tag runs `.github/workflows/release.yml`: build, test, then `publishAllToCentralPortal`, which uploads to
-  the Central Portal staging API and finalizes the deployment for review at
-  https://central.sonatype.com/publishing/deployments (dispatch with `autoRelease` to skip the review click).
-- Pushes to `main` publish a `-SNAPSHOT` (`snapshot.yml`) once the secrets below are set; pull requests build and test on Linux, macOS and Windows
-  with Java 25 (`ci.yml`).
-- Repository secrets: `CENTRAL_PORTAL_USERNAME`, `CENTRAL_PORTAL_PASSWORD` (a Central Portal user token),
-  `GPG_SIGNING_KEY` (ASCII-armoured private key) and `GPG_SIGNING_PASSWORD`. A release version without a signing key
-  is refused before anything is uploaded.
+- A `v1.2.3` tag runs `.github/workflows/release.yml`: build and test, then `publishAllToR2Staging` signs every module into
+  `build/r2-repo` and the [maven-r2-publish](https://github.com/Stirling-Tools/maven-r2-publish) release action stages it
+  under `staging/`. `.github/scripts/verify-staged.sh` checks every file and runs a conversion from the staged artifacts;
+  only then is the set promoted to the root. A failed verify or promote keeps the staging copy for "Re-run failed jobs".
+- After the promote, `publishAllToCentralPortal` sends the same version to Maven Central with automatic release. That job
+  may fail without failing the release, so a version can be on maven.stirlingpdf.com before, or without, reaching Central.
+- Dispatch with `dryRun` to build, stage and verify without releasing.
+- Pushes to `main` publish a `-SNAPSHOT` to Central (`snapshot.yml`) once the secrets below are set; pull requests build
+  and test on Linux, macOS and Windows with Java 25 (`ci.yml`).
+- Secrets: `GPG_SIGNING_KEY` (ASCII-armoured private key), `GPG_SIGNING_PASSWORD`, `CENTRAL_PORTAL_USERNAME` and
+  `CENTRAL_PORTAL_PASSWORD` (a Central Portal user token), plus `R2_ENDPOINT`, `R2_ACCESS_KEY_ID` and
+  `R2_SECRET_ACCESS_KEY` in a `maven` environment. A release version without a signing key is refused before anything
+  is uploaded.
 - Locally: `./gradlew publishToMavenLocal` builds the jar, sources, javadoc and POM.
 
 ## Tests
