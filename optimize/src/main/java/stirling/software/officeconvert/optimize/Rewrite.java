@@ -132,6 +132,11 @@ final class Rewrite {
             if (index.kind(root) != Index.DICT) {
                 throw new IOException("The PDF has no document catalog");
             }
+            if ((options.images() != null || options.grayscale()) && encryption == null) {
+                r.lossy(doc, order, warnings);
+            } else if (options.images() != null || options.grayscale()) {
+                warnings.add("The PDF is encrypted, so its images and colours were kept as they are");
+            }
             List<String> repairs = new ArrayList<>();
             if (source.rebuilt()) {
                 repairs.add("its cross-reference table was rebuilt");
@@ -252,6 +257,48 @@ final class Rewrite {
             }
         }
         return recovered;
+    }
+
+    private void lossy(PDDocument doc, List<COSObjectKey> order, List<String> warnings) throws IOException {
+        long next = 1;
+        for (int i = 0; i < index.size(); i++) {
+            next = Math.max(next, index.key(i).getNumber() + 1);
+        }
+        Fresh fresh = new Fresh(next);
+        List<COSBase> changed = new ArrayList<>();
+        Set<COSStream> images = Set.of();
+        if (options.grayscale()) {
+            Grayscale.Applied gray = Grayscale.apply(doc, fresh);
+            changed.addAll(gray.changed());
+            images = gray.images();
+            if (gray.unconverted() > 0) {
+                warnings.add(gray.unconverted() == 1 ? "1 colour could not be converted to gray and was kept"
+                        : gray.unconverted() + " colours could not be converted to gray and were kept");
+            }
+        }
+        Downsample.Applied applied = Downsample.apply(doc, options.images(), options.grayscale(), images, fresh);
+        changed.addAll(applied.images());
+        if (applied.failed() > 0) {
+            warnings.add(applied.failed() == 1 ? "1 image could not be re-encoded and was kept as it is"
+                    : applied.failed() + " images could not be re-encoded and were kept as they are");
+        }
+        if (applied.colourKeyed() > 0) {
+            warnings.add(applied.colourKeyed() == 1 ? "1 image could not be converted to gray and was kept in colour"
+                    : applied.colourKeyed() + " images could not be converted to gray and were kept in colour");
+        }
+        for (COSBase object : changed) {
+            int id = object.getKey() == null ? -1 : index.find(object.getKey());
+            if (id >= 0) {
+                source.inject(object.getKey(), object);
+                recorder.record(id, object, null);
+            }
+        }
+        for (Map.Entry<COSObjectKey, COSBase> e : fresh.created().entrySet()) {
+            int id = index.id(e.getKey());
+            source.inject(e.getKey(), e.getValue());
+            recorder.record(id, e.getValue(), null);
+            order.add(e.getKey());
+        }
     }
 
     private void prune() throws IOException {

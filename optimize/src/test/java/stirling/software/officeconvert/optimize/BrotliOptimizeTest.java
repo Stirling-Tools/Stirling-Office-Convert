@@ -263,6 +263,37 @@ class BrotliOptimizeTest {
         }
     }
 
+    @Test
+    void grayscaleConvertsBrotliAndPredictedStreams() throws Exception {
+        byte[] padded = bytes(String.format("%-2400s", CONTENT));
+        Path brotli = page("gray-brotli", "/Filter/BrotliDecode", BrotliData.stored(bytes(CONTENT)),
+                "/Filter/FlateDecode", deflate(pixels()));
+        Path predicted = page("gray-predicted", "/Filter/FlateDecode/DecodeParms<</Predictor 12/Colors 3/Columns 40>>",
+                deflate(png(padded)), "/Filter/FlateDecode", deflate(pixels()));
+        Path chained = page("gray-chained", "/Filter[/BrotliDecode/ASCIIHexDecode]", BrotliData.stored(hex(bytes(CONTENT))),
+                "/Filter[/ASCIIHexDecode/BrotliDecode]/DecodeParms[null<</Predictor 15/Colors 3/Columns 40>>]",
+                hex(BrotliData.stored(png(pixels()))));
+        for (Path in : new Path[] {brotli, predicted, chained}) {
+            Path out = dir.resolve("gray.pdf");
+            PdfOptimizer.Result result = PdfOptimizer.optimize(in, out, PdfOptimizer.Options.defaults().grayscale(true));
+            assertTrue(result.rewritten(), result.warnings().toString());
+            assertTrue(result.warnings().stream().noneMatch(w -> w.contains("kept")), result.warnings().toString());
+            assertFalse(contains(out, "Brotli" + "Decode"));
+            assertTrue(java.util.Arrays.stream(Pages.render(out).get(0)).allMatch(BrotliOptimizeTest::gray),
+                    in.getFileName().toString());
+            try (PDDocument d = Loader.loadPDF(out.toFile())) {
+                assertTrue(new PDFTextStripper().getText(d).contains("Brotli page"), in.getFileName().toString());
+            }
+        }
+    }
+
+    private static boolean gray(int rgb) {
+        int r = rgb >> 16 & 255;
+        int g = rgb >> 8 & 255;
+        int b = rgb & 255;
+        return Math.abs(r - g) <= 2 && Math.abs(g - b) <= 2;
+    }
+
     private static boolean contains(Path pdf, String text) throws IOException {
         return new String(Files.readAllBytes(pdf), StandardCharsets.ISO_8859_1).contains(text);
     }

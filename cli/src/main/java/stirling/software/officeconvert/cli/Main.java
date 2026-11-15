@@ -77,7 +77,8 @@ public final class Main {
     }
 
     private static void checkUrl(Args a) throws Usage {
-        if (!a.rewrites().isEmpty() || a.lineArtTuned() || a.effort() != null || a.keepPrivateData()) {
+        if (!a.rewrites().isEmpty() || a.lineArtTuned() || a.effort() != null || a.keepPrivateData()
+                || a.images() != null || a.grayscale()) {
             throw new Usage("--pdfa, --line-art and --optimize rewrite PDF input; a URL converts to PDF without them");
         }
         if (a.urls().size() > 1 || !a.inputs().isEmpty() || a.output() == null || !PDF.equals(extension(a.output()))
@@ -113,8 +114,9 @@ public final class Main {
             throw new Usage("--threshold, --edge-level, --window, --sauvola-k, --codec and --ink-colour go with --line-art");
         }
         Mode mode = mode(a.rewrites());
-        if ((a.effort() != null || a.keepPrivateData()) && mode != Mode.OPTIMIZE) {
-            throw new Usage("--effort and --keep-private-data go with --optimize");
+        if ((a.effort() != null || a.keepPrivateData() || a.images() != null || a.grayscale())
+                && mode != Mode.OPTIMIZE) {
+            throw new Usage("--effort, --keep-private-data, --image-dpi and --grayscale go with --optimize");
         }
         if (mode.rewritesPdf() && (anyOffice || a.asksForOfficeFormat() || a.pagesGiven())) {
             throw new Usage(mode.flag() + " " + mode.purpose() + "; give it PDF input without --pages or --format");
@@ -260,7 +262,7 @@ public final class Main {
             case OPTIMIZE -> {
                 PdfOptimizer.Options shrink = PdfOptimizer.Options.defaults().password(a.password())
                         .timeout(office.timeout()).effort(a.effort() == null ? PdfOptimizer.Effort.DEFAULT : a.effort())
-                        .keepPrivateData(a.keepPrivateData());
+                        .keepPrivateData(a.keepPrivateData()).images(a.images()).grayscale(a.grayscale());
                 yield (in, target) -> optimizeNotes(PdfOptimizer.optimize(in, target, shrink));
             }
             case CONVERT -> (in, target) -> {
@@ -524,7 +526,7 @@ public final class Main {
                         + " [--password p] [--overwrite] [-q]"
                         + System.lineSeparator()
                         + "       office-convert <in.pdf|dir>... --optimize [--effort fast|default|max] [--keep-private-data]"
-                        + " [-o out.pdf|dir] [--password p] [--timeout s] [--overwrite] [-q]"
+                        + " [--image-dpi n [--image-quality 0-1]] [--grayscale] [-o out.pdf|dir] [--password p] [--timeout s] [--overwrite] [-q]"
                         + System.lineSeparator()
                         + "Word, PowerPoint and Excel files (.docx .docm .dotx .dotm .pptx .pptm .ppsx .ppsm .potx .potm"
                         + " .xlsx .xlsm .xltx .xltm .xlsb, binary .doc .dot .xls .xlt .ppt .pps .pot back to Word 6.0 and"
@@ -570,6 +572,10 @@ public final class Main {
                         + " applications' private data goes too unless --keep-private-data. An output that would not be"
                         + " smaller is normally a copy of the input; repaired PDFs may be larger. A copied input retains its private data."
                         + " Supported encrypted PDFs keep their encryption and permissions; use --password when required."
+                        + " --image-dpi makes it lossy: each image is resampled to that resolution at the size it is"
+                        + " drawn and photographs are re-encoded as JPEG at --image-quality (default 0.75). --grayscale"
+                        + " converts text, graphics, shadings and images to gray. Signed and encrypted PDFs keep their"
+                        + " colours and images."
                         + System.lineSeparator()
                         + "--fonts adds a folder of .ttf, .ttc, .otf or .otc fonts (searched to a depth of 8, links not"
                         + " followed); --font-map draws a family with an installed one (Aptos=Inter); --font-width scales"
