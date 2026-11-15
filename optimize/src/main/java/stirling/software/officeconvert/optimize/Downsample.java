@@ -79,6 +79,10 @@ final class Downsample {
 
     private static final float GRAY_QUALITY = 0.9f;
 
+    private static final float LOWEST_GRAY_QUALITY = 0.5f;
+
+    private static final float GRAY_QUALITY_STEP = 0.1f;
+
     private static final COSName MATTE = COSName.getPDFName("Matte");
 
     record Applied(List<COSStream> images, int failed, int colourKeyed) {}
@@ -305,6 +309,9 @@ final class Downsample {
         }
         float quality = settings == null ? GRAY_QUALITY : settings.quality();
         byte[] encoded = photographic ? jpeg(resized, quality) : flate(resized);
+        if (toGray && photographic) {
+            encoded = noLargerThan(resized, quality, encoded, stream.getLength());
+        }
         if (!toGray && encoded.length >= stream.getLength() * MIN_SAVING) {
             return false;
         }
@@ -323,6 +330,19 @@ final class Downsample {
         stream.setInt(COSName.BITS_PER_COMPONENT, 8);
         stream.setItem(COSName.COLORSPACE, grayOut ? COSName.DEVICEGRAY : srgb());
         return true;
+    }
+
+    private static byte[] noLargerThan(BufferedImage image, float quality, byte[] encoded, long limit)
+            throws IOException {
+        byte[] best = encoded;
+        for (float q = quality - GRAY_QUALITY_STEP; best.length > limit && q >= LOWEST_GRAY_QUALITY - 1e-3f;
+                q -= GRAY_QUALITY_STEP) {
+            byte[] smaller = jpeg(image, q);
+            if (smaller.length < best.length) {
+                best = smaller;
+            }
+        }
+        return best;
     }
 
     private void grayMatte(COSStream stream, PDColorSpace colorSpace) throws IOException {
