@@ -145,11 +145,12 @@ val proguardJar by tasks.registering(JavaExec::class) {
     val jdk = layout.buildDirectory.dir("jdk-classes")
     val shrunk = layout.buildDirectory.file("proguard/stirling-office-convert-cli.jar")
     dependsOn(jdkClasses, mergeServices)
-    inputs.file(unshrunk)
-    inputs.file(rules)
-    inputs.dir(mergeServices.map { it.outputs.files.singleFile })
-    inputs.dir(jdk)
+    inputs.file(unshrunk).withPathSensitivity(PathSensitivity.NONE)
+    inputs.file(rules).withPathSensitivity(PathSensitivity.NONE)
+    inputs.dir(mergeServices.map { it.outputs.files.singleFile }).withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.dir(jdk).withPathSensitivity(PathSensitivity.RELATIVE)
     outputs.file(shrunk)
+    outputs.cacheIf { true }
     classpath = proguard
     mainClass.set("proguard.ProGuard")
     javaLauncher.set(toolchainLauncher)

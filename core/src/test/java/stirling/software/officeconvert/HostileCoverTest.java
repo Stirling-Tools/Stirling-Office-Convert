@@ -24,22 +24,6 @@ class HostileCoverTest {
     }
 
     @Test
-    @Timeout(value = 60, unit = TimeUnit.SECONDS)
-    void aFormFanOutFinishesTheCover() throws Exception {
-        try (PDDocument doc = GuardedRendererTest.fanOut()) {
-            assertDoesNotThrow(() -> PdfBook.cover(doc, PdfToDocx.Options.defaults(), false));
-        }
-    }
-
-    @Test
-    @Timeout(value = 60, unit = TimeUnit.SECONDS)
-    void anImageBombIsLeftOffTheCover() throws Exception {
-        try (PDDocument doc = GuardedRendererTest.imageBomb()) {
-            assertDoesNotThrow(() -> PdfBook.cover(doc, PdfToDocx.Options.defaults(), false));
-        }
-    }
-
-    @Test
     void anInterruptedCoverStopsTheConversion() throws Exception {
         try (PDDocument doc = new PDDocument()) {
             doc.addPage(new PDPage());

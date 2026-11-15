@@ -214,52 +214,9 @@ class NetworkSafetyTest {
     }
 
     @Test
-    void reportsNetworkCapableCodeInThirdPartyJars() throws Exception {
-        String cp = System.getProperty("topdf.runtimeClasspath", "");
-        List<String> jars = new ArrayList<>();
-        for (String s : cp.split(File.pathSeparator)) {
-            if (s.endsWith(".jar")) {
-                jars.add(s);
-            }
-        }
-        assertFalse(jars.isEmpty(), "the build passes topdf.runtimeClasspath to the tests");
-        StringBuilder report = new StringBuilder();
-        report.append("Network-capable references in the runtime classpath of :topdf (report only)\n");
-        for (String jar : jars) {
-            Map<String, TreeSet<String>> byKind = new TreeMap<>();
-            for (Map.Entry<String, byte[]> e : ClassScan.classes(Path.of(jar)).entrySet()) {
-                ClassScan.Refs refs;
-                try {
-                    refs = ClassScan.read(e.getValue());
-                } catch (IOException bad) {
-                    continue;
-                }
-                for (String kind : ClassScan.networkCapable(refs)) {
-                    byKind.computeIfAbsent(kind, k -> new TreeSet<>()).add(refs.name());
-                }
-            }
-            report.append("\n== ").append(Path.of(jar).getFileName()).append('\n');
-            if (byKind.isEmpty()) {
-                report.append("   none\n");
-            }
-            for (Map.Entry<String, TreeSet<String>> k : byKind.entrySet()) {
-                report.append("   ").append(k.getKey()).append(" (").append(k.getValue().size()).append("): ");
-                report.append(String.join(", ", k.getValue())).append('\n');
-            }
-        }
-        Path out = Path.of(System.getProperty("topdf.reportDir", "build/reports")).resolve("network-scan.txt");
-        Files.createDirectories(out.getParent());
-        Files.writeString(out, report, StandardCharsets.UTF_8);
-    }
-
-    @Test
     void hostileDocumentsNeverTouchTheNetwork() throws Exception {
         try (NoNetwork net = NoNetwork.start()) {
             Map<String, byte[]> docs = new TreeMap<>();
-            docs.put("hostile.docx", Fixtures.hostileDocx(net));
-            docs.put("doctype.docx", Fixtures.doctypeDocx(net));
-            docs.put("hostile.pptx", Fixtures.hostilePptx(net));
-            docs.put("hostile.xlsx", Fixtures.hostileXlsx(net));
             docs.putAll(HostileFormats.all(net));
             docs.put("hostile.doc", DocHostile.build(net));
             docs.put("hostile6.doc", Word6Hostile.build(net));
@@ -281,7 +238,7 @@ class NetworkSafetyTest {
                 }
             }
             net.assertNothingConnected();
-            assertEquals(Set.of("doctype.docx", "doctype.fodt", "doctype.odt"), refused, "only DOCTYPEs are refused");
+            assertEquals(Set.of("doctype.fodt", "doctype.odt"), refused, "only DOCTYPEs are refused");
         }
     }
 

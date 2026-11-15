@@ -64,4 +64,14 @@ class BoundedZipTest {
             assertArrayEquals(filled(100), z.read(e, 100));
         }
     }
+
+    @Test
+    void partsShareOneBudgetForWhatTheyInflateTo() throws IOException {
+        Path file = Files.write(dir.resolve("shared.zip"), new ZipBytes().add("a", filled(60)).add("b", filled(60))
+                .bytes());
+        try (BoundedZip z = BoundedZip.open(file, new OfficeZip.Limits(10, 100, 100, 0, 0))) {
+            assertArrayEquals(filled(60), z.read(z.entry("a"), 100));
+            assertThrows(OfficeZip.Oversized.class, () -> z.read(z.entry("b"), 100));
+        }
+    }
 }

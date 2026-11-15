@@ -84,7 +84,7 @@ class FlatOpcTest {
 
     @Test
     void compressedPartsShareOneInflateBudget() throws IOException {
-        String zeros = deflatedZeros(255);
+        String zeros = deflatedZeros(5);
         StringBuilder b = new StringBuilder("<?xml version=\"1.0\"?><pkg:package"
                 + " xmlns:pkg=\"http://schemas.microsoft.com/office/2006/xmlPackage\">");
         for (int i = 0; i < 8; i++) {
@@ -92,8 +92,9 @@ class FlatOpcTest {
                     .append("\"DeflateCompression\"><pkg:binaryData>").append(zeros).append("</pkg:binaryData></pkg:part>");
         }
         Path in = Files.writeString(dir.resolve("bomb.xml"), b.append("</pkg:package>"));
-        Allocation.Measured m = Allocation.measure(() -> FlatOpc.unpack(in, OutputStream.nullOutputStream()));
+        Allocation.Measured m = Allocation.measure(() -> FlatOpc.unpack(in, OutputStream.nullOutputStream(),
+                16L << 20));
         assertInstanceOf(OfficeZip.Oversized.class, m.failure());
-        assertTrue(m.bytes() < 512L << 20, "allocated " + m.megabytes() + " MB");
+        assertTrue(m.bytes() < 8L << 20, "allocated " + m.megabytes() + " MB");
     }
 }

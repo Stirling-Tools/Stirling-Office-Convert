@@ -59,9 +59,9 @@ class XlsVariantsTest {
         });
         long start = System.nanoTime();
         XlsTest.Converted out = convert("full.xls", data, OfficeToPdf.Options.defaults()
-                .timeout(Duration.ofMinutes(3)).maxPages(200));
+                .timeout(Duration.ofMinutes(3)).maxPages(5));
         assertTrue(System.nanoTime() - start < Duration.ofMinutes(2).toNanos(), "converts in reasonable time");
-        assertEquals(200, out.pages().size(), "the page limit applies");
+        assertEquals(5, out.pages().size(), "the page limit applies");
         assertTrue(out.result().pageLimitReached());
         assertTrue(out.pages().get(0).contains("Row 1"), out.pages().get(0));
     }

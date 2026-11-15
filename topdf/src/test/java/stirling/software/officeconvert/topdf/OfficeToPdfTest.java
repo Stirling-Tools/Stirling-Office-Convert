@@ -36,7 +36,6 @@ import stirling.software.officeconvert.topdf.pdf.PageSize;
 import stirling.software.officeconvert.topdf.pdf.PdfOutput;
 import stirling.software.officeconvert.topdf.pdf.TextStyle;
 import stirling.software.officeconvert.topdf.testing.Fixtures;
-import stirling.software.officeconvert.topdf.testing.OwnTempFolder;
 
 class OfficeToPdfTest {
 
@@ -442,14 +441,11 @@ class OfficeToPdfTest {
                 assertTrue(new org.apache.pdfbox.text.PDFTextStripper().getText(pdf).contains("Warm up"), f.name());
             }
         }
-        List<String> left = OwnTempFolder.run(dir.resolve("tmp"), WarmUpEverything.class);
-        assertEquals(List.of(), left.stream().filter(name -> name.startsWith("office-warm-up-")).toList());
-    }
-
-    public static final class WarmUpEverything {
-        public static void main(String[] args) {
-            OfficeToPdf.warmUp(Format.values());
-            OfficeToPdf.warmUp();
+        OfficeToPdf.warmUp(Format.values());
+        OfficeToPdf.warmUpFoundation();
+        try (Stream<Path> left = Files.list(Path.of(System.getProperty("java.io.tmpdir")))) {
+            assertEquals(List.of(), left.map(p -> p.getFileName().toString())
+                    .filter(name -> name.startsWith("office-warm-up-")).toList());
         }
     }
 

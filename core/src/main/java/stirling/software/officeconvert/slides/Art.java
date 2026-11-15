@@ -58,14 +58,21 @@ final class Art {
     private final float dpi;
     private final boolean lossless;
     private final Predicate<Gradient> gradients;
+    private final long maxPageOperators;
 
     Art(PDDocument document, PlacedContent.MediaStore media, float dpi, boolean lossless, Predicate<Gradient> gradients) {
+        this(document, media, dpi, lossless, gradients, MAX_PAGE_OPERATORS);
+    }
+
+    Art(PDDocument document, PlacedContent.MediaStore media, float dpi, boolean lossless, Predicate<Gradient> gradients,
+            long maxPageOperators) {
         this.document = document;
         this.renderer = new ArtRenderer(document);
         this.media = media;
         this.dpi = dpi;
         this.lossless = lossless;
         this.gradients = gradients;
+        this.maxPageOperators = maxPageOperators;
     }
 
     record Piece(SlideShape shape, int order) {}
@@ -99,7 +106,7 @@ final class Art {
         int blanks = 0;
         long start = renderer.operators();
         for (Run r : kept.subList(0, Math.min(MAX_PIECES, kept.size()))) {
-            if (renderer.operators() - start > MAX_PAGE_OPERATORS) {
+            if (renderer.operators() - start > maxPageOperators) {
                 break;
             }
             Piece p = piece(paint, r.marks, r.box, pageIndex, toDisplay, width, height);

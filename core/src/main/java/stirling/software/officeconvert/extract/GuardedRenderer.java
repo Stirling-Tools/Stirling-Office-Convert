@@ -80,8 +80,12 @@ public class GuardedRenderer extends PDFRenderer {
         private final Map<COSDictionary, String[]> builtIn = new HashMap<>();
 
         public Drawer(PageDrawerParameters parameters, String pass) throws IOException {
+            this(parameters, pass, OperatorBudget.MAX_FORMS);
+        }
+
+        Drawer(PageDrawerParameters parameters, String pass, int maxForms) throws IOException {
             super(parameters);
-            budget = new OperatorBudget(pass);
+            budget = new OperatorBudget(pass, maxForms);
         }
 
         public boolean leftOut() {

@@ -10,6 +10,7 @@ import java.lang.management.MemoryPoolMXBean;
 import java.lang.management.MemoryType;
 import java.nio.ByteBuffer;
 import java.util.List;
+import java.util.zip.Deflater;
 import java.util.zip.DeflaterOutputStream;
 
 import org.apache.pdfbox.cos.COSArray;
@@ -105,7 +106,7 @@ class ImageBudgetMaskTest {
             assertFalse(ImageBudget.affordable(image));
 
             image = gray(doc, 10, 10);
-            image.getCOSObject().setItem(COSName.SMASK, flateJpx(doc, 20, 20, 1 << 30));
+            image.getCOSObject().setItem(COSName.SMASK, flateJpx(doc, 20, 20, 640 << 20));
             System.gc();
             List<MemoryPoolMXBean> heap = ManagementFactory.getMemoryPoolMXBeans().stream()
                     .filter(pool -> pool.getType() == MemoryType.HEAP).toList();
@@ -164,7 +165,7 @@ class ImageBudgetMaskTest {
     private static COSStream flateJpx(PDDocument doc, int width, int height, int padding) throws IOException {
         COSStream stream = jpx(doc, 10, 10, width, height);
         stream.setItem(COSName.FILTER, new COSArray(List.of(COSName.FLATE_DECODE, COSName.JPX_DECODE)));
-        try (OutputStream out = new DeflaterOutputStream(stream.createRawOutputStream())) {
+        try (OutputStream out = new DeflaterOutputStream(stream.createRawOutputStream(), new Deflater(1))) {
             out.write(siz(width, height));
             byte[] zeros = new byte[1 << 20];
             for (long left = padding; left > 0; left -= zeros.length) {

@@ -18,12 +18,13 @@ import org.junit.jupiter.api.Test;
 
 import stirling.software.officeconvert.extract.HiddenContent;
 import stirling.software.officeconvert.build.PlacedContent;
-import stirling.software.officeconvert.extract.OperatorBudget;
 import stirling.software.officeconvert.model.Picture;
 
 class ArtBudgetTest {
 
-    private static final int FILLER = 400_000;
+    private static final int FILLER = 10_000;
+
+    private static final long PAGE_OPERATORS = 200_000;
 
     @Test
     void manySeparatePiecesOnALongPageStopAtTheOperatorBudget() throws Exception {
@@ -31,10 +32,11 @@ class ArtBudgetTest {
             PDPage page = doc.getPage(0);
             AffineTransform toDisplay = new AffineTransform(1, 0, 0, -1, 0, 792);
             PaintOrder paint = PaintOrder.read(page, toDisplay, 612, 792, HiddenContent.of(null));
-            Art art = new Art(doc, new Store(), 72f, false, g -> true);
+            Art art = new Art(doc, new Store(), 72f, false, g -> true, PAGE_OPERATORS);
             art.pieces(paint, Set.of(), 0, toDisplay, 612, 792);
             long perRender = 3L * FILLER + 1000;
-            assertTrue(art.operators() <= 4 * OperatorBudget.MAX_OPERATORS + perRender, () -> "" + art.operators());
+            assertTrue(art.operators() > PAGE_OPERATORS, () -> "" + art.operators());
+            assertTrue(art.operators() <= PAGE_OPERATORS + perRender, () -> "" + art.operators());
         }
     }
 

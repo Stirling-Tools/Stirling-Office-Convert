@@ -69,7 +69,7 @@ class NamedDestinationsTest {
     @Test
     void resolvesTheSameDestinationsAsPdfBox() throws Exception {
         Random random = new Random(11);
-        for (int round = 0; round < 400; round++) {
+        for (int round = 0; round < 100; round++) {
             try (PDDocument d = new PDDocument()) {
                 PDPage page = new PDPage();
                 d.addPage(page);

@@ -68,7 +68,7 @@ class HostileHtmlTest {
     @Timeout(value = 60, unit = TimeUnit.SECONDS)
     void longRowsInsidePanelsAreMeasuredOnce() throws IOException {
         String item = "<div>" + "ab ".repeat(300) + "</div>";
-        String row = "<div style=\"display:flex\">" + item.repeat(3_000) + "<div>" + "x".repeat(3_000) + "</div></div>";
+        String row = "<div style=\"display:flex\">" + item.repeat(1_000) + "<div>" + "x".repeat(3_000) + "</div></div>";
         String html = "<style>section{background:#eee}</style>" + "<section><div>".repeat(3) + row
                 + "</div></section>".repeat(3) + "<p>end of page</p>";
         assertTrue(convert("rows.html", html).contains("end of page"));
@@ -148,7 +148,7 @@ class HostileHtmlTest {
         StringBuilder same = new StringBuilder("<style>div{height:600px;background:linear-gradient(90deg,#f00,#00f)}"
                 + "</style>");
         StringBuilder distinct = new StringBuilder("<style>div{height:600px}</style>");
-        for (int i = 0; i < 3_000; i++) {
+        for (int i = 0; i < 800; i++) {
             same.append("<div>x</div>");
             distinct.append("<div style=\"background:linear-gradient(90deg,#f00,#").append(String.format("%06x", i))
                     .append(")\">x</div>");

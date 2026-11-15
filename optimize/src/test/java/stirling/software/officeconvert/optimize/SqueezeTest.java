@@ -24,7 +24,7 @@ class SqueezeTest {
             text.append("BT /F1 ").append(r.nextInt(30)).append(" Tf ").append(r.nextInt(600)).append(' ')
                     .append(r.nextInt(800)).append(" Td (word").append(r.nextInt(50)).append(") Tj ET\n");
         }
-        byte[] mixed = new byte[1_300_000];
+        byte[] mixed = new byte[(1 << 20) + 65536];
         for (int i = 0; i < mixed.length; i++) {
             mixed[i] = (byte) (i % 7000 < 3500 ? i / 13 : r.nextInt(4));
         }
@@ -42,7 +42,7 @@ class SqueezeTest {
     @Test
     void reusedWorkerBuffersGiveTheSameBytesAsFreshOnes() throws Exception {
         Random r = new Random(3);
-        byte[] big = new byte[2_500_000];
+        byte[] big = new byte[(1 << 20) + 65536];
         for (int i = 0; i < big.length; i++) {
             big[i] = (byte) (i % 9000 < 4000 ? i / 7 : r.nextInt(6));
         }

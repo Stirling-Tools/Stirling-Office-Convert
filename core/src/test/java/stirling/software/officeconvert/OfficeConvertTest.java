@@ -98,6 +98,8 @@ class OfficeConvertTest {
     void aWorkerThatIgnoresTheTimeoutIsStuckAndLaterWorkFailsBusy() throws Exception {
         Admission.Limits saved = Admission.jvm().limits();
         Admission.configure(new Admission.Limits(60, 1, Duration.ofMillis(300), false));
+        long stopMillis = OfficeConvert.stopMillis;
+        OfficeConvert.stopMillis = 200;
         AtomicBoolean release = new AtomicBoolean();
         CountDownLatch holding = new CountDownLatch(1);
         try {
@@ -119,6 +121,7 @@ class OfficeConvertTest {
             assertTrue(busy instanceof Admission.Busy, busy.toString());
         } finally {
             release.set(true);
+            OfficeConvert.stopMillis = stopMillis;
             Admission.configure(saved);
         }
     }

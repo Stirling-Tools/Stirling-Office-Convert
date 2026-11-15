@@ -39,6 +39,10 @@ public final class FlatOpc {
     }
 
     public static void unpack(Path source, OutputStream out) throws IOException {
+        unpack(source, out, OfficeZip.Limits.DEFAULT.maxTotalBytes());
+    }
+
+    static void unpack(Path source, OutputStream out, long maxTotalBytes) throws IOException {
         if (SourceFile.size(source) > MAX_BYTES) {
             throw new IOException("The document is too large: a flat XML document over " + (MAX_BYTES >> 20) + " MB");
         }
@@ -73,7 +77,7 @@ public final class FlatOpc {
             }
         });
         zip.setLevel(Deflater.BEST_SPEED);
-        long[] budget = {OfficeZip.Limits.DEFAULT.maxTotalBytes()};
+        long[] budget = {maxTotalBytes};
         int written = 0;
         for (Map.Entry<String, Element> e : parts.entrySet()) {
             OfficeZip.checkNotInterrupted();
