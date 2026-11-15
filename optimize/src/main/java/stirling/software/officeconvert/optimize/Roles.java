@@ -12,6 +12,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -72,11 +73,15 @@ final class Roles {
     private static final Set<COSName> IDENTITY_KEYS = Set.of(COSName.PARENT, COSName.P, COSName.KIDS, PG, FT,
             COSName.T, COSName.RECT, BYTE_RANGE);
 
+    private static final COSName BEADS = COSName.getPDFName("B");
+
     private static final Pattern PDFA_PART = Pattern.compile("pdfaid:part(?:\\s*=\\s*[\"']\\s*|\\s*>\\s*)(\\d)");
 
     private final Index index;
 
     private final Map<Integer, Page> pages = new LinkedHashMap<>();
+
+    final Set<Integer> beaded = new TreeSet<>();
 
     private final Map<Integer, Loc> streamResources = new HashMap<>();
 
@@ -140,6 +145,11 @@ final class Roles {
     }
 
     void page(int id, COSDictionary node) {
+        if (node.containsKey(BEADS)) {
+            beaded.add(id);
+        } else {
+            beaded.remove(id);
+        }
         Loc here = new Loc(id, HERE);
         COSName type = node.getCOSName(COSName.TYPE);
         pages.put(id, new Page(ref(here, node, COSName.KIDS), ref(here, node, COSName.CONTENTS),

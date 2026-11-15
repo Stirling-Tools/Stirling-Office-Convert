@@ -81,6 +81,8 @@ final class Rewrite {
 
     private int recoded;
 
+    private int storedMetadata = -2;
+
     private int cutOff;
 
     private int oversized;
@@ -154,11 +156,21 @@ final class Rewrite {
             Resolver.Found dr = resolver.find(new Roles.Loc(root, new Object[] {COSName.ACRO_FORM, COSName.DR}));
             r.removals = Cleanup.unusedResources(roles, resolver, source, index, dr == null ? null : dr.loc(),
                     r.brotliBudget);
+            if (source.load(index.key(root)) instanceof COSDictionary catalogDict
+                    && !catalogDict.containsKey(COSName.THREADS)) {
+                r.removals = Cleanup.withoutBeads(r.removals, roles);
+            }
+            r.removals = Cleanup.withoutDeadDestinations(r.removals, roles, index, source, root);
             r.prune();
             r.fonts = Fonts.of(roles, resolver, source, index, dr == null ? null : dr.loc(), r.recorder, r.removals,
                     r.brotliBudget);
             COSBase catalog = source.load(index.key(root));
-            boolean objectStreams = !(catalog instanceof COSDictionary c) || Roles.pdfaPart(c) != 1;
+            int pdfaPart = catalog instanceof COSDictionary c ? Roles.pdfaPart(c) : 0;
+            boolean objectStreams = !(catalog instanceof COSDictionary) || pdfaPart != 1;
+            if (pdfaPart == 0 && catalog instanceof COSDictionary c2) {
+                r.storedMetadata = c2.getItem(COSName.METADATA) instanceof COSObject m && m.getKey() != null
+                        ? index.find(m.getKey()) : -1;
+            }
             float version = Math.max(cos.getVersion(), objectStreams ? 1.5f : 1.0f);
             COSBase id = trailer.getItem(COSName.ID) instanceof COSObject o ? o.getObject() : trailer.getItem(COSName.ID);
             r.plan(order, roles, new int[] {root, info});
@@ -369,7 +381,7 @@ final class Rewrite {
     }
 
     private Recoder.Kind kind(int i, Roles roles) {
-        return index.has(i, Index.METADATA) ? Recoder.Kind.KEEP
+        return index.has(i, Index.METADATA) && (storedMetadata == -2 || storedMetadata == i) ? Recoder.Kind.KEEP
                 : roles.content.contains(i) ? Recoder.Kind.CONTENT
                 : index.has(i, Index.IMAGE) ? Recoder.Kind.IMAGE
                 : roles.trueType.contains(i) ? Recoder.Kind.TRUETYPE : Recoder.Kind.OTHER;

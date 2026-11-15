@@ -456,7 +456,11 @@ final class Fonts {
             if (!(source(u.font) instanceof COSDictionary d)) {
                 return null;
             }
-            fonts.add(PDFontFactory.createFont(d));
+            PDFont font = PDFontFactory.createFont(d);
+            if (font.isDamaged()) {
+                return null;
+            }
+            fonts.add(font);
         }
         Map<COSName, COSBase> base = new LinkedHashMap<>();
         Set<COSName> drop = Set.of(COSName.FILTER, COSName.DECODE_PARMS, DL, COSName.LENGTH, COSName.LENGTH1,
