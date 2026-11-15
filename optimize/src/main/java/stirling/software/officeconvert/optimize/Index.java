@@ -30,6 +30,8 @@ final class Index {
 
     static final int MAX_NODES = 8_000_000;
 
+    static final int[] NO_EDGES = {};
+
     private long[] keys = new long[1024];
 
     private byte[] kinds = new byte[1024];
@@ -202,6 +204,9 @@ final class Index {
         int n = 0;
         for (int k = 0; k < h; k++) {
             n += holeRef(id, k) >= 0 ? 1 : 0;
+        }
+        if (n == 0) {
+            return NO_EDGES;
         }
         int[] e = new int[n];
         int j = 0;

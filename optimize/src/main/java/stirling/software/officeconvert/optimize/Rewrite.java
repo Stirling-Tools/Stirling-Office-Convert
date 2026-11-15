@@ -67,7 +67,9 @@ final class Rewrite {
 
     private byte[][] digests;
 
-    private int[][] edges;
+    private int[] edgeStart;
+
+    private int[] edgeTargets;
 
     private int[] rep;
 
@@ -443,8 +445,28 @@ final class Rewrite {
 
     private void merge(int root, int info) throws IOException {
         int n = index.size();
-        byte[][] signatures = new byte[n][];
-        edges = new int[n][];
+        long[] signatures = new long[2 * n];
+        edgeStart = new int[n + 1];
+        for (int i = 0; i < n; i++) {
+            int count = 0;
+            if (container(index.kind(i))) {
+                for (int k = 0; k < index.holeCount(i); k++) {
+                    count += index.holeRef(i, k) >= 0 ? 1 : 0;
+                }
+            }
+            edgeStart[i + 1] = edgeStart[i] + count;
+        }
+        edgeTargets = new int[edgeStart[n]];
+        for (int i = 0; i < n; i++) {
+            if (container(index.kind(i))) {
+                int at = edgeStart[i];
+                for (int k = 0; k < index.holeCount(i); k++) {
+                    if (index.holeRef(i, k) >= 0) {
+                        edgeTargets[at++] = index.holeRef(i, k);
+                    }
+                }
+            }
+        }
         boolean[] mergeable = new boolean[n];
         MessageDigest sha = sha256();
         for (int i = 0; i < n; i++) {
@@ -452,7 +474,6 @@ final class Rewrite {
                 PdfFiles.stopIfInterrupted();
             }
             byte kind = index.kind(i);
-            edges[i] = container(kind) ? index.edges(i) : new int[0];
             byte[] body = index.bytes(i);
             sha.update(kind);
             length(sha, body == null ? -1 : body.length);
@@ -476,11 +497,13 @@ final class Rewrite {
             if (digests != null && digests[i] != null) {
                 sha.update(digests[i]);
             }
-            signatures[i] = java.util.Arrays.copyOf(sha.digest(), 16);
+            java.nio.ByteBuffer digest = java.nio.ByteBuffer.wrap(sha.digest());
+            signatures[2 * i] = digest.getLong();
+            signatures[2 * i + 1] = digest.getLong();
             mergeable[i] = i != root && i != info && (index.has(i, Index.VALUE_LIKE) || kind == Index.STREAM
                     || kind == Index.SCALAR || kind == Index.MISSING || kind == Index.UNSEEN);
         }
-        rep = Merge.representatives(signatures, edges, mergeable);
+        rep = Merge.representatives(signatures, edgeStart, edgeTargets, mergeable);
     }
 
     private static void length(MessageDigest sha, int value) {
@@ -494,21 +517,23 @@ final class Rewrite {
         int n = index.size();
         live = new boolean[n];
         int[] refs = new int[n];
-        ArrayDeque<Integer> queue = new ArrayDeque<>();
+        int[] queue = new int[n];
+        int head = 0;
+        int tail = 0;
         live[root] = true;
-        queue.add(root);
+        queue[tail++] = root;
         if (info >= 0 && !live[info]) {
             live[info] = true;
-            queue.add(info);
+            queue[tail++] = info;
         }
-        while (!queue.isEmpty()) {
-            int r = queue.poll();
-            for (int e : edges[r]) {
-                int t = rep[e];
+        while (head < tail) {
+            int r = queue[head++];
+            for (int e = edgeStart[r]; e < edgeStart[r + 1]; e++) {
+                int t = rep[edgeTargets[e]];
                 refs[t]++;
                 if (!live[t]) {
                     live[t] = true;
-                    queue.add(t);
+                    queue[tail++] = t;
                 }
             }
         }
@@ -538,12 +563,12 @@ final class Rewrite {
         while (!stack.isEmpty()) {
             int[] frame = stack.peek();
             int node = frame[0];
-            if (frame[1] >= edges[node].length) {
+            if (frame[1] >= edgeStart[node + 1] - edgeStart[node]) {
                 onPath[node] = false;
                 stack.pop();
                 continue;
             }
-            int t = rep[edges[node][frame[1]++]];
+            int t = rep[edgeTargets[edgeStart[node] + frame[1]++]];
             if (!inline[t]) {
                 continue;
             }

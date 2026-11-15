@@ -1,5 +1,7 @@
 package stirling.software.officeconvert.optimize;
 
+import java.util.zip.Deflater;
+
 import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSName;
 
@@ -142,6 +144,40 @@ final class Predictors {
             filterRow(data, src, row, bpp, r > 0, f, out, dst + 1);
         }
         return out;
+    }
+
+    static byte[] deflatePng(byte[] data, Layout layout, int filter, int level) {
+        int row = layout.rowBytes();
+        int bpp = layout.pixelBytes();
+        int rows = data.length / row;
+        int perChunk = Math.max(1, (1 << 16) / (row + 1));
+        byte[] chunk = new byte[perChunk * (row + 1)];
+        Bytes out = new Bytes(Math.max(64, data.length / 8));
+        byte[] buf = new byte[1 << 16];
+        Deflater d = new Deflater(level);
+        try {
+            for (int r = 0; r < rows; ) {
+                int used = 0;
+                for (int k = 0; k < perChunk && r < rows; k++, r++) {
+                    int src = r * row;
+                    int f = filter != ADAPTIVE ? filter : choose(data, src, row, bpp, r > 0);
+                    chunk[used] = (byte) f;
+                    filterRow(data, src, row, bpp, r > 0, f, chunk, used + 1);
+                    used += row + 1;
+                }
+                d.setInput(chunk, 0, used);
+                while (!d.needsInput()) {
+                    out.write(buf, 0, d.deflate(buf));
+                }
+            }
+            d.finish();
+            while (!d.finished()) {
+                out.write(buf, 0, d.deflate(buf));
+            }
+            return out.toByteArray();
+        } finally {
+            d.end();
+        }
     }
 
     private static int choose(byte[] d, int src, int row, int bpp, boolean hasPrevious) {

@@ -295,8 +295,8 @@ final class Squeeze {
         int n = to - from;
         scratch.fit(n + 1);
         double[] cost = scratch.cost;
-        int[] length = scratch.length;
-        int[] dist = scratch.dist;
+        char[] length = scratch.length;
+        char[] dist = scratch.dist;
         Arrays.fill(cost, 0, n + 1, Double.MAX_VALUE);
         cost[0] = 0;
         double[] lengthCost = new double[MAX_MATCH + 1];
@@ -315,7 +315,7 @@ final class Squeeze {
                     && same[i - MAX_MATCH - sameBase] > MAX_MATCH) {
                 for (int t = 0; t < MAX_MATCH && cost[k] != Double.MAX_VALUE; t++, k++) {
                     cost[k + MAX_MATCH] = cost[k] + runCost;
-                    length[k + MAX_MATCH] = MAX_MATCH;
+                    length[k + MAX_MATCH] = (char) MAX_MATCH;
                     dist[k + MAX_MATCH] = 1;
                 }
                 k--;
@@ -340,8 +340,8 @@ final class Squeeze {
                     double c = dc + lengthCost[l];
                     if (c < cost[k + l]) {
                         cost[k + l] = c;
-                        length[k + l] = l;
-                        dist[k + l] = d;
+                        length[k + l] = (char) l;
+                        dist[k + l] = (char) d;
                     }
                 }
                 previous = upTo;

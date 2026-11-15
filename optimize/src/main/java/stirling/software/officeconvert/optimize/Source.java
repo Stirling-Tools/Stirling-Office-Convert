@@ -24,6 +24,8 @@ final class Source {
         void visit(COSObjectKey key, COSBase object) throws IOException;
     }
 
+    private static final int RELEASE_EVERY = 4096;
+
     private final COSDocument cos;
 
     private final ICOSParser parser;
@@ -205,6 +207,7 @@ final class Source {
         Map<Long, List<COSObjectKey>> packed = new HashMap<>();
         List<Long> order = new ArrayList<>();
         int done = 0;
+        int visited = 0;
         for (COSObjectKey key : keys) {
             Long off = xref.get(key);
             if (off != null && off < 0) {
@@ -217,6 +220,9 @@ final class Source {
                 members.add(key);
             } else {
                 visitor.visit(key, top(key));
+                if ((++visited & RELEASE_EVERY - 1) == 0) {
+                    release();
+                }
             }
             if ((++done & 1023) == 0) {
                 stirling.software.officeconvert.extract.PdfFiles.stopIfInterrupted();
@@ -227,6 +233,9 @@ final class Source {
             for (COSObjectKey key : packed.get(container)) {
                 COSBase b = objects.get(key.getNumber());
                 visitor.visit(key, b == null ? COSNull.NULL : b);
+                if ((++visited & RELEASE_EVERY - 1) == 0) {
+                    release();
+                }
             }
             stirling.software.officeconvert.extract.PdfFiles.stopIfInterrupted();
         }

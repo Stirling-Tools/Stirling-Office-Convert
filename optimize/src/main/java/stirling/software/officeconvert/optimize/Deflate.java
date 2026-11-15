@@ -2,7 +2,9 @@ package stirling.software.officeconvert.optimize;
 
 import java.io.InterruptedIOException;
 import java.util.Arrays;
+import java.util.zip.DataFormatException;
 import java.util.zip.Deflater;
+import java.util.zip.Inflater;
 
 final class Deflate {
 
@@ -16,8 +18,11 @@ final class Deflate {
         return zlib(data, repetitive(data) ? 6 : 9, Deflater.DEFAULT_STRATEGY);
     }
 
+    static final int BASELINE_LEVEL = 6;
+
     static byte[] baseline(byte[] data, PdfOptimizer.Effort effort) {
-        return effort == PdfOptimizer.Effort.FAST ? quick(data) : zlib(data, 6, Deflater.DEFAULT_STRATEGY);
+        return effort == PdfOptimizer.Effort.FAST ? quick(data)
+                : zlib(data, BASELINE_LEVEL, Deflater.DEFAULT_STRATEGY);
     }
 
     static boolean repetitive(byte[] data) {
@@ -64,10 +69,26 @@ final class Deflate {
     }
 
     private static boolean inflatesTo(byte[] z, byte[] data) {
+        Inflater inf = new Inflater();
         try {
-            return Arrays.equals(Filters.inflate(z, data.length), data);
-        } catch (Filters.Undecodable e) {
+            inf.setInput(z);
+            byte[] buf = new byte[1 << 16];
+            int at = 0;
+            while (!inf.finished()) {
+                int n = inf.inflate(buf);
+                if (n == 0 && !inf.finished()) {
+                    return false;
+                }
+                if (n > data.length - at || !Arrays.equals(buf, 0, n, data, at, at + n)) {
+                    return false;
+                }
+                at += n;
+            }
+            return at == data.length;
+        } catch (DataFormatException e) {
             return false;
+        } finally {
+            inf.end();
         }
     }
 

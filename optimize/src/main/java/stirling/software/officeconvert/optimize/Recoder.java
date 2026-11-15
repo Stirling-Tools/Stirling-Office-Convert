@@ -148,18 +148,29 @@ final class Recoder {
             };
             List<COSBase> predictor = List.of(predictorParms(image));
             List<COSName> flate = List.of(COSName.FLATE_DECODE);
+            int winner = 0;
+            boolean predicts = false;
             for (int f : trials) {
-                byte[] predicted = Predictors.encodePng(data, image, f);
-                byte[] z = Deflate.baseline(predicted, effort);
+                byte[] z = effort == PdfOptimizer.Effort.FAST
+                        ? Deflate.baseline(Predictors.encodePng(data, image, f), effort)
+                        : Predictors.deflatePng(data, image, f, Deflate.BASELINE_LEVEL);
                 long cost = z.length + overhead(flate, predictor);
                 if (cost < quickCost) {
                     quickCost = cost;
                     quick = z;
-                    flateInput = predicted;
+                    winner = f;
+                    predicts = true;
                     flateFilters = flate;
                     flateParms = predictor;
                 }
             }
+            if (predicts) {
+                flateInput = Predictors.encodePng(data, image, winner);
+            }
+        }
+        int decodedLength = data.length;
+        if (flateInput != data) {
+            data = null;
         }
         byte[] flated = rest.isEmpty() ? Deflate.best(flateInput, quick, effort) : quick;
         best = better(best, candidate(flated, flateFilters, flateParms));
@@ -171,7 +182,7 @@ final class Recoder {
         replace.put(COSName.DECODE_PARMS, parmsValue(best.parms));
         replace.put(DL, null);
         if (tidied) {
-            replace.put(LENGTH1, COSInteger.get(data.length));
+            replace.put(LENGTH1, COSInteger.get(decodedLength));
         }
         replace.put(COSName.LENGTH, COSInteger.get(best.data.length));
         return new Plan(best.data, replace, true);

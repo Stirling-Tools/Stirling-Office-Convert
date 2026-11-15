@@ -18,6 +18,8 @@ import stirling.software.officeconvert.extract.PdfFiles;
 
 final class Filters {
 
+    private static final int EXACT_INFLATE_BYTES = 1 << 16;
+
     static class Undecodable extends Exception {
         Undecodable(String message) {
             super(message, null, false, false);
@@ -106,6 +108,9 @@ final class Filters {
     }
 
     private static byte[] inflate(byte[] in, long limit, boolean raw) throws Undecodable {
+        if (in.length >= EXACT_INFLATE_BYTES) {
+            return inflateExactly(in, limit, raw);
+        }
         Inflater inf = new Inflater(raw);
         try {
             inf.setInput(in);
@@ -125,6 +130,55 @@ final class Filters {
                 out.write(buf, 0, n);
             }
             return out.toByteArray();
+        } catch (DataFormatException e) {
+            throw new Undecodable("the Flate data is damaged");
+        } finally {
+            inf.end();
+        }
+    }
+
+    private static byte[] inflateExactly(byte[] in, long limit, boolean raw) throws Undecodable {
+        long size = inflatedSize(in, limit, raw);
+        byte[] out = new byte[(int) size];
+        Inflater inf = new Inflater(raw);
+        try {
+            inf.setInput(in);
+            int at = 0;
+            while (at < out.length) {
+                int n = inf.inflate(out, at, out.length - at);
+                if (n == 0 && (inf.finished() || inf.needsInput() || inf.needsDictionary())) {
+                    throw new Undecodable("the Flate data ends early");
+                }
+                at += n;
+            }
+            return out;
+        } catch (DataFormatException e) {
+            throw new Undecodable("the Flate data is damaged");
+        } finally {
+            inf.end();
+        }
+    }
+
+    private static long inflatedSize(byte[] in, long limit, boolean raw) throws Undecodable {
+        Inflater inf = new Inflater(raw);
+        try {
+            inf.setInput(in);
+            byte[] buf = new byte[1 << 16];
+            long size = 0;
+            while (!inf.finished()) {
+                int n = inf.inflate(buf);
+                if (n == 0) {
+                    if (inf.finished()) {
+                        break;
+                    }
+                    throw new Undecodable("the Flate data ends early");
+                }
+                if (size + n > limit || size + n > Integer.MAX_VALUE - 16) {
+                    throw new TooLarge("the Flate data decodes past the size limit");
+                }
+                size += n;
+            }
+            return size;
         } catch (DataFormatException e) {
             throw new Undecodable("the Flate data is damaged");
         } finally {
