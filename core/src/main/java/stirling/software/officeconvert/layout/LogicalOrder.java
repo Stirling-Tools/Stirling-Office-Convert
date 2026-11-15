@@ -434,6 +434,9 @@ public final class LogicalOrder {
     }
 
     public static boolean isRtl(String s) {
+        if (s.length() == 1 && s.charAt(0) < 0x0590) {
+            return false;
+        }
         for (int i = 0; i < s.length(); ) {
             int cp = s.codePointAt(i);
             byte d = cp < 0x0590 ? Character.DIRECTIONALITY_LEFT_TO_RIGHT : Character.getDirectionality(cp);

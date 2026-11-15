@@ -89,6 +89,8 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
     private final float width;
     private final float height;
     private final List<Mark> marks = new ArrayList<>();
+
+    private final double[] glyphCorners = new double[8];
     private final List<int[]> groups = new ArrayList<>();
     private final List<Slant> slants = new ArrayList<>();
     private final GeneralPath path = new GeneralPath();
@@ -105,6 +107,9 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
     private final Map<PDGraphicsState, Boolean> textClipped = new WeakHashMap<>();
     private boolean clipsText;
     private final Deque<List<Path2D>> formClips = new ArrayDeque<>();
+    private List<Path2D> clipPaths;
+    private int clipPathCount = -1;
+    private Rectangle2D cachedClipBounds;
 
     private PaintOrder(PDPage page, AffineTransform toDisplay, float width, float height) {
         super(page);
@@ -757,11 +762,19 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
     }
 
     private Rectangle2D clipBounds() {
+        List<Path2D> paths = getGraphicsState().getCurrentClippingPaths();
+        // PDFBox appends immutable paths and copies the list when a saved graphics state needs its own clip.
+        if (paths == clipPaths && paths.size() == clipPathCount) {
+            return cachedClipBounds;
+        }
         Rectangle2D b = null;
-        for (Path2D p : getGraphicsState().getCurrentClippingPaths()) {
+        for (Path2D p : paths) {
             Rectangle2D pb = p.getBounds2D();
             b = b == null ? pb : b.createIntersection(pb);
         }
+        clipPaths = paths;
+        clipPathCount = paths.size();
+        cachedClipBounds = b;
         return b;
     }
 
@@ -971,7 +984,31 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
         boolean display = Math.hypot(trm.getShearX(), trm.getScaleY()) >= DISPLAY_SIZE;
         boolean effect = masked() || patterned(mode);
         Kind kind = effect && display ? Kind.EFFECT_TEXT : Kind.TEXT;
-        mark(kind, trm.createTransformedShape(new Rectangle2D.Double(0, -0.2, w, 1.0)).getBounds2D());
+        mark(kind, glyphBounds(trm, w, glyphCorners));
+    }
+
+    /** Bounds of the glyph-advance rectangle in user space; overwrites eight scratch entries. */
+    static Rectangle2D glyphBounds(AffineTransform transform, double advance, double[] scratch) {
+        scratch[0] = 0;
+        scratch[1] = -0.2;
+        scratch[2] = advance;
+        scratch[3] = -0.2;
+        scratch[4] = advance;
+        scratch[5] = -0.2 + 1.0;
+        scratch[6] = 0;
+        scratch[7] = -0.2 + 1.0;
+        transform.transform(scratch, 0, scratch, 0, 4);
+        double left = scratch[0];
+        double right = scratch[0];
+        double top = scratch[1];
+        double bottom = scratch[1];
+        for (int i = 2; i < 8; i += 2) {
+            if (scratch[i] < left) left = scratch[i];
+            if (scratch[i] > right) right = scratch[i];
+            if (scratch[i + 1] < top) top = scratch[i + 1];
+            if (scratch[i + 1] > bottom) bottom = scratch[i + 1];
+        }
+        return new Rectangle2D.Double(left, top, right - left, bottom - top);
     }
 
     private void slant(AffineTransform trm, double advance) {

@@ -109,7 +109,12 @@ final class RtfReader {
                     case RtfTokenizer.CLOSE -> close();
                     case RtfTokenizer.WORD -> word(tok.word, tok.param, tok.hasParam);
                     case RtfTokenizer.SYMBOL -> symbol(tok.symbol);
-                    case RtfTokenizer.TEXT -> text(tok.value, false);
+                    case RtfTokenizer.TEXT -> {
+                        text(tok.value, false);
+                        if (g.dest == Dest.PICT && ucSkip == 0) {
+                            tok.pictureHex((Picture) g.payload);
+                        }
+                    }
                     case RtfTokenizer.HEX -> text(tok.value, true);
                     default -> {
                     }

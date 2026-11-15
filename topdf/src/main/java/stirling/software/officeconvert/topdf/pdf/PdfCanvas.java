@@ -439,6 +439,7 @@ public final class PdfCanvas implements Closeable {
                 cs.endMarkedContent();
             }
         } finally {
+            writer.releaseGlyphBuffers();
             cs.close();
             output.closed(this);
         }

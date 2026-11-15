@@ -74,6 +74,24 @@ class PdfCanvasTest {
     }
 
     @Test
+    void variedRunLengthsKeepTextAndGlyphSubsetsAcrossScratchBufferReuse() throws Exception {
+        FontFace face = fonts.find("Arial", false, false);
+        String medium = "ABCDE".repeat(40);
+        String large = "0123456789".repeat(110);
+        byte[] pdf;
+        try (PdfOutput out = new PdfOutput(fonts)) {
+            try (PdfCanvas canvas = out.newPage(PageSize.A4)) {
+                canvas.text(medium, 72, 100, TextStyle.of(face, 2));
+                canvas.text("Z", 72, 130, TextStyle.of(face, 12));
+                canvas.text(large, 72, 160, TextStyle.of(face, 0.5f));
+                canvas.text("123", 72, 190, TextStyle.of(face, 12));
+            }
+            pdf = save(out);
+        }
+        assertEquals(medium + "Z" + large + "123", text(positions(pdf)));
+    }
+
+    @Test
     void textRoundTripsAtTopLeftCoordinates() throws Exception {
         FontFace face = fonts.find("Arial", false, false);
         TextStyle style = TextStyle.of(face, 12);
