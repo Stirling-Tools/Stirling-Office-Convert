@@ -257,6 +257,22 @@ public final class FontNames {
         return postScriptName != null && texFamily(stripSubset(postScriptName)) != null;
     }
 
+    private static final java.util.regex.Pattern TEX_MATH = java.util.regex.Pattern.compile(
+            "(?i)((cmmib?|cmsy|cmbsy|cmex|msbm|msam|eufm|eufb|eusm|eusb|eurm|eurb|rsfs|stmary|esint|r?txmia?|txsys?"
+                    + "|txexs?|r?pxmia?|pxsys?|pxexs?|ntxmia?|ntxsy|ntxexx?)[a-z]*\\d*"
+                    + "|lmmath(italic|symbols|extension).*|latinmodernmath.*|standardsyml(-slant.*)?)(-.*)?");
+
+    private static final java.util.regex.Pattern TEX_EXTENSION = java.util.regex.Pattern.compile(
+            "(?i)(cmex|txexs?|pxexs?|ntxexx?|esint|lmmathextension)[a-z]*\\d*(-.*)?");
+
+    public static boolean isTexMath(String postScriptName) {
+        return postScriptName != null && TEX_MATH.matcher(stripSubset(postScriptName)).matches();
+    }
+
+    public static boolean isTexExtension(String postScriptName) {
+        return postScriptName != null && TEX_EXTENSION.matcher(stripSubset(postScriptName)).matches();
+    }
+
     public static boolean isSymbolFamily(String family) {
         return family != null && SYMBOL_FAMILIES.contains(family);
     }

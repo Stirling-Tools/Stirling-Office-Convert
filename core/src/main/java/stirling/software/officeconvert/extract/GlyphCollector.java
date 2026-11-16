@@ -860,6 +860,9 @@ final class GlyphCollector extends PDFStreamEngine {
                         bold,
                         italic);
         g.hscale = horizontalScale(tp);
+        if (FontNames.isTexMath(font.postScriptName())) {
+            g.hang = hang(tp, size);
+        }
         boolean dingbat = font.symbolic() && pdFont.isEmbedded()
                 && (size >= DINGBAT_SIZE && !textLike(unicode) || belowSymbolRange(unicode));
         if ((font.icons() || dingbat) && codes != null && codes.length == 1) {
@@ -1004,12 +1007,24 @@ final class GlyphCollector extends PDFStreamEngine {
         float[] em = inks.computeIfAbsent(tp.getFont().getCOSObject(), k -> new HashMap<>()).computeIfAbsent(codes[0], c -> {
             try {
                 Rectangle2D box = vector.getNormalizedPath(c).getBounds2D();
-                return box.isEmpty() ? new float[0] : new float[] {(float) box.getMinX(), (float) box.getMaxX()};
+                return box.isEmpty() ? new float[0] : new float[] {(float) box.getMinX(), (float) box.getMaxX(),
+                        (float) box.getMinY(), (float) box.getMaxY()};
             } catch (IOException | RuntimeException e) {
                 return new float[0];
             }
         });
-        return em.length == 2 ? new float[] {em[0] / 1000f * along, em[1] / 1000f * along} : null;
+        return em.length == 4 ? new float[] {em[0] / 1000f * along, em[1] / 1000f * along, em[2], em[3]} : null;
+    }
+
+    private float hang(TextPosition tp, float size) {
+        if (Math.round(tp.getDir()) != 0) {
+            return Float.NaN;
+        }
+        float[] ink = ink(tp);
+        if (ink == null || ink[3] > 250 || ink[2] > -500) {
+            return Float.NaN;
+        }
+        return -(ink[2] + ink[3]) / 2000f * size;
     }
 
     private boolean onPage(TextPosition tp, float size, float width) {

@@ -38,6 +38,9 @@ final class MathFinder {
             boolean stackedScript = false;
             for (Word w : l.words) {
                 for (Glyph g : w.glyphs) {
+                    if (g.math != null) {
+                        continue;
+                    }
                     n++;
                     if (isMathGlyph(g, known)) {
                         m++;
@@ -46,7 +49,7 @@ final class MathFinder {
                 }
             }
             boolean equationNumber = EQUATION_NUMBER.matcher(l.text()).matches();
-            if (n > 0 && (m * 3 >= n || m >= 2 && stackedScript && n <= 60) && !equationNumber) {
+            if (m >= 2 && (m * 3 >= n || stackedScript && n <= 60) && !equationNumber) {
                 math.add(l);
             }
         }
@@ -62,6 +65,9 @@ final class MathFinder {
         for (Box c : clusters) {
             Box grown = c;
             for (Line l : segments) {
+                if (rebuilt(l)) {
+                    continue;
+                }
                 boolean inside = l.top >= c.top() - 1 && l.bottom <= c.bottom() + 1
                         && l.x >= c.x() - bodySize && l.right <= c.right() + bodySize;
                 float cy = (l.top + l.bottom) / 2f;
@@ -76,6 +82,17 @@ final class MathFinder {
             }
         }
         return out;
+    }
+
+    private static boolean rebuilt(Line l) {
+        for (Word w : l.words) {
+            for (Glyph g : w.glyphs) {
+                if (g.math == null) {
+                    return false;
+                }
+            }
+        }
+        return true;
     }
 
     private static int proseInside(Box b, List<Line> segments, Map<FontInfo, Boolean> known) {

@@ -34,7 +34,7 @@ class FormulaLinesTest {
     }
 
     private static String text(List<Glyph> glyphs) {
-        return glyphs.stream().sorted(Comparator.comparingDouble((Glyph x) -> x.x)).map(x -> x.text + mark(x))
+        return glyphs.stream().sorted(Comparator.comparingDouble((Glyph x) -> x.x)).map(x -> x.text.stripTrailing() + mark(x) + x.text.substring(x.text.stripTrailing().length()))
                 .collect(Collectors.joining());
     }
 

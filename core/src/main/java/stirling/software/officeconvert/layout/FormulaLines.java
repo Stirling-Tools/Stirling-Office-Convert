@@ -12,9 +12,11 @@ import java.util.Set;
 import java.util.regex.Pattern;
 
 import stirling.software.officeconvert.extract.FontInfo;
+import stirling.software.officeconvert.extract.FontNames;
 import stirling.software.officeconvert.extract.Glyph;
 import stirling.software.officeconvert.extract.PageGraphics.Fill;
 import stirling.software.officeconvert.extract.PageGraphics.Rule;
+import stirling.software.officeconvert.extract.PageGraphics.VectorMark;
 
 final class FormulaLines {
 
@@ -28,6 +30,7 @@ final class FormulaLines {
     private static final String STACK = "¦";
     private static final int MAX_MATH = 4_000;
     private static final int MAX_BARS = 2_000;
+    private static final long MAX_BAR_WORK = 20_000_000L;
     private static final int MAX_CLUSTER = 800;
     private static final int MAX_DEPTH = 12;
     private static final float MAIN_SHARE = 0.85f;
@@ -40,19 +43,50 @@ final class FormulaLines {
     private static final List<String> GLUED_WORDS = List.of("and", "or", "for", "if", "with", "where", "then", "else",
             "when", "otherwise", "independent", "dependent");
     private static final float STACKED_ROWS = 1.45f;
+    private static final float FENCED_ROWS = 2.2f;
     private static final float SCRIPT_SHARE = 0.6f;
     private static final float OPERAND_GAP = 1.6f;
 
     private FormulaLines() {}
 
     static Rebuilt rebuild(List<Glyph> glyphs, List<Rule> rules, List<Fill> fills) {
+        return rebuild(glyphs, rules, fills, List.of());
+    }
+
+    static Rebuilt rebuild(List<Glyph> glyphs, List<Rule> rules, List<Fill> fills, List<VectorMark> marks) {
         Map<FontInfo, Integer> known = new IdentityHashMap<>();
         List<Item> items = new ArrayList<>();
+        Set<Glyph> tex = Collections.newSetFromMap(new IdentityHashMap<>());
         for (Glyph g : glyphs) {
             int kind = kind(g.font, known);
-            if (kind > 0 && !g.text.isEmpty()) {
-                items.add(new Item(g, kind == 2));
+            if (kind > 0 && !g.text.isEmpty() && g.math == null) {
+                items.add(new Item(g, kind == 2 || kind == 4, kind >= 3, false));
+                if (kind >= 3) {
+                    tex.add(g);
+                }
             }
+        }
+        if (!tex.isEmpty() && tex.size() <= MAX_MATH) {
+            float em = 0;
+            for (Glyph g : tex) {
+                em = Math.max(em, g.size);
+            }
+            long paths = (long) rules.size() + fills.size();
+            if (paths * (paths + marks.size()) > MAX_BAR_WORK) {
+                rules = List.of();
+                fills = List.of();
+            }
+            List<Rule> lines = rules;
+            rules = TexMathGrowth.fractionRules(lines, fills, marks, em);
+            fills = TexMathGrowth.fractionFills(lines, fills, marks, em);
+            for (Glyph g : TexMathGrowth.absorb(glyphs, tex, rules, fills)) {
+                items.add(new Item(g, false, true, true));
+            }
+            fences(items);
+        }
+        Set<Glyph> inItems = Collections.newSetFromMap(new IdentityHashMap<>());
+        for (Item i : items) {
+            inItems.add(i.glyph);
         }
         if (items.size() < 2 || items.size() > MAX_MATH) {
             return new Rebuilt(glyphs, Set.of());
@@ -93,12 +127,18 @@ final class FormulaLines {
         Set<Object> consumed = Collections.newSetFromMap(new IdentityHashMap<>());
         List<Glyph> added = new ArrayList<>();
         for (List<Item> cluster : clusters) {
-            if (cluster.size() > MAX_CLUSTER || cluster.stream().filter(i -> i.glyph != null && !i.space()).count() < 2) {
+            if (cluster.stream().anyMatch(i -> i.tex)) {
+                fillHoles(cluster, glyphs, inItems);
+            }
+            trimEdges(cluster);
+            if (cluster.size() > MAX_CLUSTER || cluster.stream().filter(i -> i.glyph != null && !i.space()).count() < 2
+                    || cluster.stream().noneMatch(i -> i.glyph != null && !i.absorbed)
+                    || cluster.stream().anyMatch(i -> i.tex) && inDiagram(cluster, marks)) {
                 continue;
             }
             List<MathToken> toks = spacedWords(gluedWords(row(cluster, 0)));
             List<Glyph> line = emit(cluster, toks);
-            if (line.isEmpty()) {
+            if (line.isEmpty() || cluster.stream().anyMatch(i -> i.tex) && crossesText(cluster, line, glyphs)) {
                 continue;
             }
             String math = OmmlWriter.of(toks);
@@ -136,10 +176,13 @@ final class FormulaLines {
         }
         return known.computeIfAbsent(font, f -> {
             String ps = f.postScriptName() == null ? "" : f.postScriptName().toLowerCase(Locale.ROOT);
-            if (!WEB_MATH.matcher(ps).matches()) {
-                return 0;
+            if (WEB_MATH.matcher(ps).matches()) {
+                return LARGE_FONT.matcher(ps).matches() ? 2 : 1;
             }
-            return LARGE_FONT.matcher(ps).matches() ? 2 : 1;
+            if (FontNames.isTexMath(f.postScriptName())) {
+                return FontNames.isTexExtension(f.postScriptName()) ? 4 : 3;
+            }
+            return 0;
         });
     }
 
@@ -242,27 +285,38 @@ final class FormulaLines {
         final Glyph glyph;
         final Object bar;
         final boolean large;
+        final boolean tex;
+        final boolean absorbed;
         final float x;
         final float right;
         final float y;
         final float size;
         final int rgb;
+        Item fence;
 
-        Item(Glyph g, boolean large) {
+        Item(Glyph g, boolean large, boolean tex, boolean absorbed) {
             glyph = g;
             bar = null;
             this.large = large;
+            this.tex = tex;
+            this.absorbed = absorbed;
             x = g.x;
             right = g.right();
-            y = g.baseline;
+            y = hanging() ? g.baseline + g.hang + 0.3f * g.size : g.baseline;
             size = g.size;
             rgb = g.rgb;
+        }
+
+        boolean hanging() {
+            return glyph != null && !Float.isNaN(glyph.hang);
         }
 
         Item(Object source, float x, float right, float y, int rgb) {
             glyph = null;
             bar = source;
             large = false;
+            tex = false;
+            absorbed = false;
             this.x = x;
             this.right = right;
             this.y = y;
@@ -271,11 +325,11 @@ final class FormulaLines {
         }
 
         float top() {
-            return glyph == null ? y : y - 0.75f * size;
+            return glyph == null ? y : hanging() ? glyph.baseline : y - 0.75f * size;
         }
 
         float bottom() {
-            return glyph == null ? y : y + 0.25f * size;
+            return glyph == null ? y : hanging() ? glyph.baseline + 2f * glyph.hang : y + 0.25f * size;
         }
 
         float centreX() {
@@ -323,14 +377,21 @@ final class FormulaLines {
             return true;
         }
         float narrower = Math.min(p.right - p.x, q.right - q.x);
-        if (!script && size >= MAIN_SHARE * largest && -gap >= 0.5f * narrower && dy <= STACKED_ROWS * size) {
-            return true;
+        if (!script && size >= MAIN_SHARE * largest && -gap >= 0.5f * narrower) {
+            boolean fenced = p.fence != null && p.fence == q.fence;
+            if (!p.tex && !q.tex ? dy <= STACKED_ROWS * size : fenced && dy <= FENCED_ROWS * size) {
+                return true;
+            }
         }
-        return gap <= 0.2f * size && script && dy <= 0.9f * size;
+        return gap <= 0.2f * size && script && dy <= (p.tex || q.tex ? 0.65f : 0.9f) * size;
     }
 
     private static boolean structuralLink(Item s, Item o, float gap) {
         float size = s.size;
+        float margin = (o.size < MAIN_SHARE * size ? 1.0f : 0.5f) * size;
+        if (s.hanging() && (o.centreY() < s.top() - margin || o.centreY() > s.bottom() + margin)) {
+            return false;
+        }
         float drop = o.y - s.y;
         if (o.structural()) {
             return gap <= 0.6f * size && Math.abs(drop) <= 1.2f * size;
@@ -371,6 +432,138 @@ final class FormulaLines {
         boolean before = g.right <= bar.x + 0.1f * size && bar.x - g.right <= 0.8f * size;
         boolean after = g.x >= bar.right - 0.1f * size && g.x - bar.right <= 0.8f * size;
         return (before || after) && Math.abs(g.y - AXIS * size - bar.y) <= 0.5f * size;
+    }
+
+    private static void fences(List<Item> items) {
+        List<Item> fences = new ArrayList<>();
+        for (Item i : items) {
+            if (i.tex && i.large && i.hanging() && i.bottom() - i.top() >= 1.5f * i.size && "([{⟨|‖".contains(i.glyph.text)) {
+                fences.add(i);
+            }
+        }
+        for (Item i : items) {
+            if (!i.tex || i.large) {
+                continue;
+            }
+            float cy = i.centreY();
+            for (Item f : fences) {
+                if (f.right <= i.x + 0.1f * i.size && i.x - f.right <= 20f * i.size && cy >= f.top() && cy <= f.bottom()
+                        && (i.fence == null || f.x > i.fence.x)) {
+                    i.fence = f;
+                }
+            }
+        }
+    }
+
+    // A formula touching arrows or curves is a diagram label; the diagram stays one picture.
+    private static boolean inDiagram(List<Item> cluster, List<VectorMark> marks) {
+        float l = Float.MAX_VALUE;
+        float r = -Float.MAX_VALUE;
+        float t = Float.MAX_VALUE;
+        float b = -Float.MAX_VALUE;
+        float size = 0;
+        for (Item i : cluster) {
+            if (i.glyph != null && !i.space()) {
+                l = Math.min(l, i.x);
+                r = Math.max(r, i.right);
+                t = Math.min(t, i.top());
+                b = Math.max(b, i.bottom());
+                size = Math.max(size, i.size);
+            }
+        }
+        float pad = 0.6f * size;
+        for (VectorMark m : marks) {
+            boolean encloses = m.x() <= l - 1 && m.right() >= r + 1 && m.top() <= t - 1 && m.bottom() >= b + 1;
+            boolean near = m.x() <= r + pad && m.right() >= l - pad && m.top() <= b + pad && m.bottom() >= t - pad;
+            if (near && !encloses && (m.curved() || m.diagonal())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static void fillHoles(List<Item> cluster, List<Glyph> glyphs, Set<Glyph> inItems) {
+        float left = Float.MAX_VALUE;
+        float right = -Float.MAX_VALUE;
+        float top = Float.MAX_VALUE;
+        float bottom = -Float.MAX_VALUE;
+        for (Item i : cluster) {
+            if (i.glyph != null && !i.space()) {
+                left = Math.min(left, i.x);
+                right = Math.max(right, i.right);
+                top = Math.min(top, i.top());
+                bottom = Math.max(bottom, i.bottom());
+            }
+        }
+        List<Item> added = new ArrayList<>();
+        for (Glyph g : glyphs) {
+            float cy = g.baseline - 0.3f * g.size;
+            if (!inItems.contains(g) && g.math == null && !g.text.isBlank() && g.x >= left && g.right() <= right
+                    && cy >= top && cy <= bottom && flanked(cluster, g)) {
+                added.add(new Item(g, false, true, true));
+                inItems.add(g);
+            }
+        }
+        cluster.addAll(added);
+    }
+
+    // The rebuilt line must not overlap text outside the formula, or the two would interleave.
+    private static boolean crossesText(List<Item> cluster, List<Glyph> line, List<Glyph> glyphs) {
+        Set<Glyph> own = Collections.newSetFromMap(new IdentityHashMap<>());
+        for (Item i : cluster) {
+            own.add(i.glyph);
+        }
+        float left = line.getFirst().x;
+        float right = line.getLast().right();
+        float y = line.getFirst().baseline;
+        float size = line.getFirst().size;
+        for (Glyph g : glyphs) {
+            if (!own.contains(g) && g.math == null && !g.text.isBlank() && g.right() > left + 0.5f && g.x < right - 0.5f
+                    && Math.abs(g.baseline - y) <= 0.4f * Math.max(size, g.size)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean flanked(List<Item> cluster, Glyph g) {
+        boolean before = false;
+        boolean after = false;
+        for (Item i : cluster) {
+            if (i.glyph == null || i.space() || Math.abs(i.glyph.baseline - g.baseline) > 0.3f * g.size) {
+                continue;
+            }
+            before |= i.right <= g.x + 0.1f * g.size && g.x - i.right <= 1.5f * g.size;
+            after |= i.x >= g.right() - 0.1f * g.size && i.x - g.right() <= 1.5f * g.size;
+        }
+        return before && after;
+    }
+
+    private static void trimEdges(List<Item> cluster) {
+        boolean changed = true;
+        while (changed) {
+            changed = false;
+            Item first = null;
+            Item last = null;
+            int depth = 0;
+            for (Item i : cluster) {
+                if (i.glyph == null || i.space()) {
+                    continue;
+                }
+                depth += "([{".contains(i.glyph.text) ? 1 : ")]}".contains(i.glyph.text) ? -1 : 0;
+                first = first == null || i.x < first.x ? i : first;
+                last = last == null || i.right > last.right ? i : last;
+            }
+            if (last != null && last.absorbed && (TexMathGrowth.punctuation(last.glyph.text)
+                    || depth < 0 && ")]}".contains(last.glyph.text))) {
+                cluster.remove(last);
+                changed = true;
+            } else if (first != null && first.absorbed && (TexMathGrowth.punctuation(first.glyph.text)
+                    || depth > 0 && "([{".contains(first.glyph.text))) {
+                cluster.remove(first);
+                changed = true;
+            }
+        }
     }
 
     private static int find(int[] parent, int i) {
@@ -962,9 +1155,19 @@ final class FormulaLines {
         if (Float.isNaN(main[0])) {
             float[] all = mainLine(items);
             main[1] = all[1];
-            main[0] = widest != null ? widest.y + AXIS * main[1] : all[0];
+            boolean radical = widest != null && radicalBar(items, widest);
+            main[0] = widest != null && !radical ? widest.y + AXIS * main[1] : all[0];
         }
         return main;
+    }
+
+    private static boolean radicalBar(List<Item> items, Item bar) {
+        for (Item i : items) {
+            if (i.root() && barLinked(bar, i)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static float[] mainLine(List<Item> items) {
@@ -1448,7 +1651,7 @@ final class FormulaLines {
     }
 
     private static MathToken glyphTok(Item i, int level) {
-        return new MathToken(i.glyph.text, level, i.glyph, null, i.size);
+        return new MathToken(MathAlphabets.of(i.glyph.text, i.glyph.font), level, i.glyph, null, i.size);
     }
 
     private static List<MathToken> wrapped(List<MathToken> part) {
@@ -1520,7 +1723,9 @@ final class FormulaLines {
         if (model == null || toks.isEmpty()) {
             return List.of();
         }
-        float baseline = main(cluster, columns(cluster))[0];
+        List<Item> outer = cluster.stream().filter(i -> i.fence == null || !cluster.contains(i.fence)).toList();
+        List<Item> basis = outer.stream().anyMatch(i -> i.glyph != null && !i.space()) ? outer : cluster;
+        float baseline = main(basis, columns(basis))[0];
         if (Float.isNaN(baseline)) {
             baseline = model.baseline;
         }
@@ -1551,9 +1756,21 @@ final class FormulaLines {
                     seq++, model.spaceWidth, src.bold, t.source() != null && src.italic);
             g.vertAlign = Integer.signum(t.level());
             g.link = src.link;
-            out.add(g);
+            if (t.space() && !out.isEmpty()) {
+                out.set(out.size() - 1, widened(out.getLast(), w));
+            } else if (!t.space()) {
+                out.add(g);
+            }
             x += w;
         }
         return out;
+    }
+
+    private static Glyph widened(Glyph g, float extra) {
+        Glyph w = new Glyph(g.text + " ", g.x, g.width + extra, g.baseline, g.size, g.ascent, g.descent, g.font, g.rgb,
+                g.seq, g.spaceWidth, g.bold, g.italic);
+        w.vertAlign = g.vertAlign;
+        w.link = g.link;
+        return w;
     }
 }

@@ -63,7 +63,7 @@ public final class PageAnalyzer {
         List<Glyph> glyphs = OcrText.pageGlyphs(page);
         PageGraphics gfx = page.graphics();
         FormulaLines.Rebuilt formulas = ocr ? new FormulaLines.Rebuilt(glyphs, Set.of())
-                : FormulaLines.rebuild(glyphs, gfx.rules(), gfx.fills());
+                : FormulaLines.rebuild(glyphs, gfx.rules(), gfx.fills(), gfx.marks());
         glyphs = formulas.glyphs();
         if (glyphs.isEmpty() && page.rotated().isEmpty() && outlinedText(gfx)) {
             return FallbackPage.of(page);
