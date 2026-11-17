@@ -21,6 +21,8 @@ import org.apache.pdfbox.rendering.PDFRenderer;
 import org.apache.pdfbox.rendering.PageDrawer;
 import org.apache.pdfbox.rendering.PageDrawerParameters;
 import org.apache.pdfbox.util.Matrix;
+
+import stirling.software.officeconvert.extract.SkewedText;
 import org.apache.pdfbox.util.Vector;
 
 import stirling.software.officeconvert.extract.GuardedRenderer;
@@ -46,6 +48,14 @@ final class FigureRenderer extends PDFRenderer {
         super(document);
         this.text = text && !paper;
         this.paper = paper;
+    }
+
+    private boolean slanted;
+
+    // Flow documents draw slanted text as artwork, so text-free renders still paint it.
+    FigureRenderer withSlantedText(boolean on) {
+        slanted = on;
+        return this;
     }
 
     void paperSpan(Rectangle2D region) {
@@ -175,7 +185,7 @@ final class FigureRenderer extends PDFRenderer {
                     throws IOException {
                 PDTextState state = getGraphicsState().getTextState();
                 RenderingMode mode = state.getRenderingMode();
-                if (text || masks > 0 || inPattern()) {
+                if (text || masks > 0 || inPattern() || slanted && mode.isFill() && SkewedText.skewed(textRenderingMatrix)) {
                     super.showFontGlyph(textRenderingMatrix, font, code, displacement);
                 } else if (mode.isClip()) {
                     state.setRenderingMode(RenderingMode.NEITHER_CLIP);

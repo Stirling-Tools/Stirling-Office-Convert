@@ -4,9 +4,11 @@ import java.awt.geom.Area;
 import java.awt.geom.GeneralPath;
 import java.awt.geom.Rectangle2D;
 import java.io.IOException;
+import java.util.List;
 import java.util.Map;
 
 import org.apache.fontbox.cmap.CMapParser;
+import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSStream;
 import org.apache.pdfbox.io.RandomAccessRead;
@@ -123,9 +125,27 @@ final class GlyphShapes {
     }
 
     static boolean fixedPitch(PDFont font) {
+        if (TexControlCodes.pkFont(font)) {
+            COSArray widths = font.getCOSObject().getCOSArray(COSName.WIDTHS);
+            return widths != null && evenWidths(widths.toCOSNumberFloatList());
+        }
         float narrow = widthOf(font, "i", "l");
         float wide = widthOf(font, "m", "w");
         return narrow > 0 && wide > 0 && Math.abs(wide - narrow) <= 0.02f * wide;
+    }
+
+    private static boolean evenWidths(List<Float> widths) {
+        float lo = Float.MAX_VALUE;
+        float hi = 0;
+        int n = 0;
+        for (Float w : widths) {
+            if (w != null && w > 0) {
+                lo = Math.min(lo, w);
+                hi = Math.max(hi, w);
+                n++;
+            }
+        }
+        return n >= 5 && hi <= 1.02f * lo;
     }
 
     static boolean condensed(PDFont font, boolean bold) {

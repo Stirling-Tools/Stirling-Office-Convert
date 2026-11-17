@@ -25,7 +25,9 @@ import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDResources;
+import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.pdmodel.font.PDType3CharProc;
+import org.apache.pdfbox.pdmodel.font.PDVectorFont;
 import org.apache.pdfbox.pdmodel.font.PDType3Font;
 import org.apache.pdfbox.pdmodel.graphics.blend.BlendMode;
 import org.apache.pdfbox.pdmodel.graphics.color.PDPattern;
@@ -149,7 +151,13 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
 
     static PageGraphics read(PDPage page, AffineTransform toDisplay, float width, float height, ParsedStreams parsed,
             OptionalContent layers) throws IOException {
+        return read(page, toDisplay, width, height, parsed, layers, false);
+    }
+
+    static PageGraphics read(PDPage page, AffineTransform toDisplay, float width, float height, ParsedStreams parsed,
+            OptionalContent layers, boolean slantAsArt) throws IOException {
         GraphicsCollector c = new GraphicsCollector(page, toDisplay, width, height, parsed);
+        c.slantAsArt = slantAsArt;
         c.hiddenContent = new HiddenContent(layers);
         try {
             c.processPage(page);
@@ -166,7 +174,7 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
         HiddenFills.remove(c.fills, c.paintOrder, c.seeThrough);
         BlankPaint.remove(c.fills, c.marks, c.images, c.rules, c.paintOrder, width * height);
         return new PageGraphics(c.rules, c.fills, c.images, c.marks, c.pastBudget.areas(), c.paintOrder, c.seeThrough,
-                c.outlines, c.masked, c.lettering);
+                c.outlines, c.masked, c.lettering, c.slantedMarks);
     }
 
     private Point2D.Float display(double x, double y) {
@@ -318,12 +326,61 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
             Matrix textRenderingMatrix, PDType3Font font, int code, Vector displacement) {
     }
 
-    // Glyphs draw nothing here, so their codes are not decoded at all
+    // Glyphs draw nothing here, except text set at an angle, which is drawn as outlines
     @Override
-    protected void showText(byte[] string) {
-        if (getGraphicsState().getTextState().getRenderingMode() == RenderingMode.NEITHER_CLIP) {
+    protected void showText(byte[] string) throws IOException {
+        RenderingMode mode = getGraphicsState().getTextState().getRenderingMode();
+        if (mode == RenderingMode.NEITHER_CLIP) {
             clipsText = true;
         }
+        if (slantAsArt && mode.isFill() && SkewedText.skewed(getTextMatrix().multiply(getGraphicsState().getCurrentTransformationMatrix()))) {
+            super.showText(string);
+        }
+    }
+
+    @Override
+    protected void showFontGlyph(Matrix trm, PDFont font, int code, Vector displacement) throws IOException {
+        if (!(font instanceof PDVectorFont vector)) {
+            return;
+        }
+        AffineTransform at = trm.createAffineTransform();
+        at.scale(0.001, 0.001);
+        PathIterator it = vector.getNormalizedPath(code).getPathIterator(at);
+        float[] c = new float[6];
+        float lastX = 0;
+        float lastY = 0;
+        for (; !it.isDone(); it.next()) {
+            switch (it.currentSegment(c)) {
+                case PathIterator.SEG_MOVETO -> moveTo(lastX = c[0], lastY = c[1]);
+                case PathIterator.SEG_LINETO -> lineTo(lastX = c[0], lastY = c[1]);
+                case PathIterator.SEG_QUADTO -> {
+                    curveTo(lastX + 2f / 3f * (c[0] - lastX), lastY + 2f / 3f * (c[1] - lastY), c[2] + 2f / 3f * (c[0] - c[2]),
+                            c[3] + 2f / 3f * (c[1] - c[3]), c[2], c[3]);
+                    lastX = c[2];
+                    lastY = c[3];
+                }
+                case PathIterator.SEG_CUBICTO -> curveTo(c[0], c[1], c[2], c[3], lastX = c[4], lastY = c[5]);
+                case PathIterator.SEG_CLOSE -> closePath();
+                default -> { }
+            }
+        }
+        skewedGlyph = true;
+        fillPath(Path2D.WIND_NON_ZERO);
+        skewedGlyph = false;
+    }
+
+    private boolean skewedGlyph;
+
+    private final Set<Object> slantedMarks = Collections.newSetFromMap(new IdentityHashMap<>());
+
+    private boolean slantAsArt;
+
+    private boolean lightText(PDGraphicsState gs) {
+        int rgb = PdfColours.toRgb(gs.getNonStrokingColor(), 0);
+        int r = rgb >> 16 & 0xFF;
+        int g = rgb >> 8 & 0xFF;
+        int b = rgb & 0xFF;
+        return skewedGlyph && 0.299 * r + 0.587 * g + 0.114 * b >= 170;
     }
 
     @Override
@@ -762,7 +819,7 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
         if (clear) {
             seeThrough.addAll(shapes.fills());
         }
-        boolean faint = fill ? gs.getNonStrokeAlphaConstant() < 0.99 : gs.getAlphaConstant() < 0.99;
+        boolean faint = fill ? gs.getNonStrokeAlphaConstant() < 0.99 || lightText(gs) : gs.getAlphaConstant() < 0.99;
         if (shapes.mark() != null && faint) {
             seeThrough.add(shapes.mark());
             if (fill) {
@@ -772,7 +829,11 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
         } else if (shapes.mark() != null && fill && panel(shapes.mark()) && panels++ < MAX_PANELS) {
             outlines.put(shapes.mark(), new PageGraphics.Outline(outline(), shapes.mark().rgb(), 1f));
         }
-        if (shapes.mark() != null && fill && !stroke && !pattern && lettering(shapes.mark()) && lettering.size() < MAX_LETTERING) {
+        if (shapes.mark() != null && skewedGlyph) {
+            slantedMarks.add(shapes.mark());
+        }
+        if (shapes.mark() != null && !skewedGlyph && fill && !stroke && !pattern && lettering(shapes.mark())
+                && lettering.size() < MAX_LETTERING) {
             lettering.put(shapes.mark(), outline());
         }
         painted++;

@@ -149,8 +149,9 @@ public final class LineBuilder {
             return 0f;
         }
         float[] gaps = Arrays.copyOf(all, n);
-        float median = select(gaps, gaps.length / 2);
-        return median > 0.05f * glyphs.getFirst().size ? median : 0f;
+        // Lower third, not median: in rows of two-letter cells half the gaps are word gaps.
+        float tracking = select(gaps, gaps.length / 3);
+        return tracking > 0.05f * glyphs.getFirst().size ? tracking : 0f;
     }
 
     static float select(float[] a, int k) {

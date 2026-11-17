@@ -16,6 +16,7 @@ import org.apache.commons.logging.LogFactory;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDDocumentInformation;
 
+import stirling.software.officeconvert.csv.CsvWriter;
 import stirling.software.officeconvert.extract.PageData;
 import stirling.software.officeconvert.extract.PageReader;
 import stirling.software.officeconvert.extract.PdfFiles;
@@ -45,10 +46,12 @@ public final class PdfToXlsx {
 
     public enum Format {
         XLSX,
-        ODS;
+        ODS,
+        CSV;
 
         public static Format of(Path file) {
-            return file.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".ods") ? ODS : XLSX;
+            String name = file.getFileName().toString().toLowerCase(Locale.ROOT);
+            return name.endsWith(".ods") ? ODS : name.endsWith(".csv") ? CSV : XLSX;
         }
     }
 
@@ -131,7 +134,7 @@ public final class PdfToXlsx {
         Objects.requireNonNull(out, "out");
         Objects.requireNonNull(options, "options");
         String name = out.getFileName().toString().toLowerCase(Locale.ROOT);
-        Options opts = name.endsWith(".xlsx") || name.endsWith(".ods") ? options.withFormat(Format.of(out)) : options;
+        Options opts = name.endsWith(".xlsx") || name.endsWith(".ods") || name.endsWith(".csv") ? options.withFormat(Format.of(out)) : options;
         PdfFiles.stopIfInterrupted();
         PdfFiles.writeThenMove(out, ".office-convert-", part -> {
             try (PDDocument doc = PdfFiles.open(pdf, opts.password());
@@ -199,9 +202,10 @@ public final class PdfToXlsx {
         }
         stats.finish(count);
 
-        SheetBuilder.Settings settings = new SheetBuilder.Settings(split(options.sheets()), options.splitLargeTables(),
+        Sheets sheets = options.format() == Format.CSV && options.sheets() == Sheets.PAGE ? Sheets.TABLE : options.sheets();
+        SheetBuilder.Settings settings = new SheetBuilder.Settings(split(sheets), options.splitLargeTables(),
                 options.typedValues(), PageStream.autoHyphenated(doc) || stats.autoHyphenated());
-        try (WorkbookSink sink = options.format() == Format.ODS ? new OdsWriter(out) : new XlsxWriter(out)) {
+        try (WorkbookSink sink = sink(options.format(), out)) {
             SheetBuilder builder = new SheetBuilder(new MirroredSheets(sink, stats.scripts.rightToLeft()), stats, evidence.conventions(), settings, total);
             PageAnalyzer analyzer = new PageAnalyzer(stats, options.tables());
             PageReader.PageConsumer consume = page -> {
@@ -250,6 +254,14 @@ public final class PdfToXlsx {
             lines = List.of();
         }
         builder.plainPage(page, lines);
+    }
+
+    private static WorkbookSink sink(Format format, OutputStream out) throws IOException {
+        return switch (format) {
+            case ODS -> new OdsWriter(out);
+            case CSV -> new CsvWriter(out);
+            case XLSX -> new XlsxWriter(out);
+        };
     }
 
     private static SheetBuilder.Split split(Sheets sheets) {

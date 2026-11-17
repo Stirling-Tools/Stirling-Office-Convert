@@ -210,8 +210,12 @@ public final class FontNames {
         if (lower.matches("(cm|sf|ec)(ss|sssbx|ssi|ssbx|ssdc)[0-9]*") || lower.startsWith("lmsans")) {
             return "Arial";
         }
-        if (lower.matches("(cmsy|cmex|msbm|msam|cmmib|stmary|rsfs|eufm|wasy)[0-9]*")) {
+        if (lower.matches("(cmsy|cmex|msbm|msam|cmmib|stmary|rsfs|eufm|wasy)[0-9]*") || lower.startsWith("lmmathsymbols")
+                || lower.startsWith("lmmathextension")) {
             return "Cambria Math";
+        }
+        if (lower.startsWith("lmmathitalic")) {
+            return "Times New Roman";
         }
         if (lower.matches("(cm|sf|ec|tc)[a-z]{1,4}[0-9]{1,4}") || lower.startsWith("lmroman")) {
             return "Times New Roman";

@@ -228,7 +228,13 @@ final class GlyphCollector extends PDFStreamEngine {
 
     static void read(PDDocument doc, int first, int last, FontResolver fonts, ParsedStreams parsed, PageSink sink)
             throws IOException {
+        read(doc, first, last, fonts, parsed, true, sink);
+    }
+
+    static void read(PDDocument doc, int first, int last, FontResolver fonts, ParsedStreams parsed, boolean slantAsArt,
+            PageSink sink) throws IOException {
         GlyphCollector collector = new GlyphCollector(fonts, sink, parsed);
+        collector.slantAsArt = slantAsArt;
         collector.document = doc;
         collector.layers = OptionalContent.of(doc);
         collector.hiddenContent = new HiddenContent(collector.layers);
@@ -537,6 +543,7 @@ final class GlyphCollector extends PDFStreamEngine {
         composeOverlines(glyphs);
         assembleRadicals(glyphs);
         composeMarks(glyphs);
+        TexControlCodes.resolve(glyphs);
         settleAlternatives(glyphs);
         current = new ArrayList<>();
         nextIndex = pageIndex + 1;
@@ -779,12 +786,20 @@ final class GlyphCollector extends PDFStreamEngine {
         }
     }
 
+    private boolean slantAsArt = true;
+
     private void processTextPosition(TextPosition tp) {
+        if (slantAsArt && getGraphicsState().getTextState().getRenderingMode().isFill()
+                && SkewedText.skewed(tp.getTextMatrix())) {
+            return;
+        }
         boolean notdef = notdef(tp);
         if (notdef && outerActual == null) {
             return;
         }
-        String unicode = notdef ? null : clean(recovery.text(tp, tp.getUnicode()));
+        String raw = notdef ? null : recovery.text(tp, tp.getUnicode());
+        String tex = notdef ? null : TexControlCodes.placeholder(tp, raw);
+        String unicode = notdef ? null : tex != null ? tex : clean(raw);
         if (unicode == null && outerActual != null) {
             unicode = HIDDEN;
         }

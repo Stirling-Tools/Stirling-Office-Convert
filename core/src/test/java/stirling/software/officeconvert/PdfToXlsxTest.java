@@ -160,6 +160,18 @@ class PdfToXlsxTest {
     }
 
     @Test
+    void csvHoldsTheTablesAsCellValues() throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try (PDDocument doc = Loader.loadPDF(pdf.toFile())) {
+            PdfToXlsx.convert(doc, out, PdfToXlsx.Options.defaults().withFormat(PdfToXlsx.Format.CSV));
+        }
+        String csv = out.toString(java.nio.charset.StandardCharsets.UTF_8);
+        assertTrue(csv.contains("Region") && csv.contains("1,250") && csv.contains("\r\n"), csv);
+        assertFalse(csv.contains("Sales report 0"), "only the tables, not the page text");
+        assertEquals(PdfToXlsx.Format.CSV, PdfToXlsx.Format.of(Path.of("out.CSV")));
+    }
+
+    @Test
     void theFormatFollowsTheFileName() throws IOException {
         assertEquals(PdfToXlsx.Format.ODS, PdfToXlsx.Format.of(Path.of("out.ODS")));
         assertEquals(PdfToXlsx.Format.XLSX, PdfToXlsx.Format.of(Path.of("out.xlsx")));

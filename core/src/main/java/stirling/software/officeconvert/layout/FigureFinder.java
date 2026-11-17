@@ -43,6 +43,8 @@ final class FigureFinder {
             float pageW,
             float pageH) {
         List<Box> weak = new ArrayList<>();
+        // A barcode is a short strip of dark bars; it groups into one picture like a taller drawing.
+        List<Box> bars = CodeMarks.strips(rules, fills);
         for (Fill f : fills) {
             if (f.width() > pageW * 0.8f && f.height() > pageH * 0.5f || isWhite(f.rgb())) {
                 continue;
@@ -84,8 +86,10 @@ final class FigureFinder {
             }
         }
         for (Box c : clusterCounted(pending, JOIN_GAP)) {
-            if (c.width() >= 60 && c.height() >= 40 && !isProse(c, segments) && overlapsNone(c, out)
-                    && countInside(pending, c) >= 8 && wordsInside(c, segments) <= countInside(pending, c)) {
+            int pieces = countInside(pending, c);
+            boolean tall = c.height() >= 40 || countInside(bars, c) > 0;
+            if (c.width() >= 60 && tall && !isProse(c, segments) && overlapsNone(c, out)
+                    && pieces >= 8 && wordsInside(c, segments) <= pieces) {
                 out.add(c);
             }
         }

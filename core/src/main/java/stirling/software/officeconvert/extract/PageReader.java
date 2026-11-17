@@ -49,6 +49,14 @@ public final class PageReader {
     private final OptionalContent layers;
     private final Map<Integer, Integer> annotationSeqs = new HashMap<>();
 
+    private boolean slantAsArt = true;
+
+    // Slides turn slanted text into rotated text boxes themselves, so they keep it as text.
+    public PageReader keepSlantedText() {
+        slantAsArt = false;
+        return this;
+    }
+
     public PageReader(PDDocument document) {
         this.document = document;
         this.pages = new PageIndex(document);
@@ -74,6 +82,7 @@ public final class PageReader {
                 last,
                 fonts,
                 withGraphics ? parsed : null,
+                slantAsArt,
                 (index, page, raw, annotationSeq) -> consumer.accept(build(index, page, raw, annotationSeq, withGraphics)));
     }
 
@@ -127,7 +136,7 @@ public final class PageReader {
         glyphs = dedupe(ShadowText.drop(Clusters.join(glyphs)));
         PageGraphics graphics =
                 withGraphics
-                        ? GraphicsCollector.read(page, toDisplay, width, height, parsed, layers)
+                        ? GraphicsCollector.read(page, toDisplay, width, height, parsed, layers, slantAsArt)
                         : new PageGraphics(List.of(), List.of(), List.of(), List.of());
         List<PageData.Link> links = withGraphics ? links(page, toDisplay, width, height) : List.of();
         return new PageData(
@@ -156,7 +165,7 @@ public final class PageReader {
         PDPage page = document.getPage(glyphsOnly.index());
         AffineTransform toDisplay = displayTransform(page.getCropBox(), glyphsOnly.direction());
         PageGraphics graphics =
-                GraphicsCollector.read(page, toDisplay, glyphsOnly.width(), glyphsOnly.height(), parsed, layers);
+                GraphicsCollector.read(page, toDisplay, glyphsOnly.width(), glyphsOnly.height(), parsed, layers, slantAsArt);
         return new PageData(
                 glyphsOnly.index(),
                 glyphsOnly.width(),

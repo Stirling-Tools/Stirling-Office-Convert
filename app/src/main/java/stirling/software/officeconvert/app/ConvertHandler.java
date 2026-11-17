@@ -111,7 +111,9 @@ final class ConvertHandler implements HttpHandler {
             Map.entry("xlsx", new Target("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     (pdf, out, c) -> PdfToXlsx.convert(pdf, out, sheets(c)))),
             Map.entry("ods", new Target("application/vnd.oasis.opendocument.spreadsheet",
-                    (pdf, out, c) -> PdfToXlsx.convert(pdf, out, sheets(c)))));
+                    (pdf, out, c) -> PdfToXlsx.convert(pdf, out, sheets(c).withFormat(PdfToXlsx.Format.ODS)))),
+            Map.entry("csv", new Target("text/csv; charset=utf-8",
+                    (pdf, out, c) -> PdfToXlsx.convert(pdf, out, sheets(c).withFormat(PdfToXlsx.Format.CSV)))));
 
     private static PdfToPptx.Options slides(PdfToDocx.Options o) {
         return new PdfToPptx.Options(o.firstPage(), o.lastPage(), o.tables(), o.figureDpi(), o.password(), o.pictureFallback(),

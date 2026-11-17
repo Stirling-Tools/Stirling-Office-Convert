@@ -74,6 +74,7 @@ final class TextColumns {
         float gutterStart = Float.NaN;
         float emptyStart = Float.NaN;
         Span widestEmpty = null;
+        Span firstEmpty = null;
         for (float[] event : events) {
             float x = event[0];
             int before = depth;
@@ -81,6 +82,7 @@ final class TextColumns {
             if (before > allowance && depth <= allowance && x < right) {
                 gutterStart = x;
                 widestEmpty = null;
+                firstEmpty = null;
             }
             if (!Float.isNaN(gutterStart)) {
                 if (before > 0 && depth == 0) {
@@ -89,10 +91,17 @@ final class TextColumns {
                     if (widestEmpty == null || x - emptyStart > widestEmpty.width()) {
                         widestEmpty = new Span(emptyStart, x);
                     }
+                    if (firstEmpty == null) {
+                        firstEmpty = new Span(emptyStart, x);
+                    }
                     emptyStart = Float.NaN;
                 }
             }
             if (before <= allowance && depth > allowance && !Float.isNaN(gutterStart)) {
+                if (firstEmpty != null && firstEmpty != widestEmpty && firstEmpty.width() >= minGutter
+                        && endingAt(words, firstEmpty.left()) >= 3) {
+                    widestEmpty = firstEmpty;
+                }
                 boolean coreQualifies =
                         widestEmpty != null
                                 && (widestEmpty.width() >= minGutter
@@ -104,10 +113,22 @@ final class TextColumns {
                 }
                 gutterStart = Float.NaN;
                 widestEmpty = null;
+                firstEmpty = null;
             }
         }
         columns.add(new Span(columnStart, right));
         return columns;
+    }
+
+    // Right-aligned numbers end at the same x; their cells end there too, so text after the gap starts the next column.
+    private static int endingAt(List<Span> words, float x) {
+        int n = 0;
+        for (Span w : words) {
+            if (Math.abs(w.right() - x) <= EDGE_ALIGNMENT) {
+                n++;
+            }
+        }
+        return n;
     }
 
     private static boolean alignedBoundary(List<ChunkedLine> lines, Span gap, float minGutter) {

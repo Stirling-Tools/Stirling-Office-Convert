@@ -2,6 +2,7 @@ package stirling.software.officeconvert.layout;
 
 import static stirling.software.officeconvert.layout.LineTraits.EDGE;
 import static stirling.software.officeconvert.layout.LineTraits.allBold;
+import static stirling.software.officeconvert.layout.LineTraits.continuesLineNumbers;
 import static stirling.software.officeconvert.layout.LineTraits.continuesNumbering;
 import static stirling.software.officeconvert.layout.LineTraits.endsWithHyphen;
 import static stirling.software.officeconvert.layout.LineTraits.isFillLine;
@@ -72,7 +73,7 @@ public final class ParagraphBuilder {
             return true;
         }
         if (changesLook(prev, cur, size) || startsListItem(cur) || isFillLine(cur) || isFillLine(prev)
-                || continuesNumbering(para.lines.getFirst(), cur)) {
+                || continuesNumbering(para.lines.getFirst(), cur) || continuesLineNumbers(prev, cur)) {
             return true;
         }
 

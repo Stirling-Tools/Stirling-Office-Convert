@@ -30,6 +30,8 @@ public final class HeaderFooter {
     private final List<RunningLine> accepted = new ArrayList<>();
     private final Set<String> furniture = new HashSet<>();
     private final Map<Integer, Integer> numberOffsets = new HashMap<>();
+    private final Map<Integer, int[]> numberZones = new HashMap<>();
+    private Boolean numbersOnTop;
     private Integer pageNumberOffset;
     private int pageCount;
 
@@ -52,6 +54,7 @@ public final class HeaderFooter {
             }
             for (int n : PageNumbers.in(seg)) {
                 numberOffsets.merge(n - page.index(), 1, Integer::sum);
+                numberZones.computeIfAbsent(n - page.index(), k -> new int[2])[top ? 0 : 1]++;
             }
         }
     }
@@ -130,7 +133,11 @@ public final class HeaderFooter {
         if (sampled >= 4) {
             numberOffsets.entrySet().stream().max(Map.Entry.comparingByValue())
                     .filter(e -> e.getValue() >= Math.max(3, 0.3f * sampled))
-                    .ifPresent(e -> pageNumberOffset = e.getKey());
+                    .ifPresent(e -> {
+                        pageNumberOffset = e.getKey();
+                        int[] z = numberZones.get(e.getKey());
+                        numbersOnTop = z[0] >= 3 * z[1] ? Boolean.TRUE : z[1] >= 3 * z[0] ? Boolean.FALSE : null;
+                    });
         }
     }
 
@@ -195,7 +202,7 @@ public final class HeaderFooter {
             if (!top && seg.top <= h * (1 - ZONE) || marksText(seg, segments)) {
                 continue;
             }
-            if (carriesPageNumber(seg, page.index())) {
+            if (carriesPageNumber(seg, page.index()) && (numbersOnTop == null || numbersOnTop == top)) {
                 numberRows.add(seg.baseline);
                 out.add(seg);
             } else if (furniture.contains(signature(seg, top, page.width()))) {
