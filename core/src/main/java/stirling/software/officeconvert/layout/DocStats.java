@@ -16,13 +16,25 @@ import stirling.software.officeconvert.model.Scripts;
 
 public final class DocStats {
 
-    public record Tier(float size, boolean bold, int lines, int firstPage) {}
+    public record Tier(float size, boolean bold, int lines, int firstPage, int lastPage, boolean label, boolean oneText) {
+
+        // A document title starts on the first page and is either there alone or repeated word for word; chapter titles differ.
+        public boolean openingOnly() {
+            return firstPage == 0 && (lastPage == 0 || oneText);
+        }
+    }
+
+    private static final java.util.regex.Pattern LABEL = java.util.regex.Pattern.compile(
+            "(?i)(chapter|part|appendix|book|lecture|unit|kapitel|chapitre|cap[ií]tulo|capitolo|hoofdstuk|rozdzia[lł])\\s+([0-9]{1,3}|[ivxlc]{1,7}|[a-z])\\.?");
 
     private final Map<Float, Integer> sizeChars = new HashMap<>();
     private final Map<FontInfo, Integer> fontChars = new HashMap<>();
     private final Map<Float, Map<Float, Integer>> pitches = new HashMap<>();
     private final Map<String, Integer> tierLines = new HashMap<>();
     private final Map<String, Integer> tierFirstPage = new HashMap<>();
+    private final Map<String, Integer> tierLastPage = new HashMap<>();
+    private final Map<String, Integer> tierLabels = new HashMap<>();
+    private final Map<String, Set<String>> tierTexts = new HashMap<>();
     private final Map<String, Integer> tierChars = new HashMap<>();
     private final PageFrames frames = new PageFrames();
     final HeaderFooter headerFooter = new HeaderFooter();
@@ -128,6 +140,14 @@ public final class DocStats {
             tierLines.merge(key, 1, Integer::sum);
             tierChars.merge(key, l.chars, Integer::sum);
             tierFirstPage.merge(key, page.index(), Math::min);
+            tierLastPage.merge(key, page.index(), Math::max);
+            Set<String> texts = tierTexts.computeIfAbsent(key, k -> new HashSet<>());
+            if (texts.size() < 2) {
+                texts.add(l.text().strip());
+            }
+            if (LABEL.matcher(l.text().strip()).matches()) {
+                tierLabels.merge(key, 1, Integer::sum);
+            }
         }
         float minX = Float.MAX_VALUE;
         float maxRight = -Float.MAX_VALUE;
@@ -202,9 +222,10 @@ public final class DocStats {
             float size = Float.parseFloat(key.substring(0, key.length() - 1));
             int chars = tierChars.get(key);
             boolean bigger = size >= bodySize * 1.12f;
-            boolean boldBody = bold && !bodyBold && Math.abs(size - bodySize) < 0.6f;
+            boolean boldBody = bold && !bodyBold && size > bodySize - 0.6f;
             if ((bigger || boldBody) && chars < totalChars * 0.25f) {
-                candidates.add(new Tier(size, bold, e.getValue(), tierFirstPage.get(key)));
+                candidates.add(new Tier(size, bold, e.getValue(), tierFirstPage.get(key), tierLastPage.get(key),
+                        tierLabels.getOrDefault(key, 0) == e.getValue(), tierTexts.get(key).size() == 1));
             }
         }
         candidates.sort(
@@ -216,7 +237,7 @@ public final class DocStats {
         for (int i = 0; i < tiers.size(); i++) {
             Tier t = tiers.get(i);
             if (Math.abs(t.size() - size) < 0.3f && t.bold() == bold) {
-                return i + 1;
+                return levelOf(i);
             }
         }
         if (size >= bodySize * 1.12f) {
@@ -229,6 +250,17 @@ public final class DocStats {
             return Math.min(level, 6);
         }
         return 0;
+    }
+
+    // Levels count only real heading tiers; a "Chapter 3" label tier shares the level of the chapter title tier.
+    private int levelOf(int index) {
+        int level = 0;
+        for (int i = 0; i <= index; i++) {
+            if (!tiers.get(i).label() || i == index && level == 0) {
+                level++;
+            }
+        }
+        return Math.max(1, level);
     }
 
     public static final float WORD_BASELINE = 0.8f;

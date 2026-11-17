@@ -106,11 +106,13 @@ final class TextBlocks {
             left = Math.min(left, lines.get(i).line().x());
             right = Math.max(right, lines.get(i).line().right());
         }
+        float rowPitch = end > start ? lines.get(end).line().baseline() - lines.get(end - 1).line().baseline() : 0f;
         int n = 0;
         for (int k = end + 1; k < lines.size() && n < 2; k++) {
             TextLine prev = lines.get(k - 1).line();
             TextLine line = lines.get(k).line();
-            boolean tight = line.baseline() - prev.baseline() <= 1.5f * prev.fontSize();
+            float pitch = line.baseline() - prev.baseline();
+            boolean tight = pitch <= 1.5f * prev.fontSize() || pitch <= rowPitch + 1f;
             boolean narrow = line.right() - line.x() < (right - left) * 0.5f;
             boolean inside = line.x() >= left - 1f && line.right() <= right + 1f;
             if (lines.get(k).tabular() || !tight || !narrow || !inside) {

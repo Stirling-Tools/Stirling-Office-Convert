@@ -75,6 +75,7 @@ final class TextColumns {
         float emptyStart = Float.NaN;
         Span widestEmpty = null;
         Span firstEmpty = null;
+        List<Span> empties = new ArrayList<>();
         for (float[] event : events) {
             float x = event[0];
             int before = depth;
@@ -83,6 +84,7 @@ final class TextColumns {
                 gutterStart = x;
                 widestEmpty = null;
                 firstEmpty = null;
+                empties.clear();
             }
             if (!Float.isNaN(gutterStart)) {
                 if (before > 0 && depth == 0) {
@@ -94,10 +96,24 @@ final class TextColumns {
                     if (firstEmpty == null) {
                         firstEmpty = new Span(emptyStart, x);
                     }
+                    if (x - emptyStart >= minGutter) {
+                        empties.add(new Span(emptyStart, x));
+                    }
                     emptyStart = Float.NaN;
                 }
             }
-            if (before <= allowance && depth > allowance && !Float.isNaN(gutterStart)) {
+            if (before <= allowance && depth > allowance && !Float.isNaN(gutterStart) && empties.size() >= 2) {
+                // Words alone between two clear gaps, such as the header of an empty column, are a column of their own.
+                columns.add(new Span(columnStart, empties.getFirst().left()));
+                for (int k = 1; k < empties.size(); k++) {
+                    columns.add(new Span(empties.get(k - 1).right(), empties.get(k).left()));
+                }
+                columnStart = empties.getLast().right();
+                gutterStart = Float.NaN;
+                widestEmpty = null;
+                firstEmpty = null;
+                empties.clear();
+            } else if (before <= allowance && depth > allowance && !Float.isNaN(gutterStart)) {
                 if (firstEmpty != null && firstEmpty != widestEmpty && firstEmpty.width() >= minGutter
                         && endingAt(words, firstEmpty.left()) >= 3) {
                     widestEmpty = firstEmpty;
@@ -114,6 +130,7 @@ final class TextColumns {
                 gutterStart = Float.NaN;
                 widestEmpty = null;
                 firstEmpty = null;
+                empties.clear();
             }
         }
         columns.add(new Span(columnStart, right));

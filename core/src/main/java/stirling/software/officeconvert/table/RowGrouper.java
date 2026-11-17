@@ -251,7 +251,8 @@ final class RowGrouper {
         for (int c = 0; c < line.columns(); c++) {
             if (line.has(c)
                     && anchor.has(c)
-                    && !CellText.wrapsInto(line.cell(c), anchor.cell(c).getFirst(), wrap(c))) {
+                    && (!CellText.wrapsInto(line.cell(c), anchor.cell(c).getFirst(), wrap(c))
+                            || startsNewItem(line.cell(c), anchor.cell(c)))) {
                 return false;
             }
         }
