@@ -104,7 +104,7 @@ class CascadeCostTest {
             {"<div class=\"a b\"><span id=t>x</span></div>", ".a\\ b span"},
             {"<div class=\"\u0130\"><span id=t>x</span></div>", ".i span"},
             {"<div class=\"\u212a\"><span id=t>x</span></div>", ".k span"},
-            {"<div class=\"a\u2003b\"><span id=t>x</span></div>", ".a span"},
+            {"<div class=\"a\u2003b\"><span id=t>x</span></div>", ".a\\2003 b span"},
             {"<div class=\"\u00e9t\"><span id=t>x</span></div>", ".\\e9t span"},
             {"<div class=\"md:x\"><span id=t>x</span></div>", ".md\\:x span"},
             {"<div class=\"x\"><span id=t>x</span></div>", ":is(.x) span"},
