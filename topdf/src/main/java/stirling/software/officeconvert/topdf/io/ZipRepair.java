@@ -31,6 +31,8 @@ final class ZipRepair {
 
     private record Data(long consumed, long size, long crc, boolean complete) {}
 
+    private record Prefix(byte[] bytes, long inflated) {}
+
     private static final int LOCAL = 0x04034b50;
 
     private static final int CENTRAL = 0x02014b50;
@@ -165,26 +167,26 @@ final class ZipRepair {
             lost++;
             return;
         }
-        byte[] raw = partial(method, data, available);
-        charge(data, raw.length);
-        total += raw.length;
+        Prefix prefix = partial(method, data, available);
+        charge(data, prefix.inflated());
+        total += prefix.inflated();
         compressed += available;
-        byte[] kept = XmlSalvage.salvage(raw);
+        byte[] kept = XmlSalvage.salvage(prefix.bytes());
         if (kept == null || salvaged + kept.length > Math.max(XmlSalvage.MAX_BYTES, limits.maxDenseBytes())) {
             lost++;
             return;
         }
-        salvaged += kept.length;
         CRC32 crc = new CRC32();
         crc.update(kept);
         int before = parts.size();
         keep(name, flags, 0, new Data(kept.length, kept.length, crc.getValue(), true), -1, kept);
         if (parts.size() > before) {
+            salvaged += kept.length;
             cut++;
         }
     }
 
-    private byte[] partial(int method, long data, long available) throws IOException {
+    private Prefix partial(int method, long data, long available) throws IOException {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         ByteBuffer input = ByteBuffer.allocate(1 << 16);
         byte[] buffer = new byte[1 << 16];
@@ -221,7 +223,7 @@ final class ZipRepair {
                 inf.end();
             }
         }
-        return out.size() > XmlSalvage.MAX_BYTES ? new byte[0] : out.toByteArray();
+        return new Prefix(out.size() > XmlSalvage.MAX_BYTES ? new byte[0] : out.toByteArray(), out.size());
     }
 
     private static String key(String name) {

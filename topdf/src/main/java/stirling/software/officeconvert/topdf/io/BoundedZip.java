@@ -9,10 +9,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
@@ -108,7 +106,7 @@ public final class BoundedZip implements Closeable {
         for (String name : names) {
             sizes.put(normalised(name), 0L);
         }
-        Set<String> measured = new HashSet<>();
+        Map<String, ZipEntry> first = new HashMap<>();
         try (BoundedZip bounded = open(file)) {
             ZipFile z = bounded.zip;
             byte[] scratch = new byte[1 << 16];
@@ -117,12 +115,23 @@ public final class BoundedZip implements Closeable {
                 OfficeZip.checkNotInterrupted();
                 ZipEntry e = entries.nextElement();
                 String name = normalised(e.getName());
-                if (!e.isDirectory() && sizes.containsKey(name) && measured.add(name)) {
-                    sizes.put(name, Math.max(sizes.get(name), inflated(z, e, scratch, max)));
+                if (!e.isDirectory() && sizes.containsKey(name) && first.putIfAbsent(name, e) == null) {
+                    sizes.put(name, inflated(z, e, scratch, max));
+                }
+            }
+            for (Map.Entry<String, ZipEntry> f : first.entrySet()) {
+                ZipEntry looked = z.getEntry(f.getValue().getName());
+                if (looked != null && !sameEntry(looked, f.getValue())) {
+                    sizes.merge(f.getKey(), inflated(z, looked, scratch, max), Math::max);
                 }
             }
         }
         return sizes.values().stream().mapToLong(Long::longValue).sum();
+    }
+
+    private static boolean sameEntry(ZipEntry a, ZipEntry b) {
+        return a.getCrc() == b.getCrc() && a.getCompressedSize() == b.getCompressedSize() && a.getSize() == b.getSize()
+                && a.getMethod() == b.getMethod();
     }
 
     private static long inflated(ZipFile z, ZipEntry e, byte[] scratch, long max) throws IOException {

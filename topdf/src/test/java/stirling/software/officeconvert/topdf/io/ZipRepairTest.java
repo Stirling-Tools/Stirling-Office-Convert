@@ -162,7 +162,12 @@ class ZipRepairTest {
             out.writeBytes(damaged);
         }
         Path file = Fixtures.write(dir, "salvage-bomb.docx", out.toByteArray());
-        IOException e = assertThrows(IOException.class, () -> ZipRepair.rebuild(file, OfficeZip.Limits.DEFAULT));
+        IOException e = assertThrows(IOException.class, () -> {
+            ZipRepair.Repaired unexpected = ZipRepair.rebuild(file, OfficeZip.Limits.DEFAULT);
+            if (unexpected != null) {
+                java.nio.file.Files.deleteIfExists(unexpected.file());
+            }
+        });
         assertTrue(e.getMessage().contains("zip bomb"), e.getMessage());
     }
 
