@@ -672,7 +672,7 @@ final class Rewrite {
     private void substitute(int target, Bytes out, int number, int depth) throws IOException {
         int t = rep[target];
         byte kind = index.kind(t);
-        boolean regularBefore = out.size() > 0 && Lexical.regular(out.at(out.size() - 1) & 0xFF);
+        boolean regularBefore = endsAfterRegular(out);
         if (kind == Index.SCALAR || inline[t] && depth < MAX_INLINE_DEPTH * 2) {
             byte[] body = index.bytes(t);
             if (regularBefore && body != null && body.length > 0 && Lexical.regular(body[0] & 0xFF)) {
@@ -692,10 +692,17 @@ final class Rewrite {
     }
 
     private static void space(Bytes out, int start, byte[] body, int pos) {
-        if (out.size() > start && pos < body.length && Lexical.regular(out.at(out.size() - 1) & 0xFF)
-                && Lexical.regular(body[pos] & 0xFF)) {
+        if (out.size() > start && pos < body.length && endsAfterRegular(out) && Lexical.regular(body[pos] & 0xFF)) {
             out.write(' ');
         }
+    }
+
+    private static boolean endsAfterRegular(Bytes out) {
+        if (out.size() == 0) {
+            return false;
+        }
+        int last = out.at(out.size() - 1) & 0xFF;
+        return Lexical.regular(last) || last == '/';
     }
 
     private int write(CountingOutput out, float version, boolean objectStreams, int root, int info, COSArray id)
