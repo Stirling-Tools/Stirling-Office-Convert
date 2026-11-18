@@ -10,6 +10,7 @@ import java.util.Map;
 import org.apache.fontbox.encoding.StandardEncoding;
 
 import stirling.software.officeconvert.extract.PdfFiles;
+import stirling.software.officeconvert.fonts.CharStringExpansion;
 import stirling.software.officeconvert.pdfa.WebFonts.FontKind;
 
 abstract class FontProgram {
@@ -54,9 +55,15 @@ abstract class FontProgram {
 
     void checkExpansion() throws IOException {
         CharStringExpansion.Result[] glyphs = new CharStringExpansion.Result[count()];
+        long tokens = 0;
         for (int gid = 0; gid < glyphs.length; gid++) {
             PdfFiles.stopIfInterrupted();
             glyphs[gid] = expansion(gid);
+            tokens += glyphs[gid].tokens();
+            if (tokens > CharStringExpansion.MAX_FONT_TOKENS) {
+                throw new IOException("The font's charstrings expand beyond " + CharStringExpansion.MAX_FONT_TOKENS
+                        + " tokens");
+            }
         }
         CharStringExpansion.check(glyphs, code -> gid(StandardEncoding.INSTANCE.getName(code)));
     }

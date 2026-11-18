@@ -88,7 +88,7 @@ final class Type1Lenient {
             String key = numbered ? m.group(1) : m.group(2);
             int length = Integer.parseInt(m.group(3));
             int data = m.end();
-            if (key == null || length < 0 || data + length > plain.length) {
+            if (key == null || length < 0 || length > plain.length - data) {
                 break;
             }
             byte[] bytes = new byte[length];

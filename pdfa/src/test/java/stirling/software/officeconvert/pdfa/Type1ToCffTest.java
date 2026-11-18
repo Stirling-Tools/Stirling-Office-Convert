@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.awt.geom.GeneralPath;
@@ -15,6 +16,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
@@ -45,6 +47,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 
+import stirling.software.officeconvert.fonts.CharStringExpansion;
 import stirling.software.officeconvert.fonts.Type1ToCff;
 
 class Type1ToCffTest {
@@ -486,5 +489,27 @@ class Type1ToCffTest {
         assertTrue(ColourRenderingTest.dark(ColourRenderingTest.render(in)) > 100);
         assertEquals(0, ColourRenderingTest.differing(ColourRenderingTest.render(in), ColourRenderingTest.render(out)),
                 0.0005);
+    }
+
+    @Test
+    void refusesSubroutinesThatExpandExponentially() throws Exception {
+        assertNotNull(Type1ToCff.convert(segments(FontPrograms.fanOutType1("FanOut", 3)), Map.of(65, "A"),
+                Set.of("A")));
+        FontPrograms.Type1 p = FontPrograms.fanOutType1("FanOut", 40);
+        assertTimeoutPreemptively(Duration.ofSeconds(20),
+                () -> assertNull(Type1ToCff.convert(segments(p), Map.of(65, "A"), Set.of("A"))));
+    }
+
+    @Test
+    void anAccentedGlyphCountsTheNotdefItFallsBackToForMissingComponents() throws Exception {
+        assertNotNull(Type1ToCff.convert(segments(FontPrograms.missingComponentsType1("Missing", 10)),
+                Map.of(65, "A"), Set.of("A")));
+        assertNull(Type1ToCff.convert(segments(FontPrograms.missingComponentsType1("Missing", 14)),
+                Map.of(65, "A"), Set.of("A")));
+    }
+
+    private static Type1Font segments(FontPrograms.Type1 p) throws Exception {
+        return Type1Font.createWithSegments(Arrays.copyOfRange(p.data(), 0, p.length1()),
+                Arrays.copyOfRange(p.data(), p.length1(), p.length1() + p.length2()));
     }
 }

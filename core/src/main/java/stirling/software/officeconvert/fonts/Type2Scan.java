@@ -7,6 +7,8 @@ final class Type2Scan {
 
     private static final int MAX_DEPTH = 10;
 
+    private static final long MAX_OPERATIONS = 200_000;
+
     private final List<byte[]> local;
 
     private final List<byte[]> global;
@@ -18,6 +20,8 @@ final class Type2Scan {
     private int[] seac;
 
     private boolean done;
+
+    private long operations;
 
     Type2Scan(List<byte[]> local, List<byte[]> global) {
         this.local = local;
@@ -36,6 +40,9 @@ final class Type2Scan {
         }
         int i = 0;
         while (i < cs.length && !done) {
+            if (++operations > MAX_OPERATIONS) {
+                throw new IllegalStateException("too many operations");
+            }
             int b = cs[i] & 0xFF;
             if (b == 28 && i + 2 < cs.length) {
                 stack.add((int) (short) ((cs[i + 1] & 0xFF) << 8 | cs[i + 2] & 0xFF));

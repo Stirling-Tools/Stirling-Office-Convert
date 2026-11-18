@@ -15,6 +15,8 @@ import org.apache.fontbox.type1.Type1CharStringReader;
 import org.apache.fontbox.encoding.StandardEncoding;
 import org.apache.pdfbox.io.RandomAccessReadBuffer;
 
+import stirling.software.officeconvert.fonts.CharStringExpansion;
+
 final class CffProgram extends FontProgram {
 
     private final CFFFont font;

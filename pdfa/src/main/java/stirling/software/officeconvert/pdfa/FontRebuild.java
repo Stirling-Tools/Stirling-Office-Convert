@@ -191,8 +191,10 @@ final class FontRebuild {
                 return null;
             }
             boolean cff = kind == WebFonts.FontKind.CFF;
-            return FontProgram.read(data, cff ? kind : WebFonts.FontKind.TYPE1, cff ? -1 : s.getInt(COSName.LENGTH1),
-                    cff ? -1 : s.getInt(COSName.LENGTH2));
+            FontProgram program = FontProgram.read(data, cff ? kind : WebFonts.FontKind.TYPE1,
+                    cff ? -1 : s.getInt(COSName.LENGTH1), cff ? -1 : s.getInt(COSName.LENGTH2));
+            program.checkExpansion();
+            return program;
         } catch (IOException | RuntimeException e) {
             Decoded.rethrowFatal(e instanceof IOException io ? io : new IOException(e));
             PdfFiles.stopIfInterrupted();

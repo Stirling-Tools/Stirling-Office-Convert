@@ -4,6 +4,7 @@ import java.awt.geom.GeneralPath;
 import java.awt.geom.PathIterator;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InterruptedIOException;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -25,6 +26,8 @@ import org.apache.fontbox.cff.Type1CharStringParser;
 import org.apache.fontbox.encoding.StandardEncoding;
 import org.apache.fontbox.type1.Type1Font;
 import org.apache.fontbox.util.BoundingBox;
+
+import stirling.software.officeconvert.extract.PdfFiles;
 
 public final class Type1ToCff {
 
@@ -79,6 +82,9 @@ public final class Type1ToCff {
         Set<String> rest = new TreeSet<>(dict.keySet());
         rest.removeAll(glyphs);
         glyphs.addAll(rest);
+        if (!boundedExpansion(dict, glyphs)) {
+            return null;
+        }
 
         List<byte[]> charStrings = new ArrayList<>();
         for (String g : glyphs) {
@@ -272,6 +278,37 @@ public final class Type1ToCff {
         if (values != null && !values.isEmpty()) {
             d.number(values.get(0)).op(op);
         }
+    }
+
+    private boolean boundedExpansion(Map<String, byte[]> dict, List<String> glyphs) throws IOException {
+        try {
+            checkExpansion(dict, glyphs);
+            return true;
+        } catch (InterruptedIOException e) {
+            throw e;
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    private void checkExpansion(Map<String, byte[]> dict, List<String> glyphs) throws IOException {
+        Map<String, Integer> index = new HashMap<>();
+        CharStringExpansion.Result[] results = new CharStringExpansion.Result[glyphs.size()];
+        long tokens = 0;
+        for (int gid = 0; gid < glyphs.size(); gid++) {
+            PdfFiles.stopIfInterrupted();
+            byte[] cs = dict.get(glyphs.get(gid));
+            results[gid] = CharStringExpansion.type1(cs == null ? new byte[] {14} : cs, font.getSubrsArray());
+            tokens += results[gid].tokens();
+            if (tokens > CharStringExpansion.MAX_FONT_TOKENS) {
+                throw new IOException("The font's charstrings expand beyond " + CharStringExpansion.MAX_FONT_TOKENS
+                        + " tokens");
+            }
+            index.put(glyphs.get(gid), gid);
+        }
+        int notdef = index.getOrDefault(NOTDEF, -1);
+        CharStringExpansion.check(results,
+                code -> index.getOrDefault(StandardEncoding.INSTANCE.getName(code), notdef));
     }
 
     private byte[] charString(String name, boolean outline) throws IOException {
