@@ -562,7 +562,7 @@ public final class FixedHtml {
 
     private static final class WithoutText extends GuardedRenderer {
 
-        WithoutText(PDDocument doc) {
+        WithoutText(PDDocument doc) throws IOException {
             super(doc, PASS);
         }
 

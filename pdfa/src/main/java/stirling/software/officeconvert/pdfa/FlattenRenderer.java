@@ -32,7 +32,7 @@ final class FlattenRenderer extends GuardedRenderer {
     private Drawer drawer;
 
 
-    FlattenRenderer(PDDocument doc) {
+    FlattenRenderer(PDDocument doc) throws IOException {
         super(doc, "flattening transparency");
     }
 

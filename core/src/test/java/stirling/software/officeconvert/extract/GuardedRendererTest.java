@@ -41,11 +41,11 @@ public class GuardedRendererTest {
         private final int maxForms;
         private Drawer drawer;
 
-        Watched(PDDocument doc) {
+        Watched(PDDocument doc) throws IOException {
             this(doc, OperatorBudget.MAX_FORMS);
         }
 
-        Watched(PDDocument doc, int maxForms) {
+        Watched(PDDocument doc, int maxForms) throws IOException {
             super(doc, "a test");
             this.maxForms = maxForms;
         }
