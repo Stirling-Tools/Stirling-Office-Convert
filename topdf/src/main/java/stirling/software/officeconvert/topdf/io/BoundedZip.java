@@ -5,11 +5,14 @@ import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
@@ -37,6 +40,7 @@ public final class BoundedZip implements Closeable {
         try {
             BoundedZip bounded = new BoundedZip(zip, limits);
             bounded.checkEntries();
+            bounded.checkOverlap(Files.size(file));
             return bounded;
         } catch (IOException | RuntimeException e) {
             zip.close();
@@ -52,6 +56,17 @@ public final class BoundedZip implements Closeable {
         if (zip.size() > limits.maxEntries()) {
             throw new OfficeZip.Oversized("The document is too large: it has more than " + limits.maxEntries()
                     + " parts");
+        }
+    }
+
+    private void checkOverlap(long fileSize) throws IOException {
+        long compressed = 0;
+        var entries = zip.entries();
+        while (entries.hasMoreElements()) {
+            compressed += Math.max(0, entries.nextElement().getCompressedSize());
+            if (compressed > fileSize) {
+                throw new IOException("The document is damaged: its zip entries overlap");
+            }
         }
     }
 
@@ -93,6 +108,7 @@ public final class BoundedZip implements Closeable {
         for (String name : names) {
             sizes.put(normalised(name), 0L);
         }
+        Set<String> measured = new HashSet<>();
         try (BoundedZip bounded = open(file)) {
             ZipFile z = bounded.zip;
             byte[] scratch = new byte[1 << 16];
@@ -101,7 +117,7 @@ public final class BoundedZip implements Closeable {
                 OfficeZip.checkNotInterrupted();
                 ZipEntry e = entries.nextElement();
                 String name = normalised(e.getName());
-                if (!e.isDirectory() && sizes.containsKey(name) && sizes.get(name) <= max) {
+                if (!e.isDirectory() && sizes.containsKey(name) && measured.add(name)) {
                     sizes.put(name, Math.max(sizes.get(name), inflated(z, e, scratch, max)));
                 }
             }

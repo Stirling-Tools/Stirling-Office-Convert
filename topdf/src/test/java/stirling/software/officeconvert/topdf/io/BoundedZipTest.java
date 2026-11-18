@@ -2,13 +2,20 @@ package stirling.software.officeconvert.topdf.io;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
+import java.util.zip.CRC32;
+import java.util.zip.Deflater;
 import java.util.zip.ZipEntry;
 
 import org.junit.jupiter.api.Test;
@@ -20,6 +27,38 @@ class BoundedZipTest {
 
     @TempDir
     Path dir;
+
+    private static byte[] sharedPart(String name, byte[] content, int copies) {
+        Deflater d = new Deflater(Deflater.BEST_COMPRESSION, true);
+        d.setInput(content);
+        d.finish();
+        ByteArrayOutputStream deflated = new ByteArrayOutputStream();
+        byte[] buf = new byte[1 << 16];
+        while (!d.finished()) {
+            deflated.write(buf, 0, d.deflate(buf));
+        }
+        d.end();
+        byte[] data = deflated.toByteArray();
+        CRC32 crc = new CRC32();
+        crc.update(content);
+        byte[] n = name.getBytes(StandardCharsets.UTF_8);
+        ByteBuffer out = ByteBuffer.allocate(30 + n.length + data.length + copies * (46 + n.length) + 22)
+                .order(ByteOrder.LITTLE_ENDIAN);
+        out.putInt(0x04034b50).putShort((short) 20).putShort((short) 0).putShort((short) 8).putInt(0)
+                .putInt((int) crc.getValue()).putInt(data.length).putInt(content.length).putShort((short) n.length)
+                .putShort((short) 0).put(n).put(data);
+        int directory = out.position();
+        for (int i = 0; i < copies; i++) {
+            out.putInt(0x02014b50).putShort((short) 20).putShort((short) 20).putShort((short) 0).putShort((short) 8)
+                    .putInt(0).putInt((int) crc.getValue()).putInt(data.length).putInt(content.length)
+                    .putShort((short) n.length).putShort((short) 0).putShort((short) 0).putShort((short) 0)
+                    .putShort((short) 0).putInt(0).putInt(0).put(n);
+        }
+        int size = out.position() - directory;
+        out.putInt(0x06054b50).putShort((short) 0).putShort((short) 0).putShort((short) copies)
+                .putShort((short) copies).putInt(size).putInt(directory).putShort((short) 0);
+        return out.array();
+    }
 
     private static byte[] filled(int n) {
         byte[] b = new byte[n];
@@ -39,6 +78,18 @@ class BoundedZipTest {
         }
         Path oversized = Files.write(dir.resolve("many.zip"), many.bytes());
         assertThrows(OfficeZip.Oversized.class, () -> BoundedZip.inflatedSize(oversized, List.of("content.xml"), 100));
+    }
+
+    @Test
+    void manyDirectoryEntriesSharingOnePartAreRefusedBeforeAnythingIsInflated() throws IOException {
+        byte[] content = new byte[8 << 20];
+        Arrays.fill(content, (byte) ' ');
+        Path file = Files.write(dir.resolve("shared.odt"), sharedPart("content.xml", content, 300));
+        long start = System.nanoTime();
+        IOException e = assertThrows(IOException.class,
+                () -> BoundedZip.inflatedSize(file, List.of("content.xml"), 256L << 20));
+        assertTrue(e.getMessage().contains("overlap"), e.getMessage());
+        assertTrue(System.nanoTime() - start < 5_000_000_000L);
     }
 
     @Test

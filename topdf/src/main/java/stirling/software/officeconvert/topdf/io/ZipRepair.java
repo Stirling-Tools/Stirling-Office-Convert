@@ -55,6 +55,8 @@ final class ZipRepair {
 
     private long compressed;
 
+    private long salvaged;
+
     private int lost;
 
     private int cut;
@@ -157,13 +159,22 @@ final class ZipRepair {
 
     // An XML part cut short keeps its well-formed start; any other part is lost
     private void shortened(byte[] name, int flags, int method, long data, long available) throws IOException {
-        String n = new String(name, StandardCharsets.UTF_8).toLowerCase(Locale.ROOT);
-        byte[] kept = n.endsWith(".xml") || n.endsWith(".rels") ? XmlSalvage.salvage(partial(method, data, available))
-                : null;
-        if (kept == null) {
+        String n = new String(name, StandardCharsets.UTF_8);
+        String lower = n.toLowerCase(Locale.ROOT);
+        if (!(lower.endsWith(".xml") || lower.endsWith(".rels")) || seen.contains(key(n))) {
             lost++;
             return;
         }
+        byte[] raw = partial(method, data, available);
+        charge(data, raw.length);
+        total += raw.length;
+        compressed += available;
+        byte[] kept = XmlSalvage.salvage(raw);
+        if (kept == null || salvaged + kept.length > Math.max(XmlSalvage.MAX_BYTES, limits.maxDenseBytes())) {
+            lost++;
+            return;
+        }
+        salvaged += kept.length;
         CRC32 crc = new CRC32();
         crc.update(kept);
         int before = parts.size();
