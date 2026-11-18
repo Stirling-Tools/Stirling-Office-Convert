@@ -27,4 +27,11 @@ class LimitsTest {
         assertTrue(zero.getMessage().contains("CONVERT_TIMEOUT_SECONDS must be 1 or more"), zero.getMessage());
         assertThrows(IllegalArgumentException.class, () -> Limits.from(Map.of("CONVERT_TIMEOUT_SECONDS", "-5"), NO_ARGS));
     }
+
+    @Test
+    void oneClientCanNeverHoldEveryConversionSlot() {
+        assertEquals(1, Limits.from(Map.of("MAX_CONCURRENT", "2", "MAX_PER_CLIENT", "4"), NO_ARGS).clientLimit());
+        assertEquals(4, Limits.from(Map.of("MAX_CONCURRENT", "8", "MAX_PER_CLIENT", "4"), NO_ARGS).clientLimit());
+        assertEquals(0, Limits.from(Map.of("MAX_CONCURRENT", "2", "MAX_PER_CLIENT", "0"), NO_ARGS).clientLimit());
+    }
 }

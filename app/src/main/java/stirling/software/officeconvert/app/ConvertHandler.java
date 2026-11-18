@@ -9,11 +9,13 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.time.LocalTime;
 import java.time.temporal.ChronoUnit;
-import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -21,7 +23,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
@@ -55,7 +56,7 @@ import stirling.software.officeconvert.memory.Admission;
 import stirling.software.officeconvert.topdf.OfficeToPdf;
 import stirling.software.officeconvert.topdf.crypt.Passwords;
 
-final class ConvertHandler implements HttpHandler {
+final class ConvertHandler implements HttpHandler, AutoCloseable {
 
     private static final String DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
@@ -130,13 +131,21 @@ final class ConvertHandler implements HttpHandler {
 
     private static final String BUSY = "The converter is busy right now. Please try again in a minute.";
 
+    private static final Refusal CLIENT_STUCK = new Refusal(429, "busy",
+            "A file you sent earlier is still being stopped. Please try again later.");
+
+    private static final Refusal REFUSED = new Refusal(422, "refused",
+            "This file could not be stopped when it ran out of time before, so it is refused.");
+
     private final Limits limits;
     private final Semaphore slots;
     private final LibreOffice libreOffice;
     private final Semaphore officeSlots;
     private final AtomicInteger admitted = new AtomicInteger();
-    private final AtomicInteger stuck = new AtomicInteger();
+    private final StuckJobs stuck = new StuckJobs();
+    private final WorkDir work;
     private final AtomicLong stored = new AtomicLong();
+    private final AtomicInteger jobs = new AtomicInteger();
     private final Map<String, Integer> clients = new ConcurrentHashMap<>();
     private final ExecutorService workers = Executors.newCachedThreadPool(r -> {
         Thread t = new Thread(r, "convert");
@@ -144,8 +153,13 @@ final class ConvertHandler implements HttpHandler {
         return t;
     });
 
-    ConvertHandler(Limits limits, LibreOffice libreOffice) {
+    ConvertHandler(Limits limits, LibreOffice libreOffice) throws IOException {
+        this(limits, libreOffice, WorkDir.open());
+    }
+
+    ConvertHandler(Limits limits, LibreOffice libreOffice, WorkDir work) {
         this.limits = limits;
+        this.work = work;
         this.slots = new Semaphore(limits.concurrent(), true);
         this.libreOffice = libreOffice;
         this.officeSlots = new Semaphore(libreOffice == null ? 0 : libreOffice.slots(), true);
@@ -172,6 +186,7 @@ final class ConvertHandler implements HttpHandler {
         Path input;
         String name;
         private final String client;
+        private String digest;
         private long bytes;
         private boolean converting;
         private boolean requestDone;
@@ -181,6 +196,7 @@ final class ConvertHandler implements HttpHandler {
             this.dir = dir;
             this.upload = dir.resolve("upload");
             this.client = client;
+            jobs.incrementAndGet();
         }
 
         synchronized void stored(long n) {
@@ -200,14 +216,14 @@ final class ConvertHandler implements HttpHandler {
                 return false;
             }
             markedStuck = true;
-            stuck.incrementAndGet();
+            stuck.stuck(client, digest);
             return true;
         }
 
         synchronized void conversionEnded() {
             converting = false;
             if (markedStuck) {
-                stuck.decrementAndGet();
+                stuck.ended(client, digest);
                 markedStuck = false;
             }
             if (requestDone) {
@@ -225,13 +241,37 @@ final class ConvertHandler implements HttpHandler {
         private void clean() {
             stored.addAndGet(-bytes);
             bytes = 0;
-            ConvertHandler.clean(dir);
+            WorkDir.delete(dir);
             leave(client);
+            jobs.decrementAndGet();
         }
     }
 
     boolean healthy() {
-        return stuck.get() < limits.concurrent();
+        return stuck.count() < limits.concurrent();
+    }
+
+    @Override
+    public void close() {
+        close(Duration.ZERO);
+    }
+
+    void close(Duration grace) {
+        workers.shutdown();
+        long until = System.nanoTime() + grace.toNanos();
+        while (jobs.get() > 0 && System.nanoTime() < until) {
+            try {
+                Thread.sleep(50);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+        if (jobs.get() == 0) {
+            work.close();
+        } else {
+            System.out.println(jobs.get() + " conversion(s) still running at shutdown; their uploads are deleted on the next start");
+        }
     }
 
     @Override
@@ -244,6 +284,11 @@ final class ConvertHandler implements HttpHandler {
             }
             long start = System.nanoTime();
             String client = client(ex);
+            if (stuck.holds(client)) {
+                fail(ex, CLIENT_STUCK.status, CLIENT_STUCK.code, CLIENT_STUCK.getMessage());
+                log(start, 0, "client-stuck");
+                return;
+            }
             if (!enter(client)) {
                 fail(ex, 429, "busy", "Several of your conversions are running already. Please wait for one to finish.");
                 log(start, 0, "client-limit");
@@ -263,10 +308,13 @@ final class ConvertHandler implements HttpHandler {
                 if (admitted.get() >= capacity()) {
                     throw new Refusal(503, "busy", BUSY);
                 }
-                Job current = new Job(Files.createTempDirectory("office-convert-app"), client);
+                Job current = new Job(work.newJob(), client);
                 job = current;
                 current.name = uploadName(q.get("name"));
                 Input input = receive(ex.getRequestBody(), current);
+                if (stuck.refused(current.digest)) {
+                    throw REFUSED;
+                }
                 if (input == Input.PDF) {
                     String target = format == null ? "docx" : format;
                     if ("pdf".equals(target)) {
@@ -345,13 +393,13 @@ final class ConvertHandler implements HttpHandler {
     }
 
     private boolean enter(String client) {
-        if (limits.perClient() <= 0) {
+        if (limits.clientLimit() <= 0) {
             return true;
         }
         boolean[] ok = {false};
         clients.compute(client, (k, n) -> {
             int now = n == null ? 0 : n;
-            if (now >= limits.perClient()) {
+            if (now >= limits.clientLimit()) {
                 return n;
             }
             ok[0] = true;
@@ -361,7 +409,7 @@ final class ConvertHandler implements HttpHandler {
     }
 
     private void leave(String client) {
-        if (limits.perClient() > 0) {
+        if (limits.clientLimit() > 0) {
             clients.computeIfPresent(client, (k, n) -> n <= 1 ? null : n - 1);
         }
     }
@@ -484,34 +532,32 @@ final class ConvertHandler implements HttpHandler {
         if (!slot) {
             throw new Refusal(503, "busy", BUSY);
         }
-        Future<Done> work;
+        if (stuck.holds(job.client) || stuck.refused(job.digest)) {
+            gate.release();
+            admitted.decrementAndGet();
+            throw stuck.holds(job.client) ? CLIENT_STUCK : REFUSED;
+        }
         job.started();
-        try {
-            work = workers.submit(() -> {
-                try {
-                    return task.run();
-                } finally {
-                    gate.release();
-                    admitted.decrementAndGet();
-                    job.conversionEnded();
-                }
-            });
-        } catch (RejectedExecutionException e) {
+        Worker<Done> work = new Worker<>(task::run, () -> {
             gate.release();
             admitted.decrementAndGet();
             job.conversionEnded();
+        });
+        try {
+            work.start(workers);
+        } catch (RejectedExecutionException e) {
+            work.stop(0, TimeUnit.SECONDS);
             throw new Refusal(503, "busy", BUSY);
         }
         try {
-            return work.get(limits.timeoutSeconds(), TimeUnit.SECONDS);
+            return work.await(limits.timeoutSeconds(), TimeUnit.SECONDS);
         } catch (TimeoutException e) {
-            work.cancel(true);
-            if (!awaitStop(work) && !office && job.markStuck()) {
+            if (!work.stop(STOP_WAIT_MILLIS, TimeUnit.MILLISECONDS) && !office && job.markStuck()) {
                 stuckConversion();
             }
             throw timedOut(pdf);
         } catch (InterruptedException e) {
-            work.cancel(true);
+            work.stop(0, TimeUnit.SECONDS);
             Thread.currentThread().interrupt();
             throw new Refusal(503, "busy", "The server is shutting down.");
         } catch (ExecutionException e) {
@@ -526,7 +572,7 @@ final class ConvertHandler implements HttpHandler {
     }
 
     private void stuckConversion() {
-        System.out.println("A conversion did not stop after its timeout; " + stuck.get() + " of " + limits.concurrent()
+        System.out.println("A conversion did not stop after its timeout; " + stuck.count() + " of " + limits.concurrent()
                 + " slots are held by stuck conversions");
         if (!healthy() && limits.exitWhenStuck()) {
             System.out.println("Every conversion slot is stuck: exiting so the service can be restarted");
@@ -646,20 +692,8 @@ final class ConvertHandler implements HttpHandler {
         return new Refusal(500, "error", "Something went wrong converting this file.");
     }
 
-    private static boolean awaitStop(Future<?> job) {
-        long until = System.nanoTime() + STOP_WAIT_MILLIS * 1_000_000;
-        while (!job.isDone() && System.nanoTime() < until) {
-            try {
-                Thread.sleep(100);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return job.isDone();
-            }
-        }
-        return job.isDone();
-    }
-
     private Input receive(InputStream body, Job job) throws IOException, Refusal {
+        MessageDigest sha = sha256();
         try (InputStream in = body; OutputStream out = Files.newOutputStream(job.upload)) {
             byte[] head = in.readNBytes(1024);
             if (head.length == 0) {
@@ -668,6 +702,7 @@ final class ConvertHandler implements HttpHandler {
             Input input = kind(head, job.name);
             keep(job, head.length);
             out.write(head);
+            sha.update(head);
             long total = head.length;
             byte[] buf = new byte[1 << 16];
             for (int n; (n = in.read(buf)) > 0; ) {
@@ -677,8 +712,18 @@ final class ConvertHandler implements HttpHandler {
                 }
                 keep(job, n);
                 out.write(buf, 0, n);
+                sha.update(buf, 0, n);
             }
+            job.digest = HexFormat.of().formatHex(sha.digest());
             return input;
+        }
+    }
+
+    private static MessageDigest sha256() {
+        try {
+            return MessageDigest.getInstance("SHA-256");
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
         }
     }
 
@@ -783,16 +828,6 @@ final class ConvertHandler implements HttpHandler {
         ex.sendResponseHeaders(status, body.length);
         try (OutputStream out = ex.getResponseBody()) {
             out.write(body);
-        }
-    }
-
-    private static void clean(Path dir) {
-        try (var files = Files.walk(dir)) {
-            for (Path p : (Iterable<Path>) files.sorted(Comparator.reverseOrder())::iterator) {
-                Files.deleteIfExists(p);
-            }
-        } catch (IOException e) {
-            System.out.println("Could not delete " + dir + ": " + e.getMessage());
         }
     }
 }

@@ -24,6 +24,7 @@ import stirling.software.officeconvert.memory.Admission;
 class ConvertHandlerTest {
 
     private HttpServer server;
+    private ConvertHandler handler;
     private final HttpClient client = HttpClient.newHttpClient();
 
     private String start(int timeoutSeconds) throws IOException {
@@ -34,7 +35,8 @@ class ConvertHandlerTest {
         Limits limits = new Limits("127.0.0.1", 0, 64L << 20, maxPages, timeoutSeconds, 2, 4, 30, 0, null, 60, 100, false, "off",
                 1, "");
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        server.createContext("/convert", new ConvertHandler(limits, null));
+        handler = new ConvertHandler(limits, null);
+        server.createContext("/convert", handler);
         server.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
         server.start();
         return "http://127.0.0.1:" + server.getAddress().getPort() + "/convert";
@@ -44,6 +46,9 @@ class ConvertHandlerTest {
     void stop() {
         if (server != null) {
             server.stop(0);
+        }
+        if (handler != null) {
+            handler.close();
         }
     }
 
