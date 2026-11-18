@@ -153,6 +153,50 @@ class ZipRepairTest {
     }
 
     @Test
+    void manyDamagedXmlPartsThatInflateHugelyAreRefusedAsABomb() throws Exception {
+        byte[] xml = ("<r>" + "<b/>".repeat((16 << 20) / 4 - 50)).getBytes(StandardCharsets.UTF_8);
+        byte[] damaged = damagedDeflate(xml);
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        for (int i = 0; i < 60; i++) {
+            out.writeBytes(localHeader("word/p" + i + ".xml", damaged.length, xml.length));
+            out.writeBytes(damaged);
+        }
+        Path file = Fixtures.write(dir, "salvage-bomb.docx", out.toByteArray());
+        IOException e = assertThrows(IOException.class, () -> {
+            ZipRepair.Repaired unexpected = ZipRepair.rebuild(file, OfficeZip.Limits.DEFAULT);
+            if (unexpected != null) {
+                java.nio.file.Files.deleteIfExists(unexpected.file());
+            }
+        });
+        assertTrue(e.getMessage().contains("zip bomb"), e.getMessage());
+    }
+
+    @Test
+    void salvagedPartsHeldInMemoryAreCappedInTotal() throws Exception {
+        java.util.Random random = new java.util.Random(3);
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        for (int i = 0; i < 3; i++) {
+            StringBuilder text = new StringBuilder("<r>");
+            while (text.length() < 7 << 20) {
+                text.append("<t>").append(Long.toString(random.nextLong(), 36)).append("</t>");
+            }
+            byte[] xml = text.toString().getBytes(StandardCharsets.UTF_8);
+            byte[] damaged = damagedDeflate(xml);
+            out.writeBytes(localHeader("word/p" + i + ".xml", damaged.length, xml.length));
+            out.writeBytes(damaged);
+        }
+        Path file = Fixtures.write(dir, "salvage-many.docx", out.toByteArray());
+        OfficeZip.Limits noDenseBudget = new OfficeZip.Limits(10_000, 512L << 20, 1L << 30, 0.01, 100L << 10, 0);
+        ZipRepair.Repaired repaired = ZipRepair.rebuild(file, noDenseBudget);
+        try {
+            assertEquals(2, repaired.cut());
+            assertEquals(1, repaired.lost());
+        } finally {
+            java.nio.file.Files.deleteIfExists(repaired.file());
+        }
+    }
+
+    @Test
     void somethingThatOnlyStartsLikeAZipIsStillNotAPackage() throws Exception {
         byte[] junk = new byte[4096];
         Arrays.fill(junk, (byte) 7);
@@ -226,6 +270,28 @@ class ZipRepairTest {
     }
 
     // Local headers that carry their sizes, no directory; the named part's deflate data is scrambled
+    private static byte[] damagedDeflate(byte[] data) {
+        Deflater d = new Deflater(Deflater.BEST_COMPRESSION, true);
+        d.setInput(data);
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        byte[] buf = new byte[1 << 16];
+        int n;
+        do {
+            n = d.deflate(buf, 0, buf.length, Deflater.SYNC_FLUSH);
+            out.write(buf, 0, n);
+        } while (n == buf.length || !d.needsInput());
+        d.end();
+        out.writeBytes(new byte[] {(byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF});
+        return out.toByteArray();
+    }
+
+    private static byte[] localHeader(String name, int compressed, int size) {
+        byte[] n = name.getBytes(StandardCharsets.UTF_8);
+        return ByteBuffer.allocate(30 + n.length).order(ByteOrder.LITTLE_ENDIAN).putInt(0x04034b50).putShort((short) 20)
+                .putShort((short) 0).putShort((short) 8).putShort((short) 0).putShort((short) 0).putInt(0)
+                .putInt(compressed).putInt(size).putShort((short) n.length).putShort((short) 0).put(n).array();
+    }
+
     private static byte[] sizedZip(Map<String, byte[]> parts, String scramble) {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         for (Map.Entry<String, byte[]> p : parts.entrySet()) {

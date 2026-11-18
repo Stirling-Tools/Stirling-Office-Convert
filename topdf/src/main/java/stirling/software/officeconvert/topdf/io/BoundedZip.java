@@ -5,6 +5,7 @@ import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collections;
 import java.util.HashMap;
@@ -37,6 +38,7 @@ public final class BoundedZip implements Closeable {
         try {
             BoundedZip bounded = new BoundedZip(zip, limits);
             bounded.checkEntries();
+            bounded.checkOverlap(Files.size(file));
             return bounded;
         } catch (IOException | RuntimeException e) {
             zip.close();
@@ -52,6 +54,17 @@ public final class BoundedZip implements Closeable {
         if (zip.size() > limits.maxEntries()) {
             throw new OfficeZip.Oversized("The document is too large: it has more than " + limits.maxEntries()
                     + " parts");
+        }
+    }
+
+    private void checkOverlap(long fileSize) throws IOException {
+        long compressed = 0;
+        var entries = zip.entries();
+        while (entries.hasMoreElements()) {
+            compressed += Math.max(0, entries.nextElement().getCompressedSize());
+            if (compressed > fileSize) {
+                throw new IOException("The document is damaged: its zip entries overlap");
+            }
         }
     }
 
@@ -93,6 +106,7 @@ public final class BoundedZip implements Closeable {
         for (String name : names) {
             sizes.put(normalised(name), 0L);
         }
+        Map<String, ZipEntry> first = new HashMap<>();
         try (BoundedZip bounded = open(file)) {
             ZipFile z = bounded.zip;
             byte[] scratch = new byte[1 << 16];
@@ -101,12 +115,23 @@ public final class BoundedZip implements Closeable {
                 OfficeZip.checkNotInterrupted();
                 ZipEntry e = entries.nextElement();
                 String name = normalised(e.getName());
-                if (!e.isDirectory() && sizes.containsKey(name) && sizes.get(name) <= max) {
-                    sizes.put(name, Math.max(sizes.get(name), inflated(z, e, scratch, max)));
+                if (!e.isDirectory() && sizes.containsKey(name) && first.putIfAbsent(name, e) == null) {
+                    sizes.put(name, inflated(z, e, scratch, max));
+                }
+            }
+            for (Map.Entry<String, ZipEntry> f : first.entrySet()) {
+                ZipEntry looked = z.getEntry(f.getValue().getName());
+                if (looked != null && !sameEntry(looked, f.getValue())) {
+                    sizes.merge(f.getKey(), inflated(z, looked, scratch, max), Math::max);
                 }
             }
         }
         return sizes.values().stream().mapToLong(Long::longValue).sum();
+    }
+
+    private static boolean sameEntry(ZipEntry a, ZipEntry b) {
+        return a.getCrc() == b.getCrc() && a.getCompressedSize() == b.getCompressedSize() && a.getSize() == b.getSize()
+                && a.getMethod() == b.getMethod();
     }
 
     private static long inflated(ZipFile z, ZipEntry e, byte[] scratch, long max) throws IOException {
