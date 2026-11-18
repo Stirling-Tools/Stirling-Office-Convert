@@ -7,7 +7,7 @@ The converter needs no native libraries or external processes. It also converts 
 |---|---|
 | PDF to documents | DOCX, ODT, flat ODT (`.fodt` / `.xml`), RTF (`.rtf` / `.doc`), plain text, HTML, JSON, Markdown, EPUB, AZW3 (Kindle KF8) |
 | PDF to presentations | PPTX, ODP, PPT (via the `legacy` module) |
-| PDF to spreadsheets | XLSX, ODS |
+| PDF to spreadsheets | XLSX, ODS, CSV (tables only) |
 | Office to PDF | DOCX, PPTX, XLSX, legacy DOC/XLS/PPT, XLSB, RTF, OpenDocument, Office XML, Visio, text and table formats, HTML, EPUB, MOBI/AZW3, FB2, JSON |
 | PDF to PDF/A | 1a, 1b, 2a, 2b, 2u, 3a, 3b, 3u, 4 |
 

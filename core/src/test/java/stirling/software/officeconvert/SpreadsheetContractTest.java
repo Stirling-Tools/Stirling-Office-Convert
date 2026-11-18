@@ -39,7 +39,9 @@ class SpreadsheetContractTest {
                 PdfToXlsx.convert(doc, out, PdfToXlsx.Options.defaults().withFormat(f));
             }
             assertFalse(out.closed, "caller's stream closed");
-            assertTrue(SpreadsheetPdfs.parts(out.toByteArray()).size() >= 5, "complete package written");
+            if (f != PdfToXlsx.Format.CSV) {
+                assertTrue(SpreadsheetPdfs.parts(out.toByteArray()).size() >= 5, "complete package written");
+            }
         }
     }
 

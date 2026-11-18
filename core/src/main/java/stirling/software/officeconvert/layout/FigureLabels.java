@@ -10,6 +10,8 @@ final class FigureLabels {
 
     private static final float WORD_SIZE = 1.25f;
 
+    private static final float TOKEN_SIZE = 1.6f;
+
     private static final int MAX_CHARS = 24;
 
     private static final int MAX_WORD_CHARS = 24;
@@ -28,12 +30,34 @@ final class FigureLabels {
 
     private static final Pattern CAPTION = Pattern.compile("(?i)^(fig\\.?|figure|table|source|note)\\b.*");
 
-    record Label(Box box, float size, String text) {}
+    record Label(Box box, float size, String text, boolean spread) {
+        Label(Box box, float size, String text) {
+            this(box, size, text, false);
+        }
+    }
+
+    private static final float SPREAD_GAP = 2.5f;
+
+    private static final int MAX_SPREAD_WORD = 12;
 
     private FigureLabels() {}
 
     static Label of(Line l) {
-        return new Label(new Box(l.x, l.top, l.right, l.bottom), l.size, l.text().strip());
+        return new Label(new Box(l.x, l.top, l.right, l.bottom), l.size, l.text().strip(), spread(l));
+    }
+
+    // Axis labels: a few short words set far apart, like "North   South   East   West".
+    private static boolean spread(Line l) {
+        if (l.words.size() < 2) {
+            return false;
+        }
+        for (int i = 0; i < l.words.size(); i++) {
+            Word w = l.words.get(i);
+            if (w.text.length() > MAX_SPREAD_WORD || i > 0 && w.x - l.words.get(i - 1).right < SPREAD_GAP * l.size) {
+                return false;
+            }
+        }
+        return true;
     }
 
     static List<Box> grow(List<Box> figures, List<Label> lines, float bodySize) {
@@ -66,14 +90,14 @@ final class FigureLabels {
                 more = false;
                 for (int i = 0; i < small.size(); i++) {
                     Label l = small.get(i);
-                    if (!usedSmall[i] && grown.near(l.box(), reach(grown, l))) {
+                    if (!usedSmall[i] && grown.near(l.box(), reach(grown, l)) && (!l.spread() || within(grown, l))) {
                         grown = grown.union(l.box());
                         usedSmall[i] = more = true;
                     }
                 }
                 for (int i = 0; i < words.size(); i++) {
                     Label l = words.get(i);
-                    if (!usedWords[i] && beside(grown, l)
+                    if (!usedWords[i] && (beside(grown, l) && (l.size() <= WORD_SIZE * bodySize || NUMBER.matcher(l.text()).matches()) || axisRow(f, l, words))
                             && (alone[i] != null ? alone[i] : (alone[i] = isolated(l, lines, bodySize)))) {
                         grown = grown.union(l.box());
                         usedWords[i] = more = true;
@@ -99,8 +123,34 @@ final class FigureLabels {
         return gap <= 1.5f * l.size() && b.centreY() > f.top() && b.centreY() < f.bottom();
     }
 
+    // Category labels under or over the plot itself: single words in a row of at least two, never a chain of lines.
+    private static boolean axisRow(Box f, Label l, List<Label> words) {
+        if (!axisWord(f, l)) {
+            return false;
+        }
+        for (Label o : words) {
+            if (o != l && axisWord(f, o) && Math.abs(o.box().bottom() - l.box().bottom()) <= 0.3f * l.size()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean axisWord(Box f, Label l) {
+        return !l.text().contains(" ") && l.text().length() <= MAX_SPREAD_WORD && within(f, l)
+                && f.near(l.box(), 0.5f * l.size());
+    }
+
+    private static boolean within(Box f, Label l) {
+        return l.box().x() >= f.x() - l.size() && l.box().right() <= f.right() + l.size();
+    }
+
     private static boolean isSmall(Label l, float bodySize) {
         String t = l.text();
+        if (l.spread() && !t.isEmpty() && t.length() <= MAX_TICK_CHARS && l.size() <= TOKEN_SIZE * bodySize
+                && !CAPTION.matcher(t).matches()) {
+            return true;
+        }
         if (t.isEmpty() || l.size() > SMALL * bodySize || CAPTION.matcher(t).matches()) {
             return false;
         }
@@ -112,7 +162,8 @@ final class FigureLabels {
 
     private static boolean isWord(Label l, float bodySize) {
         String t = l.text();
-        return !t.isEmpty() && l.size() <= WORD_SIZE * bodySize && t.length() <= MAX_WORD_CHARS
+        float limit = t.contains(" ") ? WORD_SIZE : TOKEN_SIZE;
+        return !t.isEmpty() && l.size() <= limit * bodySize && t.length() <= MAX_WORD_CHARS
                 && t.split("\\s+").length <= 3 && !CAPTION.matcher(t).matches();
     }
 

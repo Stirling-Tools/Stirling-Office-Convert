@@ -210,8 +210,12 @@ public final class FontNames {
         if (lower.matches("(cm|sf|ec)(ss|sssbx|ssi|ssbx|ssdc)[0-9]*") || lower.startsWith("lmsans")) {
             return "Arial";
         }
-        if (lower.matches("(cmsy|cmex|msbm|msam|cmmib|stmary|rsfs|eufm|wasy)[0-9]*")) {
+        if (lower.matches("(cmsy|cmex|msbm|msam|cmmib|stmary|rsfs|eufm|wasy)[0-9]*") || lower.startsWith("lmmathsymbols")
+                || lower.startsWith("lmmathextension")) {
             return "Cambria Math";
+        }
+        if (lower.startsWith("lmmathitalic")) {
+            return "Times New Roman";
         }
         if (lower.matches("(cm|sf|ec|tc)[a-z]{1,4}[0-9]{1,4}") || lower.startsWith("lmroman")) {
             return "Times New Roman";
@@ -255,6 +259,22 @@ public final class FontNames {
 
     public static boolean isTexFont(String postScriptName) {
         return postScriptName != null && texFamily(stripSubset(postScriptName)) != null;
+    }
+
+    private static final java.util.regex.Pattern TEX_MATH = java.util.regex.Pattern.compile(
+            "(?i)((cmmib?|cmsy|cmbsy|cmex|msbm|msam|eufm|eufb|eusm|eusb|eurm|eurb|rsfs|stmary|esint|r?txmia?|txsys?"
+                    + "|txexs?|r?pxmia?|pxsys?|pxexs?|ntxmia?|newtxmia?|ntxsy|ntxexx?)[a-z]*\\d*"
+                    + "|lmmath(italic|symbols|extension).*|latinmodernmath.*|standardsyml(-slant.*)?)(-.*)?");
+
+    private static final java.util.regex.Pattern TEX_EXTENSION = java.util.regex.Pattern.compile(
+            "(?i)(cmex|txexs?|pxexs?|ntxexx?|esint|lmmathextension)[a-z]*\\d*(-.*)?");
+
+    public static boolean isTexMath(String postScriptName) {
+        return postScriptName != null && TEX_MATH.matcher(stripSubset(postScriptName)).matches();
+    }
+
+    public static boolean isTexExtension(String postScriptName) {
+        return postScriptName != null && TEX_EXTENSION.matcher(stripSubset(postScriptName)).matches();
     }
 
     public static boolean isSymbolFamily(String family) {

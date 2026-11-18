@@ -10,6 +10,7 @@ import stirling.software.officeconvert.extract.Glyph;
 public final class LineBuilder {
 
     private static final float SEGMENT_GAP_EM = 0.9f;
+    private static final float MAX_TRACKING_EM = 1.5f;
 
     private static final Comparator<Line> BY_BASELINE_THEN_X = (a, b) -> {
         int c = Double.compare(a.baseline, b.baseline);
@@ -149,8 +150,11 @@ public final class LineBuilder {
             return 0f;
         }
         float[] gaps = Arrays.copyOf(all, n);
-        float median = select(gaps, gaps.length / 2);
-        return median > 0.05f * glyphs.getFirst().size ? median : 0f;
+        // Lower third, not median: in rows of two-letter cells half the gaps are word gaps.
+        float tracking = select(gaps, gaps.length / 3);
+        // Gaps wider than an em and a half are cell or word gaps between single characters, not letter spacing.
+        float size = glyphs.getFirst().size;
+        return tracking > 0.05f * size && tracking < MAX_TRACKING_EM * size ? tracking : 0f;
     }
 
     static float select(float[] a, int k) {

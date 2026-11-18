@@ -62,9 +62,10 @@ public final class PageAnalyzer {
         boolean ocr = OcrText.dominates(page);
         List<Glyph> glyphs = OcrText.pageGlyphs(page);
         PageGraphics gfx = page.graphics();
+        List<PageGraphics.VectorMark> unslanted = gfx.marks().stream().filter(m -> !gfx.slanted(m)).toList();
         FormulaLines.Rebuilt formulas = ocr ? new FormulaLines.Rebuilt(glyphs, Set.of())
-                : FormulaLines.rebuild(glyphs, gfx.rules(), gfx.fills());
-        glyphs = formulas.glyphs();
+                : FormulaLines.rebuild(glyphs, gfx.rules(), gfx.fills(), unslanted);
+        glyphs = foldDropCaps(formulas.glyphs(), page.links());
         if (glyphs.isEmpty() && page.rotated().isEmpty() && outlinedText(gfx)) {
             return FallbackPage.of(page);
         }
@@ -72,7 +73,7 @@ public final class PageAnalyzer {
         boolean poster = forms && !boxColumns && poster(page) && ruledTables(page, glyphs).isEmpty();
         List<Glyph> bullets = new ArrayList<>();
         if (!poster) {
-            bullets.addAll(VectorBullets.synthesize(glyphs, gfx.marks(), gfx.fills(), usedMarks));
+            bullets.addAll(VectorBullets.synthesize(glyphs, unslanted, gfx.fills(), usedMarks));
             bullets.addAll(OutlinedWords.synthesize(glyphs, gfx, usedMarks, page.width() * page.height()));
         }
         if (!bullets.isEmpty()) {
@@ -167,6 +168,12 @@ public final class PageAnalyzer {
         if (scanned != null) {
             rules.addAll(ScanRules.find(scanned));
         }
+        List<Box> codes = CodeMarks.regions(rules, fills);
+        if (!codes.isEmpty()) {
+            rules.removeIf(r -> Regions.insideAny(Regions.of(r), codes, 1f));
+            fills.removeIf(f -> Regions.insideAny(Regions.of(f), codes, 1f));
+            strong.addAll(codes);
+        }
         List<TableDetection.Found> tables = detectTables
                 ? tableFinder.find(page, frame.textLeft(), frame.textRight(), segments, rules, fills, strong)
                 : new ArrayList<>();
@@ -247,11 +254,18 @@ public final class PageAnalyzer {
 
         List<PageGraphics.VectorMark> dots = marks.stream().filter(PageGraphics.VectorMark::round).toList();
         List<PageLayout.Decoration> decorations =
-                new ArrayList<>(Decorations.leftovers(freeFills, freeRules, dots, drawn, tableBoxes, tinted, gfx::order));
+                new ArrayList<>(Decorations.leftovers(withoutCellShading(freeFills, tables), freeRules, dots, drawn, tableBoxes,
+                        tinted, gfx::order));
         for (TextBoxFinder.Container c : containers) {
             if (!boxes.claimed().contains(c) && (c.line() >= 0 || c.fill() >= 0) && !Regions.insideAny(c.box(), wholeDrawings, 2f)) {
                 decorations.add(new PageLayout.Decoration(c.box(), c.fill(), c.line(), c.lineWidth(), c.rounded(), false,
                         gfx.order(c.mark())));
+            }
+        }
+        for (PageGraphics.VectorMark m : marks) {
+            Box b = new Box(m.x(), m.top(), m.right(), m.bottom());
+            if (badge(m, segments) && !Regions.insideAny(b, drawn, 1f) && !Regions.insideAny(b, tableBoxes, 2f)) {
+                decorations.add(new PageLayout.Decoration(b, m.rgb(), -1, 0, m.curved(), false, gfx.order(m)));
             }
         }
         unfillHolders(bands, boxes, decorations, gfx);
@@ -269,6 +283,9 @@ public final class PageAnalyzer {
     private PageLayout formPage(PageData page, boolean ocr, List<Line> lines, List<Rule> rules, List<Fill> fills,
             Set<Object> textPaint, boolean panelGrid, boolean poster, Set<Object> formulaBars) {
         PageGraphics gfx = page.graphics();
+        List<Box> codes = concat(CodeMarks.regions(rules, fills), CodeMarks.strips(rules, fills));
+        rules.removeIf(r -> Regions.insideAny(Regions.of(r), codes, 1f));
+        fills.removeIf(f -> Regions.insideAny(Regions.of(f), codes, 1f));
         List<PageLayout.TextBoxItem> boxes = new ArrayList<>();
         List<Line> pieces = FormPage.pieces(lines, rules, fills, tabLeaders);
         for (List<Line> block : FormPage.blocks(pieces, rules)) {
@@ -287,7 +304,7 @@ public final class PageAnalyzer {
                 pictures.add(new PageLayout.FloatItem(new PageLayout.ImageItem(img, true), 0f, true));
             }
         }
-        List<Box> drawn = new ArrayList<>();
+        List<Box> drawn = new ArrayList<>(poster ? List.of() : codes);
         for (PageGraphics.VectorMark m : poster ? List.<PageGraphics.VectorMark>of() : gfx.marks()) {
             Box b = new Box(Math.max(0, m.x()), Math.max(0, m.top()), Math.min(page.width(), m.right()),
                     Math.min(page.height(), m.bottom()));
@@ -714,6 +731,65 @@ public final class PageAnalyzer {
     }
 
     private static final float STROKE_MARGIN = 1f;
+    private static final float MOSTLY_TABLE = 0.6f;
+
+    // A fill a table cell already carries as its shading would be drawn twice; padding puts it outside a table cut to its text.
+    static List<Fill> withoutCellShading(List<Fill> fills, List<TableDetection.Found> tables) {
+        List<Fill> out = new ArrayList<>(fills.size());
+        for (Fill f : fills) {
+            boolean shading = false;
+            Box area = Regions.of(f);
+            for (TableDetection.Found t : tables) {
+                if (TableFinder.boxOf(t).overlapArea(area) < MOSTLY_TABLE * area.area()) {
+                    continue;
+                }
+                for (TableDetection.FoundCell c : t.cells()) {
+                    float cx = (c.left() + c.right()) / 2f;
+                    float cy = (c.top() + c.bottom()) / 2f;
+                    shading |= c.fill() != null && c.fill() == f.rgb() && cx >= f.x() && cx <= f.right() && cy >= f.top()
+                            && cy <= f.bottom();
+                }
+            }
+            if (!shading) {
+                out.add(f);
+            }
+        }
+        return out;
+    }
+
+    static List<Glyph> foldDropCaps(List<Glyph> glyphs, List<PageData.Link> links) {
+        List<Glyph> folded = DropCaps.fold(glyphs);
+        if (folded == glyphs || links.isEmpty()) {
+            return folded;
+        }
+        List<Glyph> caps = new ArrayList<>();
+        List<Glyph> moved = new ArrayList<>();
+        for (int i = 0; i < glyphs.size(); i++) {
+            if (folded.get(i) != glyphs.get(i)) {
+                caps.add(glyphs.get(i));
+                moved.add(folded.get(i));
+            }
+        }
+        LinkMarker.mark(caps, links);
+        for (int i = 0; i < caps.size(); i++) {
+            moved.get(i).link = caps.get(i).link;
+        }
+        return folded;
+    }
+
+    // A filled box with words on it that nothing else claimed (an inline badge) stays as a shape behind its text.
+    private static boolean badge(PageGraphics.VectorMark m, List<Line> segments) {
+        if (!m.filled() || m.shading() || !m.boxy() || m.sparse() || m.width() > 200f || m.bottom() - m.top() > 40f) {
+            return false;
+        }
+        for (Line l : segments) {
+            float cy = l.baseline - 0.3f * l.size;
+            if (cy >= m.top() && cy <= m.bottom() && l.x < m.right() && l.right > m.x()) {
+                return true;
+            }
+        }
+        return false;
+    }
 
     private void diagrams(List<Box> figures, List<Box> backdrops, PageGraphics gfx, List<Line> segments,
             List<PageLayout.Item> blocks, float pageWidth) {

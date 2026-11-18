@@ -135,6 +135,8 @@ final class GlyphCollector extends PDFStreamEngine {
     private final Map<Glyph, String> alternatives = new IdentityHashMap<>();
     private final Set<Glyph> marks = Collections.newSetFromMap(new IdentityHashMap<>());
     private final Set<Glyph> overlines = Collections.newSetFromMap(new IdentityHashMap<>());
+
+    private final Set<Glyph> texCodes = Collections.newSetFromMap(new IdentityHashMap<>());
     private final Set<Glyph> bars = Collections.newSetFromMap(new IdentityHashMap<>());
     private boolean inPage;
     private int seq;
@@ -228,7 +230,13 @@ final class GlyphCollector extends PDFStreamEngine {
 
     static void read(PDDocument doc, int first, int last, FontResolver fonts, ParsedStreams parsed, PageSink sink)
             throws IOException {
+        read(doc, first, last, fonts, parsed, true, sink);
+    }
+
+    static void read(PDDocument doc, int first, int last, FontResolver fonts, ParsedStreams parsed, boolean slantAsArt,
+            PageSink sink) throws IOException {
         GlyphCollector collector = new GlyphCollector(fonts, sink, parsed);
+        collector.slantAsArt = slantAsArt;
         collector.document = doc;
         collector.layers = OptionalContent.of(doc);
         collector.hiddenContent = new HiddenContent(collector.layers);
@@ -534,6 +542,8 @@ final class GlyphCollector extends PDFStreamEngine {
         List<RawGlyph> glyphs = current;
         glyphs.removeIf(r -> r.glyph().text == HIDDEN);
         revealClipText(glyphs);
+        TexControlCodes.resolve(glyphs, texCodes);
+        texCodes.clear();
         composeOverlines(glyphs);
         assembleRadicals(glyphs);
         composeMarks(glyphs);
@@ -564,6 +574,9 @@ final class GlyphCollector extends PDFStreamEngine {
         String alternative = alternatives.remove(glyph);
         if (alternative != null) {
             alternatives.put(g, alternative);
+        }
+        if (texCodes.remove(glyph)) {
+            texCodes.add(g);
         }
         return g;
     }
@@ -779,12 +792,20 @@ final class GlyphCollector extends PDFStreamEngine {
         }
     }
 
+    private boolean slantAsArt = true;
+
     private void processTextPosition(TextPosition tp) {
+        if (slantAsArt && tp.getFont() instanceof PDVectorFont && getGraphicsState().getTextState().getRenderingMode().isFill()
+                && SkewedText.skewed(tp.getTextMatrix())) {
+            return;
+        }
         boolean notdef = notdef(tp);
         if (notdef && outerActual == null) {
             return;
         }
-        String unicode = notdef ? null : clean(recovery.text(tp, tp.getUnicode()));
+        String raw = notdef ? null : recovery.text(tp, tp.getUnicode());
+        String tex = notdef ? null : TexControlCodes.placeholder(tp, raw);
+        String unicode = notdef ? null : tex != null ? tex : clean(raw);
         if (unicode == null && outerActual != null) {
             unicode = HIDDEN;
         }
@@ -860,6 +881,9 @@ final class GlyphCollector extends PDFStreamEngine {
                         bold,
                         italic);
         g.hscale = horizontalScale(tp);
+        if (FontNames.isTexMath(font.postScriptName())) {
+            g.hang = hang(tp, size);
+        }
         boolean dingbat = font.symbolic() && pdFont.isEmbedded()
                 && (size >= DINGBAT_SIZE && !textLike(unicode) || belowSymbolRange(unicode));
         if ((font.icons() || dingbat) && codes != null && codes.length == 1) {
@@ -876,6 +900,9 @@ final class GlyphCollector extends PDFStreamEngine {
         if (WordContext.mark(unicode) && codes != null && codes.length == 1
                 && (positions.mapped(pdFont, codes[0]) || positions.unmapped.shapeRead(pdFont, codes[0], unicode))) {
             marks.add(g);
+        }
+        if (tex != null) {
+            texCodes.add(g);
         }
         if (overline) {
             overlines.add(g);
@@ -1004,12 +1031,24 @@ final class GlyphCollector extends PDFStreamEngine {
         float[] em = inks.computeIfAbsent(tp.getFont().getCOSObject(), k -> new HashMap<>()).computeIfAbsent(codes[0], c -> {
             try {
                 Rectangle2D box = vector.getNormalizedPath(c).getBounds2D();
-                return box.isEmpty() ? new float[0] : new float[] {(float) box.getMinX(), (float) box.getMaxX()};
+                return box.isEmpty() ? new float[0] : new float[] {(float) box.getMinX(), (float) box.getMaxX(),
+                        (float) box.getMinY(), (float) box.getMaxY()};
             } catch (IOException | RuntimeException e) {
                 return new float[0];
             }
         });
-        return em.length == 2 ? new float[] {em[0] / 1000f * along, em[1] / 1000f * along} : null;
+        return em.length == 4 ? new float[] {em[0] / 1000f * along, em[1] / 1000f * along, em[2], em[3]} : null;
+    }
+
+    private float hang(TextPosition tp, float size) {
+        if (Math.round(tp.getDir()) != 0) {
+            return Float.NaN;
+        }
+        float[] ink = ink(tp);
+        if (ink == null || ink[3] > 250 || ink[2] > -500) {
+            return Float.NaN;
+        }
+        return -(ink[2] + ink[3]) / 2000f * size;
     }
 
     private boolean onPage(TextPosition tp, float size, float width) {

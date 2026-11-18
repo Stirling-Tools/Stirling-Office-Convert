@@ -127,6 +127,34 @@ final class PathShapes {
             }
             return new Shapes(clipRules(pathRules, clip), clippedFills, null, clippedDots);
         }
+        return mark(subpaths, curved, paint, clip, minX, minY, maxX, maxY, segments, diagonal);
+    }
+
+    static Shapes artwork(List<List<Point2D.Float>> subpaths, boolean curved, Paint paint, float[] clip) {
+        int segments = 0;
+        float minX = Float.MAX_VALUE;
+        float minY = Float.MAX_VALUE;
+        float maxX = -Float.MAX_VALUE;
+        float maxY = -Float.MAX_VALUE;
+        for (List<Point2D.Float> path : subpaths) {
+            for (Point2D.Float p : path) {
+                if (!isCurve(p)) {
+                    minX = Math.min(minX, p.x);
+                    minY = Math.min(minY, p.y);
+                    maxX = Math.max(maxX, p.x);
+                    maxY = Math.max(maxY, p.y);
+                }
+            }
+            segments += Math.max(0, path.size() - 1);
+        }
+        if (minX > maxX) {
+            return new Shapes(List.of(), List.of(), null);
+        }
+        return mark(subpaths, curved, paint, clip, minX, minY, maxX, maxY, segments, true);
+    }
+
+    private static Shapes mark(List<List<Point2D.Float>> subpaths, boolean curved, Paint paint, float[] clip, float minX,
+            float minY, float maxX, float maxY, int segments, boolean diagonal) {
         boolean round = isEllipse(subpaths, curved, minX, minY, maxX, maxY);
         boolean rounded = curved || isRoundedBox(subpaths, minX, minY, maxX, maxY);
         float x0 = Math.max(minX, clip[0]);

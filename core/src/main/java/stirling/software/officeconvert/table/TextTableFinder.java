@@ -58,7 +58,7 @@ final class TextTableFinder {
 
         List<LineRange> rows = RowGrouper.group(cellLines, profile, separators);
         int firstTrailing = lines.size() - trailing;
-        while (rows.size() > 1 && rows.getLast().first() >= firstTrailing) {
+        while (rows.size() > 1 && rows.getLast().first() >= firstTrailing && !labelRow(rows, cellLines, edges)) {
             rows.removeLast();
         }
         RowGrouper.joinRuledHeader(rows, cellLines, separators);
@@ -66,6 +66,27 @@ final class TextTableFinder {
             return null;
         }
         return draft(page, cellLines, rows, columns, profile, separators);
+    }
+
+    // A last row holding only a first-column label at the usual row pitch is a row with empty cells, not a note under the table.
+    private static boolean labelRow(List<LineRange> rows, List<CellLine> lines, float[] edges) {
+        LineRange last = rows.getLast();
+        if (last.first() != last.last() || rows.size() < 3) {
+            return false;
+        }
+        CellLine line = lines.get(last.first());
+        for (int c = 1; c < line.columns(); c++) {
+            if (line.has(c)) {
+                return false;
+            }
+        }
+        TextLine text = line.line();
+        TextLine above = lines.get(last.first() - 1).line();
+        LineRange prev = rows.get(rows.size() - 2);
+        float pitch = lines.get(prev.first()).line().baseline() - lines.get(rows.get(rows.size() - 3).last()).line().baseline();
+        float gap = text.baseline() - above.baseline();
+        return line.has(0) && text.right() <= edges[1] + 1f && Math.abs(text.fontSize() - above.fontSize()) < 0.5f
+                && gap <= 1.2f * pitch + 1f;
     }
 
     private static List<ChunkedLine> withinOuterRules(

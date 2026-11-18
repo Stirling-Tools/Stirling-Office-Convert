@@ -1,6 +1,8 @@
 package stirling.software.officeconvert.layout;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
@@ -18,7 +20,14 @@ final class OmmlWriter {
 
     private sealed interface Node permits Text, Frac, Rad, Nary, Lim, Stack, Script {}
 
-    private record Text(String text, boolean upright, int level) implements Node {}
+    private record Text(String text, boolean upright, int level, boolean bold, boolean fence) implements Node {
+        Text(String text, boolean upright, int level) {
+            this(text, upright, level, false, false);
+        }
+    }
+
+    private static final String OPEN = "([{⟨|‖";
+    private static final String CLOSE = ")]}⟩|‖";
 
     private record Frac(List<Node> num, List<Node> den, int level) implements Node {}
 
@@ -109,7 +118,8 @@ final class OmmlWriter {
                 }
                 case TEXT -> {
                     if (!t.linear()) {
-                        nodes.add(new Text(t.text(), upright(t), t.level()));
+                        nodes.add(new Text(t.text(), upright(t), t.level(), t.source() != null && t.source().bold,
+                                fence(t)));
                     }
                 }
                 default -> {
@@ -127,6 +137,11 @@ final class OmmlWriter {
             }
         }
         return 0;
+    }
+
+    private static boolean fence(MathToken t) {
+        return t.source() != null && !Float.isNaN(t.source().hang) && t.text().length() == 1
+                && (OPEN.indexOf(t.text().charAt(0)) >= 0 || CLOSE.indexOf(t.text().charAt(0)) >= 0);
     }
 
     private static boolean upright(MathToken t) {
@@ -149,8 +164,8 @@ final class OmmlWriter {
         List<Node> out = new ArrayList<>();
         for (Node n : nodes) {
             if (n instanceof Text t && letters(t) && !out.isEmpty() && out.getLast() instanceof Text u && letters(u)
-                    && u.level() == t.level()) {
-                out.set(out.size() - 1, new Text(u.text() + t.text(), true, t.level()));
+                    && u.level() == t.level() && u.bold() == t.bold()) {
+                out.set(out.size() - 1, new Text(u.text() + t.text(), true, t.level(), t.bold(), false));
                 continue;
             }
             out.add(n);
@@ -253,19 +268,118 @@ final class OmmlWriter {
         int i = 0;
         while (i < nodes.size()) {
             Node n = nodes.get(i);
+            int end = n instanceof Text f && f.fence() && OPEN.indexOf(f.text().charAt(0)) >= 0 ? fenceEnd(nodes, i) : -1;
+            if (end > i) {
+                delimited(sb, (Text) n, nodes, i, end);
+                i = end + 1;
+                continue;
+            }
+            if (end == i) {
+                delimiter(sb, ((Text) n).text(), "", nodes.subList(i + 1, i + 2));
+                i += 2;
+                continue;
+            }
             if (n instanceof Text t) {
                 StringBuilder run = new StringBuilder();
                 boolean upright = uprightWord(t);
-                while (i < nodes.size() && nodes.get(i) instanceof Text u && uprightWord(u) == upright) {
+                while (i < nodes.size() && nodes.get(i) instanceof Text u && uprightWord(u) == upright
+                        && u.bold() == t.bold() && (u == t || !u.fence())) {
                     run.append(u.text());
                     i++;
                 }
-                words(sb, run.toString(), upright);
+                if (t.bold()) {
+                    boldRun(sb, run.toString(), upright);
+                } else {
+                    words(sb, run.toString(), upright);
+                }
                 continue;
             }
             node(sb, n);
             i++;
         }
+    }
+
+    private static int fenceEnd(List<Node> nodes, int open) {
+        Deque<Character> stack = new ArrayDeque<>();
+        stack.push(((Text) nodes.get(open)).text().charAt(0));
+        for (int k = open + 1; k < nodes.size(); k++) {
+            Node node = nodes.get(k);
+            Text t = closer(node);
+            boolean opener = node instanceof Text x && x.fence() && OPEN.indexOf(x.text().charAt(0)) >= 0;
+            if (t != null && bar(t.text().charAt(0))) {
+                char c = t.text().charAt(0);
+                if (stack.peek() == c) {
+                    stack.pop();
+                } else if (opener) {
+                    stack.push(c);
+                } else {
+                    popBracket(stack);
+                }
+            } else if (t != null) {
+                popBracket(stack);
+            } else if (opener) {
+                stack.push(((Text) node).text().charAt(0));
+            }
+            if (stack.isEmpty()) {
+                return k;
+            }
+        }
+        return open + 1 < nodes.size() && nodes.get(open + 1) instanceof Stack ? open : -1;
+    }
+
+    private static boolean bar(char c) {
+        return c == '|' || c == '‖';
+    }
+
+    private static void popBracket(Deque<Character> stack) {
+        while (stack.size() > 1 && bar(stack.peek())) {
+            stack.pop();
+        }
+        stack.pop();
+    }
+
+    private static Text closer(Node n) {
+        Node base = n instanceof Script s ? s.base() : n;
+        return base instanceof Text t && t.fence() && CLOSE.indexOf(t.text().charAt(0)) >= 0 ? t : null;
+    }
+
+    private void delimited(StringBuilder sb, Text open, List<Node> nodes, int start, int end) {
+        Node last = nodes.get(end);
+        List<Node> inner = nodes.subList(start + 1, end);
+        String close = closer(last).text();
+        if (last instanceof Script s) {
+            script(sb, s, () -> delimiter(sb, open.text(), close, inner));
+        } else {
+            delimiter(sb, open.text(), close, inner);
+        }
+    }
+
+    private void delimiter(StringBuilder sb, String begin, String end, List<Node> inner) {
+        sb.append("<m:d><m:dPr><m:begChr m:val=\"");
+        escape(sb, begin);
+        sb.append("\"/><m:endChr m:val=\"");
+        escape(sb, end);
+        sb.append("\"/></m:dPr><m:e>");
+        write(sb, inner);
+        sb.append("</m:e></m:d>");
+    }
+
+    private void script(StringBuilder sb, Script s, Runnable base) {
+        String tag = s.sub().isEmpty() ? "m:sSup" : s.sup().isEmpty() ? "m:sSub" : "m:sSubSup";
+        sb.append('<').append(tag).append("><m:e>");
+        base.run();
+        sb.append("</m:e>");
+        if (!s.sub().isEmpty()) {
+            sb.append("<m:sub>");
+            write(sb, s.sub());
+            sb.append("</m:sub>");
+        }
+        if (!s.sup().isEmpty()) {
+            sb.append("<m:sup>");
+            write(sb, s.sup());
+            sb.append("</m:sup>");
+        }
+        sb.append("</").append(tag).append('>');
     }
 
     private void words(StringBuilder sb, String text, boolean upright) {
@@ -288,6 +402,16 @@ final class OmmlWriter {
             i = end;
         }
         run(sb, text.substring(start), upright);
+    }
+
+    private void boldRun(StringBuilder sb, String text, boolean upright) {
+        if (text.isEmpty()) {
+            return;
+        }
+        sb.append("<m:r><m:rPr><m:sty m:val=\"").append(upright ? "b" : "bi").append("\"/></m:rPr>").append(runProps)
+                .append("<m:t xml:space=\"preserve\">");
+        escape(sb, text);
+        sb.append("</m:t></m:r>");
     }
 
     private void plainRun(StringBuilder sb, String text) {
@@ -371,24 +495,8 @@ final class OmmlWriter {
                 }
                 sb.append("</m:eqArr>");
             }
-            case Script s -> {
-                String tag = s.sub().isEmpty() ? "m:sSup" : s.sup().isEmpty() ? "m:sSub" : "m:sSubSup";
-                sb.append('<').append(tag).append("><m:e>");
-                write(sb, List.of(s.base()));
-                sb.append("</m:e>");
-                if (!s.sub().isEmpty()) {
-                    sb.append("<m:sub>");
-                    write(sb, s.sub());
-                    sb.append("</m:sub>");
-                }
-                if (!s.sup().isEmpty()) {
-                    sb.append("<m:sup>");
-                    write(sb, s.sup());
-                    sb.append("</m:sup>");
-                }
-                sb.append("</").append(tag).append('>');
-            }
-            case Text t -> run(sb, t.text(), uprightWord(t));
+            case Script s -> script(sb, s, () -> write(sb, List.of(s.base())));
+            case Text t -> write(sb, List.of(t));
         }
     }
 

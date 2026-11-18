@@ -97,7 +97,7 @@ public final class SlideConversion {
         int[] range = PdfFiles.pageRange(doc.getNumberOfPages(), options.firstPage(), options.lastPage());
         int first = range[0];
         int last = range[1];
-        PageReader reader = new PageReader(doc);
+        PageReader reader = new PageReader(doc).keepSlantedText();
         DocStats stats = new DocStats();
         Map<Integer, PageData> cache = new HashMap<>();
         Map<Long, Integer> sizes = new HashMap<>();

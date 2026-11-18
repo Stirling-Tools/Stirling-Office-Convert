@@ -17,11 +17,11 @@ public final class PdfToText {
     private PdfToText() {}
 
     public static void convert(Path pdf, Path txt, PdfToDocx.Options options) throws IOException {
-        PdfToDocx.convert(pdf, txt, textOptions(options), TextWriter::new);
+        PdfToDocx.convert(pdf, txt, textOptions(options), PdfToDocx.textOnly(TextWriter::new));
     }
 
     public static void convert(PDDocument doc, OutputStream out, PdfToDocx.Options options) throws IOException {
-        PdfToDocx.convert(doc, out, textOptions(options), TextWriter::new);
+        PdfToDocx.convert(doc, out, textOptions(options), PdfToDocx.textOnly(TextWriter::new));
     }
 
     public static String text(PDDocument doc, PdfToDocx.Options options) throws IOException {

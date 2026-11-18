@@ -74,6 +74,8 @@ final class TextColumns {
         float gutterStart = Float.NaN;
         float emptyStart = Float.NaN;
         Span widestEmpty = null;
+        Span firstEmpty = null;
+        List<Span> empties = new ArrayList<>();
         for (float[] event : events) {
             float x = event[0];
             int before = depth;
@@ -81,6 +83,8 @@ final class TextColumns {
             if (before > allowance && depth <= allowance && x < right) {
                 gutterStart = x;
                 widestEmpty = null;
+                firstEmpty = null;
+                empties.clear();
             }
             if (!Float.isNaN(gutterStart)) {
                 if (before > 0 && depth == 0) {
@@ -89,10 +93,32 @@ final class TextColumns {
                     if (widestEmpty == null || x - emptyStart > widestEmpty.width()) {
                         widestEmpty = new Span(emptyStart, x);
                     }
+                    if (firstEmpty == null) {
+                        firstEmpty = new Span(emptyStart, x);
+                    }
+                    if (x - emptyStart >= minGutter) {
+                        empties.add(new Span(emptyStart, x));
+                    }
                     emptyStart = Float.NaN;
                 }
             }
-            if (before <= allowance && depth > allowance && !Float.isNaN(gutterStart)) {
+            if (before <= allowance && depth > allowance && !Float.isNaN(gutterStart) && empties.size() >= 2
+                    && standsAsColumns(lines, empties)) {
+                // Words alone between two clear gaps, such as the header of an empty column, are a column of their own.
+                columns.add(new Span(columnStart, empties.getFirst().left()));
+                for (int k = 1; k < empties.size(); k++) {
+                    columns.add(new Span(empties.get(k - 1).right(), empties.get(k).left()));
+                }
+                columnStart = empties.getLast().right();
+                gutterStart = Float.NaN;
+                widestEmpty = null;
+                firstEmpty = null;
+                empties.clear();
+            } else if (before <= allowance && depth > allowance && !Float.isNaN(gutterStart)) {
+                if (firstEmpty != null && firstEmpty != widestEmpty && firstEmpty.width() >= minGutter
+                        && endingAt(words, firstEmpty.left()) >= 3) {
+                    widestEmpty = firstEmpty;
+                }
                 boolean coreQualifies =
                         widestEmpty != null
                                 && (widestEmpty.width() >= minGutter
@@ -104,10 +130,59 @@ final class TextColumns {
                 }
                 gutterStart = Float.NaN;
                 widestEmpty = null;
+                firstEmpty = null;
+                empties.clear();
             }
         }
         columns.add(new Span(columnStart, right));
         return columns;
+    }
+
+    private static boolean standsAsColumns(List<ChunkedLine> lines, List<Span> empties) {
+        for (int k = 1; k < empties.size(); k++) {
+            float from = empties.get(k - 1).right();
+            float to = empties.get(k).left();
+            int holding = 0;
+            boolean header = false;
+            boolean first = true;
+            for (ChunkedLine line : lines) {
+                if (!line.tabular()) {
+                    continue;
+                }
+                if (holdsWordWithin(line, from, to)) {
+                    holding++;
+                    header |= first;
+                }
+                first = false;
+            }
+            if (holding < 2 && !header) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean holdsWordWithin(ChunkedLine line, float from, float to) {
+        for (List<PdfWord> chunk : line.chunks()) {
+            for (PdfWord w : chunk) {
+                float centre = (w.x() + w.right()) / 2f;
+                if (centre > from && centre < to) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    // Right-aligned numbers end at the same x; their cells end there too, so text after the gap starts the next column.
+    private static int endingAt(List<Span> words, float x) {
+        int n = 0;
+        for (Span w : words) {
+            if (Math.abs(w.right() - x) <= EDGE_ALIGNMENT) {
+                n++;
+            }
+        }
+        return n;
     }
 
     private static boolean alignedBoundary(List<ChunkedLine> lines, Span gap, float minGutter) {

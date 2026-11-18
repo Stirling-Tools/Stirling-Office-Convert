@@ -289,15 +289,16 @@ final class ParagraphFactory {
         if (bodySized && (d.lines.size() > 1 || chars > 90 || text.endsWith(".") && !text.matches("^[0-9.]+\\s.*"))) {
             return;
         }
-        DocStats.Tier tier = level - 1 < stats.tiers.size() ? stats.tiers.get(level - 1) : null;
-        if (level == 1 && tier != null && tier.lines() <= 3 && tier.firstPage() == 0 && size >= stats.bodySize * 1.5f
+        DocStats.Tier matched = stats.tierFor(size, bold);
+        DocStats.Tier tier = matched != null ? matched : level - 1 < stats.tiers.size() ? stats.tiers.get(level - 1) : null;
+        if (level == 1 && tier != null && tier.lines() <= 3 && tier.openingOnly() && size >= stats.bodySize * 1.5f
                 && stats.tiers.size() > 1) {
             d.role = ParaDraft.Role.TITLE;
             return;
         }
         d.role = ParaDraft.Role.HEADING;
         boolean hasTitle = !stats.tiers.isEmpty() && stats.tiers.getFirst().lines() <= 3
-                && stats.tiers.getFirst().firstPage() == 0 && stats.tiers.size() > 1
+                && stats.tiers.getFirst().openingOnly() && stats.tiers.size() > 1
                 && stats.tiers.getFirst().size() >= stats.bodySize * 1.5f;
         d.headingLevel = Math.max(1, Math.min(6, hasTitle ? level - 1 : level));
     }
