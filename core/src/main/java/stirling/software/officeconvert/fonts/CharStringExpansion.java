@@ -9,11 +9,11 @@ import java.util.function.IntUnaryOperator;
 
 public final class CharStringExpansion {
 
-    static final int MAX_TOKENS = 1 << 17;
+    public static final int MAX_TOKENS = 1 << 17;
 
-    static final int MAX_DEPTH = 64;
+    public static final int MAX_DEPTH = 64;
 
-    static final long MAX_FONT_TOKENS = 1L << 27;
+    public static final long MAX_FONT_TOKENS = 1L << 27;
 
     public record Result(int tokens, int[] components) {}
 
@@ -83,7 +83,7 @@ public final class CharStringExpansion {
             return cost[gid];
         }
         if (state[gid] == 1) {
-            return glyphs[gid].tokens();
+            throw new IOException("A glyph's accented components refer back to the glyph");
         }
         state[gid] = 1;
         long c = glyphs[gid].tokens();

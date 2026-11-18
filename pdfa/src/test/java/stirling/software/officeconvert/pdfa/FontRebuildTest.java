@@ -1,8 +1,11 @@
 package stirling.software.officeconvert.pdfa;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
+import java.awt.geom.Rectangle2D;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Set;
@@ -11,13 +14,21 @@ import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.font.PDFont;
+import org.apache.pdfbox.pdmodel.font.PDFontFactory;
+import org.apache.pdfbox.pdmodel.font.PDVectorFont;
 import org.junit.jupiter.api.Test;
 
 class FontRebuildTest {
 
     @Test
     void anUnloadableType1WhoseSubroutinesExplodeIsNotTraced() throws Exception {
-        FontPrograms.Type1 p = FontPrograms.fanOutType1("FanOut", 40);
+        Rectangle2D own = outline(3);
+        assertEquals(new Rectangle2D.Double(50, 0, 410, 700), own);
+        assertTimeoutPreemptively(Duration.ofSeconds(20), () -> assertNotEquals(own, outline(40)));
+    }
+
+    private static Rectangle2D outline(int levels) throws Exception {
+        FontPrograms.Type1 p = FontPrograms.fanOutType1("FanOut", levels);
         String program = new String(p.data(), StandardCharsets.ISO_8859_1).replace(
                 "/FontMatrix [0.001 0 0 0.001 0 0] readonly def", "/FontMatrix [0.001 0 0 0.001 0 0 readonly def");
         int length1 = p.length1() - 1;
@@ -30,8 +41,9 @@ class FontRebuildTest {
         try (PDDocument d = Loader.loadPDF(pdf.bytes())) {
             PDFont font = d.getPage(0).getResources().getFont(COSName.getPDFName("F1"));
             assertFalse(font.isEmbedded());
-            assertTimeoutPreemptively(Duration.ofSeconds(20), () -> FontRebuild.rebuild(d, font, Set.of(65),
-                    FontRebuild.Mode.OWN, null, PdfALevel.A2B, 1));
+            FontRebuild.rebuild(d, font, Set.of(65), FontRebuild.Mode.OWN, null, PdfALevel.A2B, 1);
+            PDFont rebuilt = PDFontFactory.createFont(font.getCOSObject());
+            return ((PDVectorFont) rebuilt).getPath(65).getBounds2D();
         }
     }
 }

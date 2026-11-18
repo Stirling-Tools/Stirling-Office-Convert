@@ -492,12 +492,24 @@ class Type1ToCffTest {
     }
 
     @Test
-    void refusesSubroutinesThatExpandExponentially() {
+    void refusesSubroutinesThatExpandExponentially() throws Exception {
+        assertNotNull(Type1ToCff.convert(segments(FontPrograms.fanOutType1("FanOut", 3)), Map.of(65, "A"),
+                Set.of("A")));
         FontPrograms.Type1 p = FontPrograms.fanOutType1("FanOut", 40);
-        assertTimeoutPreemptively(Duration.ofSeconds(20), () -> {
-            Type1Font t1 = Type1Font.createWithSegments(Arrays.copyOfRange(p.data(), 0, p.length1()),
-                    Arrays.copyOfRange(p.data(), p.length1(), p.length1() + p.length2()));
-            assertNull(Type1ToCff.convert(t1, Map.of(65, "A"), Set.of("A")));
-        });
+        assertTimeoutPreemptively(Duration.ofSeconds(20),
+                () -> assertNull(Type1ToCff.convert(segments(p), Map.of(65, "A"), Set.of("A"))));
+    }
+
+    @Test
+    void anAccentedGlyphCountsTheNotdefItFallsBackToForMissingComponents() throws Exception {
+        assertNotNull(Type1ToCff.convert(segments(FontPrograms.missingComponentsType1("Missing", 10)),
+                Map.of(65, "A"), Set.of("A")));
+        assertNull(Type1ToCff.convert(segments(FontPrograms.missingComponentsType1("Missing", 14)),
+                Map.of(65, "A"), Set.of("A")));
+    }
+
+    private static Type1Font segments(FontPrograms.Type1 p) throws Exception {
+        return Type1Font.createWithSegments(Arrays.copyOfRange(p.data(), 0, p.length1()),
+                Arrays.copyOfRange(p.data(), p.length1(), p.length1() + p.length2()));
     }
 }

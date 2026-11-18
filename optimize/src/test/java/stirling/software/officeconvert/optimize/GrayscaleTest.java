@@ -142,9 +142,76 @@ class GrayscaleTest {
 
     @Test
     void anInlineImageTooLargeToDecodeIsLeftInColour() throws Exception {
-        Path out = optimize(doc -> page(doc, "q 10 0 0 10 0 0 cm BI /W 26000 /H 26000 /BPC 8 /CS /RGB ID \0\0\0\nEI Q"));
+        Path out = optimize(doc -> page(doc,
+                "1 0 0 rg 0 0 5 5 re f q 10 0 0 10 0 0 cm BI /W 26000 /H 26000 /BPC 8 /CS /RGB ID \0\0\0\nEI Q"));
 
-        assertTrue(content(out).contains("/RGB"), content(out));
+        String content = content(out);
+        assertTrue(has(content, "/W 26000\\s*/H 26000\\s*/BPC 8\\s*/CS /RGB"), content);
+        assertFalse(has(content, "\\brg\\b"), content);
+    }
+
+    @Test
+    void anInlineImageWhoseFilterDecodesPastTheBudgetIsLeftInColourWithoutDecoding() throws Exception {
+        byte[] zeros = new byte[(int) Recoder.MAX_DECODED_BYTES + 4096];
+        java.util.zip.Deflater deflater = new java.util.zip.Deflater(9);
+        deflater.setInput(zeros);
+        deflater.finish();
+        ByteArrayOutputStream packed = new ByteArrayOutputStream();
+        byte[] buffer = new byte[1 << 16];
+        while (!deflater.finished()) {
+            packed.write(buffer, 0, deflater.deflate(buffer));
+        }
+        deflater.end();
+        ByteArrayOutputStream ops = new ByteArrayOutputStream();
+        ops.writeBytes("1 0 0 rg 0 0 5 5 re f q 10 0 0 10 0 0 cm BI /W 4 /H 4 /BPC 8 /CS /RGB /F /Fl ID "
+                .getBytes(StandardCharsets.ISO_8859_1));
+        ops.writeBytes(packed.toByteArray());
+        ops.writeBytes("\nEI Q".getBytes(StandardCharsets.ISO_8859_1));
+        Path out = optimize(doc -> page(doc, ops.toByteArray()));
+
+        String content = content(out);
+        String head = content.substring(0, Math.min(200, content.length()));
+        assertTrue(has(content, "/W 4\\s*/H 4\\s*/BPC 8\\s*/CS /RGB\\s*/F /Fl"), head);
+        assertTrue(content.contains(new String(packed.toByteArray(), StandardCharsets.ISO_8859_1)));
+        assertFalse(has(content, "\\brg\\b"), head);
+    }
+
+    @Test
+    void anInlineImageLeftInColourIsCountedOnceWhenItsContentIsSplitAcrossStreams() throws Exception {
+        try (PDDocument doc = new PDDocument()) {
+            PDPage page = page(doc, "");
+            COSArray contents = new COSArray();
+            contents.add(stream(doc, "BI /W 26000 /H 26000 /BPC 8 /CS /RGB ID \0\0\0\nEI 1 0 0"));
+            contents.add(stream(doc, "rg 0 0 5 5 re f"));
+            page.getCOSObject().setItem(COSName.CONTENTS, contents);
+
+            assertEquals(1, Grayscale.apply(doc, new Fresh(1_000_000)).unconverted());
+        }
+    }
+
+    @Test
+    void theDefaultColourSpaceStaysWhileAnInlineImageLeftInColourUsesIt() throws Exception {
+        try (PDDocument doc = new PDDocument()) {
+            PDResources shared = new PDResources();
+            COSDictionary spaces = new COSDictionary();
+            spaces.setItem(COSName.getPDFName("DefaultRGB"), calRgb());
+            shared.getCOSObject().setItem(COSName.COLORSPACE, spaces);
+            PDPage vectors = page(doc, "1 0 0 rg 0 0 5 5 re f");
+            vectors.setResources(shared);
+            PDPage inline = page(doc, "q 10 0 0 10 0 0 cm BI /W 26000 /H 26000 /BPC 8 /CS /RGB ID \0\0\0\nEI Q");
+            inline.setResources(shared);
+            PDResources alone = new PDResources();
+            COSDictionary aloneSpaces = new COSDictionary();
+            aloneSpaces.setItem(COSName.getPDFName("DefaultRGB"), calRgb());
+            alone.getCOSObject().setItem(COSName.COLORSPACE, aloneSpaces);
+            PDPage other = page(doc, "0 1 0 rg 0 0 5 5 re f");
+            other.setResources(alone);
+
+            Grayscale.apply(doc, new Fresh(1_000_000));
+
+            assertTrue(spaces.containsKey(COSName.getPDFName("DefaultRGB")));
+            assertFalse(aloneSpaces.containsKey(COSName.getPDFName("DefaultRGB")));
+        }
     }
 
     @Test
@@ -585,15 +652,36 @@ class GrayscaleTest {
     }
 
     private static PDPage page(PDDocument doc, String operators) throws Exception {
+        return page(doc, operators.getBytes(StandardCharsets.ISO_8859_1));
+    }
+
+    private static PDPage page(PDDocument doc, byte[] operators) throws Exception {
         PDPage page = new PDPage();
         doc.addPage(page);
         page.setResources(new PDResources());
         COSStream content = doc.getDocument().createCOSStream();
         try (OutputStream os = content.createOutputStream()) {
-            os.write(operators.getBytes(StandardCharsets.ISO_8859_1));
+            os.write(operators);
         }
         page.getCOSObject().setItem(COSName.CONTENTS, content);
         return page;
+    }
+
+    private static COSStream stream(PDDocument doc, String operators) throws Exception {
+        COSStream stream = doc.getDocument().createCOSStream();
+        try (OutputStream os = stream.createOutputStream()) {
+            os.write(operators.getBytes(StandardCharsets.ISO_8859_1));
+        }
+        return stream;
+    }
+
+    private static COSArray calRgb() {
+        COSDictionary parameters = new COSDictionary();
+        parameters.setItem(COSName.WHITE_POINT, floats(0.9505f, 1f, 1.089f));
+        COSArray space = new COSArray();
+        space.add(COSName.CALRGB);
+        space.add(parameters);
+        return space;
     }
 
     private static byte[] colourJpeg(float quality) throws Exception {

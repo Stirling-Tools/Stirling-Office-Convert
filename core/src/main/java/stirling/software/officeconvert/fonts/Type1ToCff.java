@@ -306,7 +306,9 @@ public final class Type1ToCff {
             }
             index.put(glyphs.get(gid), gid);
         }
-        CharStringExpansion.check(results, code -> index.getOrDefault(StandardEncoding.INSTANCE.getName(code), -1));
+        int notdef = index.getOrDefault(NOTDEF, -1);
+        CharStringExpansion.check(results,
+                code -> index.getOrDefault(StandardEncoding.INSTANCE.getName(code), notdef));
     }
 
     private byte[] charString(String name, boolean outline) throws IOException {

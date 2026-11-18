@@ -1,6 +1,7 @@
 package stirling.software.officeconvert.optimize;
 
 import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InterruptedIOException;
@@ -9,6 +10,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.IdentityHashMap;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -25,6 +27,8 @@ import org.apache.pdfbox.cos.COSNumber;
 import org.apache.pdfbox.cos.COSObject;
 import org.apache.pdfbox.cos.COSStream;
 import org.apache.pdfbox.cos.COSString;
+import org.apache.pdfbox.filter.Filter;
+import org.apache.pdfbox.filter.FilterFactory;
 import org.apache.pdfbox.pdfparser.PDFStreamParser;
 import org.apache.pdfbox.pdfwriter.ContentStreamWriter;
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -48,6 +52,7 @@ import org.apache.pdfbox.pdmodel.graphics.pattern.PDTilingPattern;
 import org.apache.pdfbox.pdmodel.graphics.shading.PDShading;
 
 import stirling.software.officeconvert.extract.BrotliBudget;
+import stirling.software.officeconvert.extract.Jpeg;
 import stirling.software.officeconvert.extract.PdfFiles;
 
 final class Grayscale {
@@ -95,6 +100,12 @@ final class Grayscale {
     private final Set<COSBase> visited = Collections.newSetFromMap(new IdentityHashMap<>());
 
     private final Map<COSArray, PDColorSpace> grayPatterns = new IdentityHashMap<>();
+
+    private final Map<COSDictionary, PDResources> defaultsToDrop = new LinkedHashMap<>();
+
+    private final Map<COSDictionary, COSBase> defaultHolders = new IdentityHashMap<>();
+
+    private final Set<COSDictionary> defaultsInUse = Collections.newSetFromMap(new IdentityHashMap<>());
 
     private int unconverted;
 
@@ -145,6 +156,7 @@ final class Grayscale {
                 run.fields(fields, form);
             }
         }
+        run.dropUnusedDefaults();
         if (!run.changed.isEmpty() || !run.images.isEmpty()) {
             run.pdfaIntent(catalog);
         }
@@ -281,6 +293,26 @@ final class Grayscale {
     }
 
     private void dropDefaults(PDResources resources, COSBase holder) {
+        if (resources != null && defaultsToDrop.putIfAbsent(resources.getCOSObject(), resources) == null) {
+            defaultHolders.put(resources.getCOSObject(), holder);
+        }
+    }
+
+    private void keepDefaults(PDResources resources) {
+        if (resources != null) {
+            defaultsInUse.add(resources.getCOSObject());
+        }
+    }
+
+    private void dropUnusedDefaults() {
+        for (Map.Entry<COSDictionary, PDResources> e : defaultsToDrop.entrySet()) {
+            if (!defaultsInUse.contains(e.getKey())) {
+                removeDefaults(e.getValue(), defaultHolders.get(e.getKey()));
+            }
+        }
+    }
+
+    private void removeDefaults(PDResources resources, COSBase holder) {
         if (resources == null || !visited.add(resources.getCOSObject())
                 || !(resources.getCOSObject().getDictionaryObject(COSName.COLORSPACE) instanceof COSDictionary spaces)) {
             return;
@@ -377,6 +409,7 @@ final class Grayscale {
         List<byte[]> decoded = new ArrayList<>();
         List<byte[]> rewritten = new ArrayList<>();
         boolean split = false;
+        int countedBefore = unconverted;
         quiet = true;
         try {
             for (COSStream stream : streams) {
@@ -403,6 +436,7 @@ final class Grayscale {
             dropDefaults(resources, holder);
             return;
         }
+        unconverted = countedBefore;
         ByteArrayOutputStream all = new ByteArrayOutputStream();
         for (byte[] data : decoded) {
             all.write(data);
@@ -1060,20 +1094,18 @@ final class Grayscale {
         }
         PDInlineImage image;
         try {
+            if (!inlineFits(params, op.getImageData())) {
+                return keptInColour(resources);
+            }
             image = new PDInlineImage(params, op.getImageData(), resources);
             if (image.isStencil() || image.getColorSpace() instanceof PDDeviceGray) {
-                return null;
-            }
-            if ((long) image.getWidth() * image.getHeight() * 4 > Recoder.MAX_DECODED_BYTES) {
-                unconverted++;
                 return null;
             }
         } catch (IOException | RuntimeException e) {
             if (e instanceof InterruptedIOException interrupted) {
                 throw interrupted;
             }
-            unconverted++;
-            return null;
+            return keptInColour(resources);
         }
         BufferedImage rgb;
         try {
@@ -1082,12 +1114,10 @@ final class Grayscale {
             if (e instanceof InterruptedIOException interrupted) {
                 throw interrupted;
             }
-            unconverted++;
-            return null;
+            return keptInColour(resources);
         }
         if (rgb == null) {
-            unconverted++;
-            return null;
+            return keptInColour(resources);
         }
         int width = rgb.getWidth();
         int height = rgb.getHeight();
@@ -1124,5 +1154,115 @@ final class Grayscale {
         }
         out[out.length - 1] = '>';
         return out;
+    }
+
+    private List<Object> keptInColour(PDResources resources) {
+        unconverted++;
+        keepDefaults(resources);
+        return null;
+    }
+
+    private static boolean inlineFits(COSDictionary params, byte[] data) throws IOException {
+        long width = params.getInt(COSName.W, params.getInt(COSName.WIDTH, -1));
+        long height = params.getInt(COSName.H, params.getInt(COSName.HEIGHT, -1));
+        if (width <= 0 || height <= 0 || width * height * 4 > Recoder.MAX_DECODED_BYTES) {
+            return false;
+        }
+        List<COSName> filters = inlineFilters(params);
+        byte[] bytes = data;
+        for (int i = 0; i < filters.size(); i++) {
+            COSName name = filters.get(i);
+            boolean last = i == filters.size() - 1;
+            if (COSName.DCT_DECODE.equals(name) || COSName.DCT_DECODE_ABBREVIATION.equals(name)) {
+                Jpeg.Frame frame = Jpeg.frame(bytes);
+                return last && frame != null
+                        && (long) frame.width() * Math.max(frame.height(), height) * Math.max(1, frame.components())
+                                <= Recoder.MAX_DECODED_BYTES;
+            }
+            if (COSName.CCITTFAX_DECODE.equals(name) || COSName.CCITTFAX_DECODE_ABBREVIATION.equals(name)) {
+                COSDictionary parms = inlineParms(params, i);
+                long columns = parms == null ? 1728 : parms.getInt(COSName.COLUMNS, 1728);
+                long rows = parms == null ? height : parms.getInt(COSName.ROWS, (int) height);
+                return last && columns > 0 && (columns + 7) / 8 * Math.max(rows, height) <= Recoder.MAX_DECODED_BYTES;
+            }
+            if (!Filters.generalized(name)) {
+                return false;
+            }
+            Filter filter = FilterFactory.INSTANCE.getFilter(name);
+            Limited out = new Limited(Recoder.MAX_DECODED_BYTES, !last);
+            try {
+                filter.decode(new ByteArrayInputStream(bytes), out, params, i);
+            } catch (Limited.Exceeded e) {
+                return false;
+            }
+            bytes = out.toByteArray();
+        }
+        return true;
+    }
+
+    private static List<COSName> inlineFilters(COSDictionary params) {
+        COSBase f = params.getDictionaryObject(COSName.F, COSName.FILTER);
+        List<COSName> names = new ArrayList<>();
+        if (f instanceof COSName n) {
+            names.add(n);
+        } else if (f instanceof COSArray a) {
+            for (int i = 0; i < a.size(); i++) {
+                if (a.getObject(i) instanceof COSName n) {
+                    names.add(n);
+                }
+            }
+        }
+        return names;
+    }
+
+    private static COSDictionary inlineParms(COSDictionary params, int index) {
+        COSBase p = params.getDictionaryObject(COSName.DP, COSName.DECODE_PARMS);
+        if (p instanceof COSDictionary d) {
+            return index == 0 ? d : null;
+        }
+        if (p instanceof COSArray a && index < a.size() && a.getObject(index) instanceof COSDictionary d) {
+            return d;
+        }
+        return null;
+    }
+
+    private static final class Limited extends OutputStream {
+
+        static final class Exceeded extends IOException {
+            Exceeded() {
+                super("decoded past the size limit");
+            }
+        }
+
+        private final ByteArrayOutputStream bytes;
+
+        private final long limit;
+
+        private long written;
+
+        Limited(long limit, boolean keep) {
+            this.limit = limit;
+            this.bytes = keep ? new ByteArrayOutputStream() : null;
+        }
+
+        @Override
+        public void write(int b) throws IOException {
+            write(new byte[] {(byte) b}, 0, 1);
+        }
+
+        @Override
+        public void write(byte[] b, int off, int len) throws IOException {
+            written += len;
+            if (written > limit) {
+                throw new Exceeded();
+            }
+            if (bytes != null) {
+                bytes.write(b, off, len);
+            }
+        }
+
+        byte[] toByteArray() {
+            return bytes == null ? new byte[0] : bytes.toByteArray();
+        }
     }
 }

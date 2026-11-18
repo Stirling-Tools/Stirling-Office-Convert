@@ -36,7 +36,7 @@ class Type2ScanTest {
     void refusesSubroutineFanOutWithinTheDepthLimit() {
         List<byte[]> local = new ArrayList<>();
         for (int i = 0; i < 9; i++) {
-            local.add(callsTo(i + 1, 100));
+            local.add(callsTo(i + 1, 5));
         }
         local.add(new byte[] {11});
 
