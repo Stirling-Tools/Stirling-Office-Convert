@@ -72,6 +72,44 @@ class DownsampleTest {
     }
 
     @Test
+    void aPhotoWithHardEdgesStaysJpegWhenALowerResolutionResamplesIt() throws Exception {
+        Path in = pdf(doc -> draw(doc, LosslessFactory.createFromImage(doc, photoWithRules(1200, 1200)), 560));
+        PdfOptimizer.Options at72Dpi = PdfOptimizer.Options.defaults().images(new PdfOptimizer.Images(72, 0.3f));
+
+        COSStream at150 = onlyImage(optimize(in, AT_150_DPI));
+        COSStream at72 = onlyImage(optimize(in, at72Dpi));
+
+        assertEquals(1200, at150.getInt(COSName.WIDTH));
+        assertTrue(Math.abs(at72.getInt(COSName.WIDTH) - 560) <= 5, "width " + at72.getInt(COSName.WIDTH));
+        assertTrue(filters(at150).contains(COSName.DCT_DECODE), "filters " + filters(at150));
+        assertTrue(filters(at72).contains(COSName.DCT_DECODE), "filters " + filters(at72));
+        assertTrue(at72.getLength() < at150.getLength(), at72.getLength() + " >= " + at150.getLength());
+    }
+
+    @Test
+    void aSavingSmallerThanTheColourProfileItAddsIsNotTaken() throws Exception {
+        Path in = pdf(doc -> draw(doc, LosslessFactory.createFromImage(doc, checks(240, 240)), 144));
+        long before = java.nio.file.Files.size(optimize(in, PdfOptimizer.Options.defaults()));
+
+        Path out = optimize(in, PdfOptimizer.Options.defaults().images(new PdfOptimizer.Images(72, 0.3f)));
+
+        assertEquals(240, onlyImage(out).getInt(COSName.WIDTH));
+        assertTrue(java.nio.file.Files.size(out) <= before, java.nio.file.Files.size(out) + " > " + before);
+    }
+
+    @Test
+    void aSmallSavingIsTakenOnceAnotherImageAddsTheColourProfile() throws Exception {
+        Path in = pdf(doc -> {
+            draw(doc, LosslessFactory.createFromImage(doc, checks(240, 240)), 144);
+            draw(doc, LosslessFactory.createFromImage(doc, photo(1200, 1200)), 144);
+        });
+
+        Path out = optimize(in, PdfOptimizer.Options.defaults().images(new PdfOptimizer.Images(72, 0.3f)));
+
+        assertTrue(Math.abs(onlyImage(out).getInt(COSName.WIDTH) - 144) <= 2, "width " + onlyImage(out).getInt(COSName.WIDTH));
+    }
+
+    @Test
     void anImageDrawnTwiceIsSizedForItsLargestPlacement() throws Exception {
         Path in = pdf(doc -> {
             PDImageXObject image = LosslessFactory.createFromImage(doc, noise(1200, 1200));
@@ -253,6 +291,18 @@ class DownsampleTest {
                 int g = clamp(y * 255 / height + random.nextInt(9) - 4);
                 int b = clamp((x + y) * 127 / (width + height) + 64 + random.nextInt(9) - 4);
                 image.setRGB(x, y, r << 16 | g << 8 | b);
+            }
+        }
+        return image;
+    }
+
+    private static BufferedImage photoWithRules(int width, int height) {
+        BufferedImage image = photo(width, height);
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                if (x % 100 < 2 || y % 100 < 2) {
+                    image.setRGB(x, y, 0xFFFFFF);
+                }
             }
         }
         return image;

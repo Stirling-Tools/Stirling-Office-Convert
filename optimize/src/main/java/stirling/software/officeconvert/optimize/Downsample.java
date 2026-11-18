@@ -85,6 +85,8 @@ final class Downsample {
 
     private static final COSName MATTE = COSName.getPDFName("Matte");
 
+    private static final int SRGB_PROFILE_BYTES = deflated(ICC_Profile.getInstance(ColorSpace.CS_sRGB).getData()).length;
+
     record Applied(List<COSStream> images, int failed, int colourKeyed) {}
 
     private final PdfOptimizer.Images settings;
@@ -96,6 +98,8 @@ final class Downsample {
     private final BrotliBudget budget;
 
     private final List<COSStream> masks = new ArrayList<>();
+
+    private final Map<COSStream, Double> waitingForProfile = new LinkedHashMap<>();
 
     private COSArray srgb;
 
@@ -126,21 +130,30 @@ final class Downsample {
         List<COSStream> changed = new ArrayList<>();
         int failed = 0;
         for (Map.Entry<COSObjectKey, Double> e : needed.entrySet()) {
-            PdfFiles.stopIfInterrupted();
-            COSStream stream = streams.get(e.getKey());
-            try {
-                if (run.rewrite(stream, e.getValue())) {
-                    changed.add(stream);
-                }
-            } catch (IOException | RuntimeException ex) {
-                if (ex instanceof java.io.InterruptedIOException interrupted) {
-                    throw interrupted;
-                }
-                failed++;
+            failed += run.tryRewrite(streams.get(e.getKey()), e.getValue(), changed);
+        }
+        if (run.srgb != null) {
+            for (Map.Entry<COSStream, Double> e : run.waitingForProfile.entrySet()) {
+                failed += run.tryRewrite(e.getKey(), e.getValue(), changed);
             }
         }
         changed.addAll(run.masks);
         return new Applied(changed, failed, run.colourKeyed);
+    }
+
+    private int tryRewrite(COSStream stream, double inchesPerPixel, List<COSStream> changed) throws IOException {
+        PdfFiles.stopIfInterrupted();
+        try {
+            if (rewrite(stream, inchesPerPixel)) {
+                changed.add(stream);
+            }
+            return 0;
+        } catch (IOException | RuntimeException ex) {
+            if (ex instanceof java.io.InterruptedIOException interrupted) {
+                throw interrupted;
+            }
+            return 1;
+        }
     }
 
     private static Placements placements(PDDocument doc) throws IOException {
@@ -303,7 +316,8 @@ final class Downsample {
         int height = Math.max(1, (int) Math.round(image.getHeight() * scale));
         boolean grayOut = gray || components == 1;
         BufferedImage resized = resize(decoded, width, height, grayOut);
-        boolean photographic = lossySource || manyColours && survivesJpeg(resized);
+        boolean photographic = lossySource
+                || manyColours && (survivesJpeg(resized) || resample && survivesJpeg(rawGrayToRgb(decoded)));
         if (!photographic && !resample && !gray) {
             return false;
         }
@@ -312,7 +326,11 @@ final class Downsample {
         if (toGray && photographic) {
             encoded = noLargerThan(resized, quality, encoded, stream.getLength());
         }
-        if (!toGray && encoded.length >= stream.getLength() * MIN_SAVING) {
+        long profile = grayOut || srgb != null ? 0 : SRGB_PROFILE_BYTES;
+        if (!toGray && encoded.length + profile >= stream.getLength() * MIN_SAVING) {
+            if (profile > 0 && encoded.length < stream.getLength() * MIN_SAVING) {
+                waitingForProfile.put(stream, inchesPerPixel);
+            }
             return false;
         }
         if (toGray) {
@@ -531,6 +549,10 @@ final class Downsample {
                 }
             }
         }
+        return deflated(samples);
+    }
+
+    private static byte[] deflated(byte[] samples) {
         Deflater deflater = new Deflater(Deflater.BEST_COMPRESSION);
         try {
             deflater.setInput(samples);
