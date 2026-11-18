@@ -35,9 +35,11 @@ final class MathFinder {
         for (Line l : segments) {
             int m = 0;
             int n = 0;
+            int all = 0;
             boolean stackedScript = false;
             for (Word w : l.words) {
                 for (Glyph g : w.glyphs) {
+                    all++;
                     if (g.math != null) {
                         continue;
                     }
@@ -49,7 +51,8 @@ final class MathFinder {
                 }
             }
             boolean equationNumber = EQUATION_NUMBER.matcher(l.text()).matches();
-            if (m >= 2 && (m * 3 >= n || stackedScript && n <= 60) && !equationNumber) {
+            boolean loneDisplay = all == 1 && m == 1 && l.bottom - l.top >= bodySize * 1.8f;
+            if ((m >= 2 && (m * 3 >= n || stackedScript && n <= 60) || loneDisplay) && !equationNumber) {
                 math.add(l);
             }
         }
@@ -58,23 +61,24 @@ final class MathFinder {
         }
         List<Box> boxes = new ArrayList<>();
         for (Line l : math) {
-            boxes.add(new Box(l.x, l.top, l.right, l.bottom));
+            boxes.add(unrebuilt(l));
         }
         List<Box> clusters = FigureFinder.cluster(boxes, bodySize * 0.35f);
         List<Box> out = new ArrayList<>();
         for (Box c : clusters) {
             Box grown = c;
             for (Line l : segments) {
-                if (rebuilt(l)) {
+                Box u = unrebuilt(l);
+                if (u == null) {
                     continue;
                 }
-                boolean inside = l.top >= c.top() - 1 && l.bottom <= c.bottom() + 1
-                        && l.x >= c.x() - bodySize && l.right <= c.right() + bodySize;
-                float cy = (l.top + l.bottom) / 2f;
+                boolean inside = u.top() >= c.top() - 1 && u.bottom() <= c.bottom() + 1
+                        && u.x() >= c.x() - bodySize && u.right() <= c.right() + bodySize;
+                float cy = (u.top() + u.bottom()) / 2f;
                 boolean number = l.text().matches("\\(\\d+(\\.\\d+)?[a-z]?\\)") && cy > c.top() && cy < c.bottom()
-                        && l.x > c.right() && l.x - c.right() < 200;
+                        && u.x() > c.right() && u.x() - c.right() < 200;
                 if (inside || number) {
-                    grown = grown.union(new Box(l.x, l.top, l.right, l.bottom));
+                    grown = grown.union(u);
                 }
             }
             if (grown.width() > 20 && proseInside(grown, segments, known) < 2) {
@@ -84,15 +88,23 @@ final class MathFinder {
         return out;
     }
 
-    private static boolean rebuilt(Line l) {
+    private static Box unrebuilt(Line l) {
+        Box box = null;
+        boolean partial = false;
         for (Word w : l.words) {
             for (Glyph g : w.glyphs) {
-                if (g.math == null) {
-                    return false;
+                if (g.math != null) {
+                    partial = true;
+                    continue;
                 }
+                Box gb = new Box(g.x, g.top(), g.right(), g.bottom());
+                box = box == null ? gb : box.union(gb);
             }
         }
-        return true;
+        if (box == null || partial) {
+            return box;
+        }
+        return new Box(l.x, l.top, l.right, l.bottom);
     }
 
     private static int proseInside(Box b, List<Line> segments, Map<FontInfo, Boolean> known) {

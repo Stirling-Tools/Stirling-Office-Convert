@@ -212,7 +212,7 @@ public final class OfficeConvert {
                 case AZW3 -> PdfToAzw3.convert(pdf, out, settings.document(), settings.ebook());
                 case PPTX -> PdfToPptx.convert(pdf, out, settings.slides());
                 case ODP -> PdfToOdp.convert(pdf, out, settings.slides());
-                case XLSX, ODS, CSV -> PdfToXlsx.convert(pdf, out, settings.workbook(format));
+                case XLSX, ODS, CSV -> PdfToXlsx.convertAs(pdf, out, settings.workbook(format));
             }
             return null;
         });

@@ -164,8 +164,8 @@ final class OmmlWriter {
         List<Node> out = new ArrayList<>();
         for (Node n : nodes) {
             if (n instanceof Text t && letters(t) && !out.isEmpty() && out.getLast() instanceof Text u && letters(u)
-                    && u.level() == t.level()) {
-                out.set(out.size() - 1, new Text(u.text() + t.text(), true, t.level()));
+                    && u.level() == t.level() && u.bold() == t.bold()) {
+                out.set(out.size() - 1, new Text(u.text() + t.text(), true, t.level(), t.bold(), false));
                 continue;
             }
             out.add(n);

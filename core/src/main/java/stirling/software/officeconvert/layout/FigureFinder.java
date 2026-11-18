@@ -93,6 +93,11 @@ final class FigureFinder {
                 out.add(c);
             }
         }
+        for (Box s : bars) {
+            if (!isProse(s, segments) && overlapsNone(s, out) && wordsInside(s, segments) <= countInside(pending, s)) {
+                out.add(s);
+            }
+        }
         return cluster(out, 1f);
     }
 

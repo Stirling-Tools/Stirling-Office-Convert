@@ -34,6 +34,9 @@ final class MathAlphabets {
             return c >= 'A' && c <= 'Z' ? mapped(c, FRAKTUR, 0x1D504)
                     : c >= 'a' && c <= 'z' ? Character.toString(0x1D51E + c - 'a') : text;
         }
+        if (ps.startsWith("eusb") && c >= 'A' && c <= 'Z') {
+            return Character.toString(0x1D4D0 + c - 'A');
+        }
         boolean script = ps.startsWith("rsfs") || ps.startsWith("eusm") || ps.startsWith("cmsy") || ps.startsWith("cmbsy")
                 || ps.startsWith("lmmathsymbols");
         if (script && c >= 'A' && c <= 'Z') {

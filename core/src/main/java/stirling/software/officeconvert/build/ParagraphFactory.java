@@ -289,7 +289,8 @@ final class ParagraphFactory {
         if (bodySized && (d.lines.size() > 1 || chars > 90 || text.endsWith(".") && !text.matches("^[0-9.]+\\s.*"))) {
             return;
         }
-        DocStats.Tier tier = level - 1 < stats.tiers.size() ? stats.tiers.get(level - 1) : null;
+        DocStats.Tier matched = stats.tierFor(size, bold);
+        DocStats.Tier tier = matched != null ? matched : level - 1 < stats.tiers.size() ? stats.tiers.get(level - 1) : null;
         if (level == 1 && tier != null && tier.lines() <= 3 && tier.openingOnly() && size >= stats.bodySize * 1.5f
                 && stats.tiers.size() > 1) {
             d.role = ParaDraft.Role.TITLE;

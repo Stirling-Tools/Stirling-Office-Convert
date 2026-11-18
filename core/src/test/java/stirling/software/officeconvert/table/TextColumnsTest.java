@@ -54,4 +54,51 @@ class TextColumnsTest {
         assertEquals("Regional", header.cell(1).getFirst().text());
         assertEquals("Strategic", header.cell(2).getFirst().text());
     }
+
+    @Test
+    void aLoneWordAfterAShortGapStaysInItsCell() {
+        List<PdfWord> words = new ArrayList<>();
+        float baseline = 66f;
+        for (int r = 0; r < 4; r++) {
+            words.add(word("Left" + r, 0f, 24f + 2 * r, baseline));
+            if (r == 2) {
+                words.add(word("extra", 35f, 50f, baseline));
+            }
+            words.add(word("Right" + r, 100f, 130f, baseline));
+            baseline += 15f;
+        }
+        List<ChunkedLine> lines = chunked(words);
+
+        TextColumns columns = TextColumns.find(lines);
+
+        assertEquals(2, columns.count());
+        assertEquals(0, columns.indexOf(42f));
+    }
+
+    @Test
+    void aHeaderOverAnEmptyColumnIsAColumn() {
+        List<PdfWord> words = new ArrayList<>();
+        words.add(word("Code", 0f, 30f, 66f));
+        words.add(word("Notes", 50f, 75f, 66f));
+        words.add(word("Qty", 100f, 130f, 66f));
+        float baseline = 81f;
+        for (int r = 0; r < 4; r++) {
+            words.add(word("A" + r, 0f, 30f, baseline));
+            words.add(word(String.valueOf(10 + r), 100f, 130f, baseline));
+            baseline += 15f;
+        }
+
+        TextColumns columns = TextColumns.find(chunked(words));
+
+        assertEquals(3, columns.count());
+        assertEquals(1, columns.indexOf(62f));
+    }
+
+    private static List<ChunkedLine> chunked(List<PdfWord> words) {
+        List<ChunkedLine> lines = new ArrayList<>();
+        for (TextLine line : TextLine.group(words)) {
+            lines.add(ChunkedLine.of(line));
+        }
+        return lines;
+    }
 }

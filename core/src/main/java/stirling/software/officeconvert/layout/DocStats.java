@@ -230,7 +230,26 @@ public final class DocStats {
         }
         candidates.sort(
                 Comparator.comparingDouble((Tier t) -> -t.size()).thenComparing(t -> !t.bold()));
-        tiers = candidates.size() > 6 ? candidates.subList(0, 6) : candidates;
+        List<Tier> kept = new ArrayList<>();
+        int headings = 0;
+        for (Tier t : candidates) {
+            if (t.label()) {
+                kept.add(t);
+            } else if (headings < 6) {
+                kept.add(t);
+                headings++;
+            }
+        }
+        tiers = kept;
+    }
+
+    public Tier tierFor(float size, boolean bold) {
+        for (Tier t : tiers) {
+            if (Math.abs(t.size() - size) < 0.3f && t.bold() == bold) {
+                return t;
+            }
+        }
+        return null;
     }
 
     public int headingLevel(float size, boolean bold) {

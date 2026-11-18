@@ -36,6 +36,7 @@ import org.apache.pdfbox.pdmodel.graphics.form.PDTransparencyGroup;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImage;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.apache.pdfbox.pdmodel.graphics.state.PDGraphicsState;
+import org.apache.pdfbox.pdmodel.graphics.state.PDTextState;
 import org.apache.pdfbox.pdmodel.graphics.state.RenderingMode;
 import org.apache.pdfbox.pdmodel.graphics.color.PDColor;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotation;
@@ -333,9 +334,16 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
         if (mode == RenderingMode.NEITHER_CLIP) {
             clipsText = true;
         }
-        if (slantAsArt && mode.isFill() && SkewedText.skewed(getTextMatrix().multiply(getGraphicsState().getCurrentTransformationMatrix()))) {
+        if (slantAsArt && mode.isFill() && SkewedText.skewed(renderingMatrix())) {
             super.showText(string);
         }
+    }
+
+    private Matrix renderingMatrix() {
+        PDTextState state = getGraphicsState().getTextState();
+        float size = state.getFontSize();
+        Matrix parameters = new Matrix(size * state.getHorizontalScaling() / 100f, 0, 0, size, 0, state.getRise());
+        return parameters.multiply(getTextMatrix()).multiply(getGraphicsState().getCurrentTransformationMatrix());
     }
 
     @Override
@@ -370,7 +378,11 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
             }
         }
         skewedGlyph = true;
-        fillPath(Path2D.WIND_NON_ZERO);
+        if (getGraphicsState().getTextState().getRenderingMode().isStroke()) {
+            fillAndStrokePath(Path2D.WIND_NON_ZERO);
+        } else {
+            fillPath(Path2D.WIND_NON_ZERO);
+        }
         skewedGlyph = false;
     }
 
@@ -381,11 +393,14 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
     private boolean slantAsArt;
 
     private boolean lightText(PDGraphicsState gs) {
+        if (!skewedGlyph) {
+            return false;
+        }
         int rgb = PdfColours.toRgb(gs.getNonStrokingColor(), 0);
         int r = rgb >> 16 & 0xFF;
         int g = rgb >> 8 & 0xFF;
         int b = rgb & 0xFF;
-        return skewedGlyph && 0.299 * r + 0.587 * g + 0.114 * b >= 170;
+        return 0.299 * r + 0.587 * g + 0.114 * b >= 170;
     }
 
     @Override
@@ -795,7 +810,8 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
         int strokeRgb = onPaper(PdfColours.toRgb(gs.getStrokingColor(), 0), gs.getAlphaConstant());
         PathShapes.Paint paint = new PathShapes.Paint(fill, stroke, pattern, fillRgb, strokeRgb, lineWidth(),
                 lineWidthAcross(1, 0), lineWidthAcross(0, 1), evenOdd);
-        PathShapes.Shapes shapes = PathShapes.classify(subpaths, pathCurved, paint, clipBox());
+        PathShapes.Shapes shapes = skewedGlyph ? PathShapes.artwork(subpaths, pathCurved, paint, clipBox())
+                : PathShapes.classify(subpaths, pathCurved, paint, clipBox());
         if (inMaskedGroup && (shapes.mark() != null || !shapes.fills().isEmpty() || shapes.rules().isEmpty())) {
             masked(stroke);
             return;

@@ -65,8 +65,15 @@ class SmokeRegressionTest {
         }
         c.append("ET 0.85 g BT /F2 60 Tf 0.7071 0.7071 -0.7071 0.7071 150 450 Tm (CONFIDENTIAL) Tj ET");
         String out = text(c.toString(), fonts());
+        assertTrue(out.contains(body), out);
         assertTrue(out.lines().filter(l -> l.contains("Volumes")).allMatch(l -> l.contains(body)), out);
         assertFalse(out.contains("CONFIDENTIAL"), "the watermark is artwork, not body text");
+    }
+
+    @Test
+    void aSlightlySlantedLabelStaysInTheText() throws IOException {
+        String out = text("BT /F2 12 Tf 0.9962 0.0872 -0.0872 0.9962 100 500 Tm (Quarterly) Tj ET", fonts());
+        assertTrue(out.contains("Quarterly"), out);
     }
 
     @Test

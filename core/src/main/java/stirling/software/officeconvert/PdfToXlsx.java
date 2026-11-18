@@ -134,7 +134,13 @@ public final class PdfToXlsx {
         Objects.requireNonNull(out, "out");
         Objects.requireNonNull(options, "options");
         String name = out.getFileName().toString().toLowerCase(Locale.ROOT);
-        Options opts = name.endsWith(".xlsx") || name.endsWith(".ods") || name.endsWith(".csv") ? options.withFormat(Format.of(out)) : options;
+        convertAs(pdf, out, name.endsWith(".xlsx") || name.endsWith(".ods") || name.endsWith(".csv") ? options.withFormat(Format.of(out)) : options);
+    }
+
+    static void convertAs(Path pdf, Path out, Options opts) throws IOException {
+        Objects.requireNonNull(pdf, "pdf");
+        Objects.requireNonNull(out, "out");
+        Objects.requireNonNull(opts, "options");
         PdfFiles.stopIfInterrupted();
         PdfFiles.writeThenMove(out, ".office-convert-", part -> {
             try (PDDocument doc = PdfFiles.open(pdf, opts.password());
@@ -202,7 +208,8 @@ public final class PdfToXlsx {
         }
         stats.finish(count);
 
-        Sheets sheets = options.format() == Format.CSV && options.sheets() == Sheets.PAGE ? Sheets.TABLE : options.sheets();
+        Sheets sheets = options.format() == Format.CSV ? Sheets.TABLE : options.sheets();
+        boolean tablesOnly = sheets == Sheets.TABLE;
         SheetBuilder.Settings settings = new SheetBuilder.Settings(split(sheets), options.splitLargeTables(),
                 options.typedValues(), PageStream.autoHyphenated(doc) || stats.autoHyphenated());
         try (WorkbookSink sink = sink(options.format(), out)) {
@@ -214,7 +221,7 @@ public final class PdfToXlsx {
                 try {
                     layout = analyzer.analyze(page);
                 } catch (RuntimeException | StackOverflowError e) {
-                    plainPage(builder, page, e, fallback);
+                    plainPage(builder, page, e, fallback, tablesOnly);
                     return;
                 }
                 try {
@@ -242,17 +249,22 @@ public final class PdfToXlsx {
         }
     }
 
-    private static void plainPage(SheetBuilder builder, PageData page, Throwable e, boolean fallback) throws IOException {
+    private static void plainPage(SheetBuilder builder, PageData page, Throwable e, boolean fallback, boolean tablesOnly)
+            throws IOException {
         if (!fallback) {
             throw new IOException("Page " + (page.index() + 1) + " could not be converted", e);
         }
-        LOG.warn("Page " + (page.index() + 1) + " could not be analysed; kept as lines of text", e);
         List<Line> lines;
         try {
             lines = LineBuilder.build(OcrText.pageGlyphs(page));
         } catch (RuntimeException | StackOverflowError again) {
             lines = List.of();
         }
+        if (tablesOnly && !lines.isEmpty()) {
+            LOG.warn("Page " + (page.index() + 1) + " could not be analysed; left out of this tables-only output", e);
+            return;
+        }
+        LOG.warn("Page " + (page.index() + 1) + " could not be analysed; kept as lines of text", e);
         builder.plainPage(page, lines);
     }
 

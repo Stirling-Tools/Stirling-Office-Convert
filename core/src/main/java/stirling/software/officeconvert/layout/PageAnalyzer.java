@@ -62,9 +62,10 @@ public final class PageAnalyzer {
         boolean ocr = OcrText.dominates(page);
         List<Glyph> glyphs = OcrText.pageGlyphs(page);
         PageGraphics gfx = page.graphics();
+        List<PageGraphics.VectorMark> unslanted = gfx.marks().stream().filter(m -> !gfx.slanted(m)).toList();
         FormulaLines.Rebuilt formulas = ocr ? new FormulaLines.Rebuilt(glyphs, Set.of())
-                : FormulaLines.rebuild(glyphs, gfx.rules(), gfx.fills(), gfx.marks());
-        glyphs = DropCaps.fold(formulas.glyphs());
+                : FormulaLines.rebuild(glyphs, gfx.rules(), gfx.fills(), unslanted);
+        glyphs = foldDropCaps(formulas.glyphs(), page.links());
         if (glyphs.isEmpty() && page.rotated().isEmpty() && outlinedText(gfx)) {
             return FallbackPage.of(page);
         }
@@ -72,8 +73,7 @@ public final class PageAnalyzer {
         boolean poster = forms && !boxColumns && poster(page) && ruledTables(page, glyphs).isEmpty();
         List<Glyph> bullets = new ArrayList<>();
         if (!poster) {
-            bullets.addAll(VectorBullets.synthesize(glyphs, gfx.marks().stream().filter(m -> !gfx.slanted(m)).toList(), gfx.fills(),
-                    usedMarks));
+            bullets.addAll(VectorBullets.synthesize(glyphs, unslanted, gfx.fills(), usedMarks));
             bullets.addAll(OutlinedWords.synthesize(glyphs, gfx, usedMarks, page.width() * page.height()));
         }
         if (!bullets.isEmpty()) {
@@ -731,13 +731,18 @@ public final class PageAnalyzer {
     }
 
     private static final float STROKE_MARGIN = 1f;
+    private static final float MOSTLY_TABLE = 0.6f;
 
     // A fill a table cell already carries as its shading would be drawn twice; padding puts it outside a table cut to its text.
-    private static List<Fill> withoutCellShading(List<Fill> fills, List<TableDetection.Found> tables) {
+    static List<Fill> withoutCellShading(List<Fill> fills, List<TableDetection.Found> tables) {
         List<Fill> out = new ArrayList<>(fills.size());
         for (Fill f : fills) {
             boolean shading = false;
+            Box area = Regions.of(f);
             for (TableDetection.Found t : tables) {
+                if (TableFinder.boxOf(t).overlapArea(area) < MOSTLY_TABLE * area.area()) {
+                    continue;
+                }
                 for (TableDetection.FoundCell c : t.cells()) {
                     float cx = (c.left() + c.right()) / 2f;
                     float cy = (c.top() + c.bottom()) / 2f;
@@ -750,6 +755,26 @@ public final class PageAnalyzer {
             }
         }
         return out;
+    }
+
+    static List<Glyph> foldDropCaps(List<Glyph> glyphs, List<PageData.Link> links) {
+        List<Glyph> folded = DropCaps.fold(glyphs);
+        if (folded == glyphs || links.isEmpty()) {
+            return folded;
+        }
+        List<Glyph> caps = new ArrayList<>();
+        List<Glyph> moved = new ArrayList<>();
+        for (int i = 0; i < glyphs.size(); i++) {
+            if (folded.get(i) != glyphs.get(i)) {
+                caps.add(glyphs.get(i));
+                moved.add(folded.get(i));
+            }
+        }
+        LinkMarker.mark(caps, links);
+        for (int i = 0; i < caps.size(); i++) {
+            moved.get(i).link = caps.get(i).link;
+        }
+        return folded;
     }
 
     // A filled box with words on it that nothing else claimed (an inline badge) stays as a shape behind its text.

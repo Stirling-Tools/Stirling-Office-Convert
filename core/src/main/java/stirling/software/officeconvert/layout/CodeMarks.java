@@ -21,6 +21,9 @@ final class CodeMarks {
     private static final float MIN_BAR_HEIGHT = 15f;
     private static final float BAR_GAP = 6f;
     private static final int MIN_BARS = 20;
+    private static final float SPAN = 0.9f;
+    private static final int MIN_SPANNING = 3;
+    private static final float THIN_RULE = 1.5f;
 
     private CodeMarks() {}
 
@@ -78,7 +81,9 @@ final class CodeMarks {
             boolean square = Math.max(bounds.width(), bounds.height()) <= 1.5f * Math.min(bounds.width(), bounds.height());
             if (g.size() >= MIN_PIECES && square && bounds.width() <= MAX_SIDE && bounds.height() <= MAX_SIDE && ink >= 0.25f * area
                     && ink <= 0.8f * area) {
-                out.add(bounds);
+                if (!ruledGrid(g, bounds)) {
+                    out.add(bounds);
+                }
             } else {
                 rest.add(bounds);
             }
@@ -137,7 +142,7 @@ final class CodeMarks {
                     n++;
                     continue;
                 }
-                if (n >= MIN_BARS) {
+                if (n >= MIN_BARS && !crossedByRules(run, rules)) {
                     out.add(run);
                 }
                 if (k < row.size()) {
@@ -147,6 +152,30 @@ final class CodeMarks {
             }
         }
         return out;
+    }
+
+    private static boolean ruledGrid(List<Box> group, Box bounds) {
+        int across = 0;
+        int down = 0;
+        for (Box b : group) {
+            if (b.width() > b.height() && b.width() >= SPAN * bounds.width()) {
+                across++;
+            } else if (b.height() > b.width() && b.height() >= SPAN * bounds.height()) {
+                down++;
+            }
+        }
+        return across >= MIN_SPANNING && down >= MIN_SPANNING;
+    }
+
+    private static boolean crossedByRules(Box run, List<Rule> rules) {
+        int crossing = 0;
+        for (Rule r : rules) {
+            if (r.horizontal() && r.thickness() <= THIN_RULE && r.pos() >= run.top() - TOUCH && r.pos() <= run.bottom() + TOUCH
+                    && Math.min(r.end(), run.right()) - Math.max(r.start(), run.x()) >= SPAN * run.width()) {
+                crossing++;
+            }
+        }
+        return crossing >= 2;
     }
 
     private static boolean touches(Box a, Box b) {

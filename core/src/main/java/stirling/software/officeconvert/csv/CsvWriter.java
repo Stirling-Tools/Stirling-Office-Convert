@@ -6,6 +6,9 @@ import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.regex.Pattern;
 
 import stirling.software.officeconvert.sheet.CellValue;
@@ -13,6 +16,7 @@ import stirling.software.officeconvert.sheet.Row;
 import stirling.software.officeconvert.sheet.ScriptMarks;
 import stirling.software.officeconvert.sheet.SheetXml;
 import stirling.software.officeconvert.sheet.WorkbookSink;
+import stirling.software.officeconvert.sink.SpillBuffer;
 
 // The workbook reduced to cell values: RFC 4180 rows, a blank line between tables, no styles, merges or pictures.
 public final class CsvWriter implements WorkbookSink {
@@ -22,8 +26,8 @@ public final class CsvWriter implements WorkbookSink {
     private static final Pattern SIGNED_NUMBER = Pattern.compile("[+-]\\d[\\d,.\\s]*%?");
 
     private final Writer out;
-    private boolean anySheet;
-    private boolean sheetHasRows;
+    private SpillBuffer sheet;
+    private boolean anyRecord;
 
     public CsvWriter(OutputStream stream) {
         this.out = new BufferedWriter(new OutputStreamWriter(stream, StandardCharsets.UTF_8));
@@ -31,11 +35,8 @@ public final class CsvWriter implements WorkbookSink {
 
     @Override
     public void startSheet(SheetSetup setup) throws IOException {
-        if (anySheet && sheetHasRows) {
-            out.write(EOL);
-        }
-        anySheet = true;
-        sheetHasRows = false;
+        closeSheet(List.of());
+        sheet = new SpillBuffer();
     }
 
     @Override
@@ -43,20 +44,29 @@ public final class CsvWriter implements WorkbookSink {
         if (row.cells().isEmpty()) {
             return;
         }
+        if (sheet == null) {
+            sheet = new SpillBuffer();
+        }
+        TreeMap<Integer, String> byColumn = new TreeMap<>();
+        for (Row.Cell c : row.cells()) {
+            String value = text(c.value());
+            byColumn.merge(c.col(), value, (held, next) -> held.isEmpty() ? next : held);
+        }
         StringBuilder sb = new StringBuilder();
         int col = 0;
-        for (Row.Cell c : row.cells()) {
-            while (col < c.col()) {
+        for (Map.Entry<Integer, String> e : byColumn.entrySet()) {
+            while (col < e.getKey()) {
                 sb.append(col++ == 0 ? "" : ",");
             }
             if (col > 0) {
                 sb.append(',');
             }
-            field(sb, text(c.value()));
+            field(sb, e.getValue().replace("\0", ""));
             col++;
         }
-        out.write(sb.append(EOL).toString());
-        sheetHasRows = true;
+        sheet.append(sb);
+        sheet.placeholder(row.index() + ":" + col);
+        sheet.append(EOL);
     }
 
     static String text(CellValue v) {
@@ -73,7 +83,7 @@ public final class CsvWriter implements WorkbookSink {
     }
 
     private static String inert(String s) {
-        if (s.isEmpty() || "=+-@\t\r".indexOf(s.charAt(0)) < 0 || SIGNED_NUMBER.matcher(s).matches()) {
+        if (s.isEmpty() || "=+-@\t\r".indexOf(s.charAt(0)) < 0 || s.equals("-") || s.equals("+") || SIGNED_NUMBER.matcher(s).matches()) {
             return s;
         }
         return "'" + s;
@@ -90,16 +100,54 @@ public final class CsvWriter implements WorkbookSink {
     }
 
     @Override
-    public void endSheet(SheetEnd end) {
+    public void endSheet(SheetEnd end) throws IOException {
+        closeSheet(end.names());
+    }
+
+    private void closeSheet(List<NamedRange> tables) throws IOException {
+        if (sheet == null) {
+            return;
+        }
+        try (SpillBuffer records = sheet) {
+            sheet = null;
+            if (records.isEmpty()) {
+                return;
+            }
+            if (anyRecord) {
+                out.write(EOL);
+            }
+            anyRecord = true;
+            records.copyTo(out, key -> padding(key, tables));
+        }
+    }
+
+    private static String padding(String key, List<NamedRange> tables) {
+        int split = key.indexOf(':');
+        int row = Integer.parseInt(key, 0, split, 10);
+        int fields = Integer.parseInt(key, split + 1, key.length(), 10);
+        for (NamedRange t : tables) {
+            if (row >= t.firstRow() && row <= t.lastRow() && t.lastCol() + 1 > fields) {
+                return ",".repeat(t.lastCol() + 1 - fields);
+            }
+        }
+        return "";
     }
 
     @Override
     public void finish(String title, String author) throws IOException {
+        closeSheet(List.of());
         out.flush();
     }
 
     @Override
     public void close() throws IOException {
-        out.flush();
+        try {
+            if (sheet != null) {
+                sheet.close();
+                sheet = null;
+            }
+        } finally {
+            out.flush();
+        }
     }
 }

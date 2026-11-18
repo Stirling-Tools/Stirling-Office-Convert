@@ -542,11 +542,11 @@ final class GlyphCollector extends PDFStreamEngine {
         List<RawGlyph> glyphs = current;
         glyphs.removeIf(r -> r.glyph().text == HIDDEN);
         revealClipText(glyphs);
+        TexControlCodes.resolve(glyphs, texCodes);
+        texCodes.clear();
         composeOverlines(glyphs);
         assembleRadicals(glyphs);
         composeMarks(glyphs);
-        TexControlCodes.resolve(glyphs, texCodes);
-        texCodes.clear();
         settleAlternatives(glyphs);
         current = new ArrayList<>();
         nextIndex = pageIndex + 1;
@@ -574,6 +574,9 @@ final class GlyphCollector extends PDFStreamEngine {
         String alternative = alternatives.remove(glyph);
         if (alternative != null) {
             alternatives.put(g, alternative);
+        }
+        if (texCodes.remove(glyph)) {
+            texCodes.add(g);
         }
         return g;
     }

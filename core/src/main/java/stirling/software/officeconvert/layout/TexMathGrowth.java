@@ -175,7 +175,7 @@ final class TexMathGrowth {
         List<Fill> out = new ArrayList<>();
         for (Fill f : fills) {
             float y = (f.top() + f.bottom()) / 2f;
-            boolean bar = f.bottom() - f.top() <= 1.5f && f.right() - f.x() > 2f;
+            boolean bar = f.right() - f.x() >= 2f;
             if (!bar || f.right() - f.x() <= LONGEST_BAR * em && !meetsVertical(f.x(), f.right(), y, rules, fills)
                     && !arrow(f.x(), f.right(), y, marks)) {
                 out.add(f);

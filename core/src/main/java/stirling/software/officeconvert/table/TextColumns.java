@@ -102,7 +102,8 @@ final class TextColumns {
                     emptyStart = Float.NaN;
                 }
             }
-            if (before <= allowance && depth > allowance && !Float.isNaN(gutterStart) && empties.size() >= 2) {
+            if (before <= allowance && depth > allowance && !Float.isNaN(gutterStart) && empties.size() >= 2
+                    && standsAsColumns(lines, empties)) {
                 // Words alone between two clear gaps, such as the header of an empty column, are a column of their own.
                 columns.add(new Span(columnStart, empties.getFirst().left()));
                 for (int k = 1; k < empties.size(); k++) {
@@ -135,6 +136,42 @@ final class TextColumns {
         }
         columns.add(new Span(columnStart, right));
         return columns;
+    }
+
+    private static boolean standsAsColumns(List<ChunkedLine> lines, List<Span> empties) {
+        for (int k = 1; k < empties.size(); k++) {
+            float from = empties.get(k - 1).right();
+            float to = empties.get(k).left();
+            int holding = 0;
+            boolean header = false;
+            boolean first = true;
+            for (ChunkedLine line : lines) {
+                if (!line.tabular()) {
+                    continue;
+                }
+                if (holdsWordWithin(line, from, to)) {
+                    holding++;
+                    header |= first;
+                }
+                first = false;
+            }
+            if (holding < 2 && !header) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean holdsWordWithin(ChunkedLine line, float from, float to) {
+        for (List<PdfWord> chunk : line.chunks()) {
+            for (PdfWord w : chunk) {
+                float centre = (w.x() + w.right()) / 2f;
+                if (centre > from && centre < to) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     // Right-aligned numbers end at the same x; their cells end there too, so text after the gap starts the next column.

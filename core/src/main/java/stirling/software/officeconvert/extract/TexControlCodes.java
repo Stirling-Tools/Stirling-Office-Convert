@@ -50,31 +50,35 @@ final class TexControlCodes {
                 || !(t3.getEncoding() instanceof DictionaryEncoding enc) || enc.getDifferences().isEmpty()) {
             return false;
         }
+        boolean named = false;
         for (Map.Entry<Integer, String> e : enc.getDifferences().entrySet()) {
-            if (!".notdef".equals(e.getValue()) && !("a" + e.getKey()).equals(e.getValue())) {
+            if (("a" + e.getKey()).equals(e.getValue())) {
+                named = true;
+            } else if (!".notdef".equals(e.getValue())) {
                 return false;
             }
         }
-        return true;
+        return named;
     }
 
     static void resolve(List<RawGlyph> glyphs, Set<Glyph> placeholders) {
+        int kept = 0;
         for (int i = 0; i < glyphs.size(); i++) {
-            Glyph g = glyphs.get(i).glyph();
+            RawGlyph r = glyphs.get(i);
+            Glyph g = r.glyph();
             if (!placeholders.contains(g) || g.text.length() != 1 || g.text.charAt(0) < BASE || g.text.charAt(0) > BASE + 0x88) {
+                glyphs.set(kept++, r);
                 continue;
             }
             int code = g.text.charAt(0) - BASE;
-            boolean before = letterAt(glyphs, i - 1, g, true);
-            boolean after = letterAt(glyphs, i + 1, g, false);
+            boolean before = kept > 0 && letterAt(glyphs.get(kept - 1).glyph(), g, true);
+            boolean after = i + 1 < glyphs.size() && letterAt(glyphs.get(i + 1).glyph(), g, false);
             String text = text(code, before, after);
-            if (text == null) {
-                glyphs.remove(i--);
-            } else {
-                RawGlyph r = glyphs.get(i);
-                glyphs.set(i, new RawGlyph(g.withText(text), r.direction(), r.invisible(), r.originX(), r.originY()));
+            if (text != null) {
+                glyphs.set(kept++, new RawGlyph(g.withText(text), r.direction(), r.invisible(), r.originX(), r.originY()));
             }
         }
+        glyphs.subList(kept, glyphs.size()).clear();
     }
 
     private static String text(int code, boolean before, boolean after) {
@@ -92,11 +96,7 @@ final class TexControlCodes {
         };
     }
 
-    private static boolean letterAt(List<RawGlyph> glyphs, int k, Glyph g, boolean before) {
-        if (k < 0 || k >= glyphs.size()) {
-            return false;
-        }
-        Glyph n = glyphs.get(k).glyph();
+    private static boolean letterAt(Glyph n, Glyph g, boolean before) {
         float gap = before ? g.x - n.right() : n.x - g.right();
         if (n.text.isEmpty() || Math.abs(n.baseline - g.baseline) > 0.2f * g.size || gap > 0.15f * g.size || gap < -0.5f * g.size) {
             return false;

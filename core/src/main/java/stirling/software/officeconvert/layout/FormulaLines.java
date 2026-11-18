@@ -57,6 +57,7 @@ final class FormulaLines {
         Map<FontInfo, Integer> known = new IdentityHashMap<>();
         List<Item> items = new ArrayList<>();
         Set<Glyph> tex = Collections.newSetFromMap(new IdentityHashMap<>());
+        boolean capped = false;
         for (Glyph g : glyphs) {
             int kind = kind(g.font, known);
             if (kind > 0 && !g.text.isEmpty() && g.math == null) {
@@ -72,15 +73,17 @@ final class FormulaLines {
                 em = Math.max(em, g.size);
             }
             long paths = (long) rules.size() + fills.size();
-            if (paths * (paths + marks.size()) > MAX_BAR_WORK) {
-                rules = List.of();
-                fills = List.of();
-            }
-            List<Rule> lines = rules;
-            rules = TexMathGrowth.fractionRules(lines, fills, marks, em);
-            fills = TexMathGrowth.fractionFills(lines, fills, marks, em);
-            for (Glyph g : TexMathGrowth.absorb(glyphs, tex, rules, fills)) {
+            capped = paths * (paths + marks.size()) > MAX_BAR_WORK;
+            List<Rule> lines = capped ? List.of() : rules;
+            List<Fill> areas = capped ? List.of() : fills;
+            List<Rule> texRules = TexMathGrowth.fractionRules(lines, areas, marks, em);
+            List<Fill> texFills = TexMathGrowth.fractionFills(lines, areas, marks, em);
+            for (Glyph g : TexMathGrowth.absorb(glyphs, tex, texRules, texFills)) {
                 items.add(new Item(g, false, true, true));
+            }
+            if (!capped) {
+                rules = texRules;
+                fills = texFills;
             }
             fences(items);
         }
@@ -100,6 +103,9 @@ final class FormulaLines {
         float top = Float.MAX_VALUE;
         float bottom = -Float.MAX_VALUE;
         for (Item i : items) {
+            if (capped && i.tex) {
+                continue;
+            }
             left = Math.min(left, i.x);
             right = Math.max(right, i.right);
             top = Math.min(top, i.y - 2f * largest);

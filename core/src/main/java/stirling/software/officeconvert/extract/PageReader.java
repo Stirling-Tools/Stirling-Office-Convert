@@ -51,8 +51,13 @@ public final class PageReader {
 
     private boolean slantAsArt = true;
 
+    private boolean reading;
+
     // Slides turn slanted text into rotated text boxes themselves, so they keep it as text.
     public PageReader keepSlantedText() {
+        if (reading) {
+            throw new IllegalStateException("The slanted text policy is fixed once reading starts");
+        }
         slantAsArt = false;
         return this;
     }
@@ -76,6 +81,7 @@ public final class PageReader {
 
     public void read(int first, int last, boolean withGraphics, PageConsumer consumer)
             throws IOException {
+        reading = true;
         GlyphCollector.read(
                 document,
                 first,
