@@ -292,23 +292,7 @@ public final class Type1ToCff {
     }
 
     private void checkExpansion(Map<String, byte[]> dict, List<String> glyphs) throws IOException {
-        Map<String, Integer> index = new HashMap<>();
-        CharStringExpansion.Result[] results = new CharStringExpansion.Result[glyphs.size()];
-        long tokens = 0;
-        for (int gid = 0; gid < glyphs.size(); gid++) {
-            PdfFiles.stopIfInterrupted();
-            byte[] cs = dict.get(glyphs.get(gid));
-            results[gid] = CharStringExpansion.type1(cs == null ? new byte[] {14} : cs, font.getSubrsArray());
-            tokens += results[gid].tokens();
-            if (tokens > CharStringExpansion.MAX_FONT_TOKENS) {
-                throw new IOException("The font's charstrings expand beyond " + CharStringExpansion.MAX_FONT_TOKENS
-                        + " tokens");
-            }
-            index.put(glyphs.get(gid), gid);
-        }
-        int notdef = index.getOrDefault(NOTDEF, -1);
-        CharStringExpansion.check(results,
-                code -> index.getOrDefault(StandardEncoding.INSTANCE.getName(code), notdef));
+        FontExpansion.checkType1(font, dict, glyphs);
     }
 
     private byte[] charString(String name, boolean outline) throws IOException {

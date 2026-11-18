@@ -42,8 +42,9 @@ public class GuardedRenderer extends PDFRenderer {
 
     private final String pass;
 
-    public GuardedRenderer(PDDocument document, String pass) {
+    public GuardedRenderer(PDDocument document, String pass) throws IOException {
         super(document);
+        FontGuard.check(document);
         this.pass = pass;
     }
 

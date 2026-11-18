@@ -8,6 +8,7 @@ import java.nio.file.StandardCopyOption;
 
 import org.apache.pdfbox.pdmodel.PDDocument;
 
+import stirling.software.officeconvert.extract.FontGuard;
 import stirling.software.officeconvert.extract.PdfFiles;
 import stirling.software.officeconvert.html.FixedHtml;
 import stirling.software.officeconvert.html.HtmlWriter;
@@ -46,6 +47,7 @@ public final class PdfToHtml {
     public static void convertFixed(PDDocument doc, OutputStream out, FixedHtml.Options options) throws IOException {
         PdfFiles.checkOpen(doc);
         JpxImageIO.install();
+        FontGuard.check(doc);
         FixedHtml.write(doc, out, options);
     }
 }

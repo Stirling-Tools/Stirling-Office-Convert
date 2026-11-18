@@ -62,7 +62,8 @@ public final class PageReader {
         return this;
     }
 
-    public PageReader(PDDocument document) {
+    public PageReader(PDDocument document) throws IOException {
+        FontGuard.check(document);
         this.document = document;
         this.pages = new PageIndex(document);
         this.layers = OptionalContent.of(document);
