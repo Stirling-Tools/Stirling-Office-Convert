@@ -1064,6 +1064,10 @@ final class Grayscale {
             if (image.isStencil() || image.getColorSpace() instanceof PDDeviceGray) {
                 return null;
             }
+            if ((long) image.getWidth() * image.getHeight() * 4 > Recoder.MAX_DECODED_BYTES) {
+                unconverted++;
+                return null;
+            }
         } catch (IOException | RuntimeException e) {
             if (e instanceof InterruptedIOException interrupted) {
                 throw interrupted;

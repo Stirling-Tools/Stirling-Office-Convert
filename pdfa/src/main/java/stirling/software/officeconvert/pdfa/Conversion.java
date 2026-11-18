@@ -41,12 +41,12 @@ final class Conversion {
         }
         int pages = doc.getNumberOfPages();
         pageLimit(pages, options);
+        FontProgramBounds.run(doc);
         if (level.tagged()) {
             Tagging.run(doc, level, report);
         }
         Census census = Census.of(doc);
         var attachments = EmbeddedFiles.run(doc, level, report);
-        FontProgramBounds.run(doc);
         Signatures.run(doc, census, report);
         Interactive.run(doc, level, report);
         ObjectMetadata.run(doc, census, level, report);

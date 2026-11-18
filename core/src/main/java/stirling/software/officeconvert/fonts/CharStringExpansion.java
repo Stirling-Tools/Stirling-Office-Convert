@@ -1,4 +1,4 @@
-package stirling.software.officeconvert.pdfa;
+package stirling.software.officeconvert.fonts;
 
 import java.io.IOException;
 import java.util.ArrayDeque;
@@ -7,9 +7,7 @@ import java.util.Deque;
 import java.util.List;
 import java.util.function.IntUnaryOperator;
 
-import stirling.software.officeconvert.fonts.CffCodec;
-
-final class CharStringExpansion {
+public final class CharStringExpansion {
 
     static final int MAX_TOKENS = 1 << 17;
 
@@ -17,7 +15,7 @@ final class CharStringExpansion {
 
     static final long MAX_FONT_TOKENS = 1L << 27;
 
-    record Result(int tokens, int[] components) {}
+    public record Result(int tokens, int[] components) {}
 
     private record Command(int b0, int b1) {}
 
@@ -37,7 +35,7 @@ final class CharStringExpansion {
 
     private CharStringExpansion() {}
 
-    static Result type2(byte[] cs, byte[][] globalSubrs, byte[][] localSubrs) throws IOException {
+    public static Result type2(byte[] cs, byte[][] globalSubrs, byte[][] localSubrs) throws IOException {
         CharStringExpansion e = new CharStringExpansion();
         try {
             e.type2(cs, globalSubrs, localSubrs, 0);
@@ -46,7 +44,7 @@ final class CharStringExpansion {
         return e.result(14 << 8);
     }
 
-    static Result type1(byte[] cs, List<byte[]> subrs) throws IOException {
+    public static Result type1(byte[] cs, List<byte[]> subrs) throws IOException {
         CharStringExpansion e = new CharStringExpansion();
         try {
             e.type1(cs, subrs, 0);
@@ -67,7 +65,7 @@ final class CharStringExpansion {
         return new Result(tokens, components.stream().mapToInt(Integer::intValue).toArray());
     }
 
-    static void check(Result[] glyphs, IntUnaryOperator componentGlyph) throws IOException {
+    public static void check(Result[] glyphs, IntUnaryOperator componentGlyph) throws IOException {
         long[] cost = new long[glyphs.length];
         byte[] state = new byte[glyphs.length];
         long total = 0;

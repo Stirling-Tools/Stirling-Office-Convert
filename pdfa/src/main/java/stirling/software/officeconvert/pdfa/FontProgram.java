@@ -10,6 +10,7 @@ import java.util.Map;
 import org.apache.fontbox.encoding.StandardEncoding;
 
 import stirling.software.officeconvert.extract.PdfFiles;
+import stirling.software.officeconvert.fonts.CharStringExpansion;
 import stirling.software.officeconvert.pdfa.WebFonts.FontKind;
 
 abstract class FontProgram {

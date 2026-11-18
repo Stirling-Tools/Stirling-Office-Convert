@@ -141,6 +141,13 @@ class GrayscaleTest {
     }
 
     @Test
+    void anInlineImageTooLargeToDecodeIsLeftInColour() throws Exception {
+        Path out = optimize(doc -> page(doc, "q 10 0 0 10 0 0 cm BI /W 26000 /H 26000 /BPC 8 /CS /RGB ID \0\0\0\nEI Q"));
+
+        assertTrue(content(out).contains("/RGB"), content(out));
+    }
+
+    @Test
     void anInlineImageWhoseGraySamplesSpellEiStillParsesWhole() throws Exception {
         int[] greys = {32, 69, 73, 32, 10, 69, 73, 13};
         Path out = optimize(doc -> {
