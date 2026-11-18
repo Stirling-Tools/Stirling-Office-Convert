@@ -11,7 +11,7 @@ commons-logging = { module = "commons-logging:commons-logging", version = "1.4.0
 brotli-dec = { module = "org.brotli:dec", version = "0.1.2" }
 poi-ooxml = { module = "org.apache.poi:poi-ooxml", version.ref = "poi" }
 poi-scratchpad = { module = "org.apache.poi:poi-scratchpad", version.ref = "poi" }
-jsoup = { module = "org.jsoup:jsoup", version = "1.22.2" }
+jsoup = { module = "org.jsoup:jsoup", version = "1.23.2" }
 imageio-webp = { module = "com.twelvemonkeys.imageio:imageio-webp", version = "3.15.2" }
 proguard-base = { module = "com.guardsquare:proguard-base", version = "7.9.1" }
 
