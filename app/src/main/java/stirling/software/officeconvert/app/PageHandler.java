@@ -66,7 +66,7 @@ final class PageHandler implements HttpHandler {
                 case "/limits" -> send(ex, 200, "application/json", limits.json(libreOffice).getBytes(StandardCharsets.UTF_8));
                 case "/health" -> {
                     boolean ok = healthy.getAsBoolean();
-                    send(ex, ok ? 200 : 503, "text/plain; charset=utf-8", (ok ? "ok" : "stuck").getBytes(StandardCharsets.UTF_8));
+                    send(ex, ok ? 200 : 503, "text/plain; charset=utf-8", (ok ? "ok" : "unavailable").getBytes(StandardCharsets.UTF_8));
                 }
                 default -> ex.sendResponseHeaders(404, -1);
             }

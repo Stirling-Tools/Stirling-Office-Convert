@@ -7,6 +7,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import stirling.software.officeconvert.fonts.CharStringExpansion;
+
 final class RawType1Program extends FontProgram {
 
     private final Type1Lenient font;

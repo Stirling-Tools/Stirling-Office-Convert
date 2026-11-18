@@ -18,10 +18,22 @@ public record PageGraphics(
         Set<Object> seeThroughPaint,
         Map<Object, Outline> outlines,
         List<Area> masked,
-        Map<Object, Shape> lettering) {
+        Map<Object, Shape> lettering,
+        Set<Object> slanted) {
 
     public PageGraphics(List<Rule> rules, List<Fill> fills, List<ImageDraw> images, List<VectorMark> marks) {
-        this(rules, fills, images, marks, List.of(), Map.of(), Set.of(), Map.of(), List.of(), Map.of());
+        this(rules, fills, images, marks, List.of(), Map.of(), Set.of(), Map.of(), List.of(), Map.of(), Set.of());
+    }
+
+    public PageGraphics(List<Rule> rules, List<Fill> fills, List<ImageDraw> images, List<VectorMark> marks, List<Area> pastBudget,
+            Map<Object, Integer> paintOrder, Set<Object> seeThroughPaint, Map<Object, Outline> outlines, List<Area> masked,
+            Map<Object, Shape> lettering) {
+        this(rules, fills, images, marks, pastBudget, paintOrder, seeThroughPaint, outlines, masked, lettering, Set.of());
+    }
+
+    // Outlines of glyphs drawn at a slant: artwork, never bullets or outlined words.
+    public boolean slanted(Object painted) {
+        return slanted.contains(painted);
     }
 
     public record Area(float x, float top, float right, float bottom) {}

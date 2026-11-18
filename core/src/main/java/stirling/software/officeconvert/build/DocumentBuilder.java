@@ -99,7 +99,7 @@ public final class DocumentBuilder {
         styles.scripts = stats.scripts;
         this.paragraphs = new ParagraphFactory(stats, runs, styles, numbering);
         this.tables = new TableBuilder(paragraphs);
-        this.placer = new MediaPlacer(document, figureDpi, pictures, sink, paragraphs);
+        this.placer = new MediaPlacer(document, figureDpi, pictures, sink, paragraphs, true);
         this.running = new RunningContent(stats, runs);
         this.flow = new ColumnFlow(stats);
         this.notes = new NoteWriter(sink, paragraphs, runs, styles);

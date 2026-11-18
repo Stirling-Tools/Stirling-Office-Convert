@@ -16,6 +16,7 @@ import org.apache.commons.logging.LogFactory;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDDocumentInformation;
 
+import stirling.software.officeconvert.csv.CsvWriter;
 import stirling.software.officeconvert.extract.PageData;
 import stirling.software.officeconvert.extract.PageReader;
 import stirling.software.officeconvert.extract.PdfFiles;
@@ -45,10 +46,12 @@ public final class PdfToXlsx {
 
     public enum Format {
         XLSX,
-        ODS;
+        ODS,
+        CSV;
 
         public static Format of(Path file) {
-            return file.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".ods") ? ODS : XLSX;
+            String name = file.getFileName().toString().toLowerCase(Locale.ROOT);
+            return name.endsWith(".ods") ? ODS : name.endsWith(".csv") ? CSV : XLSX;
         }
     }
 
@@ -131,7 +134,13 @@ public final class PdfToXlsx {
         Objects.requireNonNull(out, "out");
         Objects.requireNonNull(options, "options");
         String name = out.getFileName().toString().toLowerCase(Locale.ROOT);
-        Options opts = name.endsWith(".xlsx") || name.endsWith(".ods") ? options.withFormat(Format.of(out)) : options;
+        convertAs(pdf, out, name.endsWith(".xlsx") || name.endsWith(".ods") || name.endsWith(".csv") ? options.withFormat(Format.of(out)) : options);
+    }
+
+    static void convertAs(Path pdf, Path out, Options opts) throws IOException {
+        Objects.requireNonNull(pdf, "pdf");
+        Objects.requireNonNull(out, "out");
+        Objects.requireNonNull(opts, "options");
         PdfFiles.stopIfInterrupted();
         PdfFiles.writeThenMove(out, ".office-convert-", part -> {
             try (PDDocument doc = PdfFiles.open(pdf, opts.password());
@@ -166,7 +175,7 @@ public final class PdfToXlsx {
         int[] range = PdfFiles.pageRange(total, options.firstPage(), options.lastPage());
         int first = range[0];
         int last = range[1];
-        PageReader reader = new PageReader(doc);
+        PageReader reader = new PageReader(doc).keepSlantedText();
         DocStats stats = new DocStats();
         ConventionEvidence evidence = new ConventionEvidence();
         Map<Integer, PageData> cache = new HashMap<>();
@@ -199,9 +208,11 @@ public final class PdfToXlsx {
         }
         stats.finish(count);
 
-        SheetBuilder.Settings settings = new SheetBuilder.Settings(split(options.sheets()), options.splitLargeTables(),
+        Sheets sheets = options.format() == Format.CSV ? Sheets.TABLE : options.sheets();
+        boolean tablesOnly = sheets == Sheets.TABLE;
+        SheetBuilder.Settings settings = new SheetBuilder.Settings(split(sheets), options.splitLargeTables(),
                 options.typedValues(), PageStream.autoHyphenated(doc) || stats.autoHyphenated());
-        try (WorkbookSink sink = options.format() == Format.ODS ? new OdsWriter(out) : new XlsxWriter(out)) {
+        try (WorkbookSink sink = sink(options.format(), out)) {
             SheetBuilder builder = new SheetBuilder(new MirroredSheets(sink, stats.scripts.rightToLeft()), stats, evidence.conventions(), settings, total);
             PageAnalyzer analyzer = new PageAnalyzer(stats, options.tables());
             PageReader.PageConsumer consume = page -> {
@@ -210,7 +221,7 @@ public final class PdfToXlsx {
                 try {
                     layout = analyzer.analyze(page);
                 } catch (RuntimeException | StackOverflowError e) {
-                    plainPage(builder, page, e, fallback);
+                    plainPage(builder, page, e, fallback, tablesOnly);
                     return;
                 }
                 try {
@@ -238,18 +249,31 @@ public final class PdfToXlsx {
         }
     }
 
-    private static void plainPage(SheetBuilder builder, PageData page, Throwable e, boolean fallback) throws IOException {
+    private static void plainPage(SheetBuilder builder, PageData page, Throwable e, boolean fallback, boolean tablesOnly)
+            throws IOException {
         if (!fallback) {
             throw new IOException("Page " + (page.index() + 1) + " could not be converted", e);
         }
-        LOG.warn("Page " + (page.index() + 1) + " could not be analysed; kept as lines of text", e);
         List<Line> lines;
         try {
             lines = LineBuilder.build(OcrText.pageGlyphs(page));
         } catch (RuntimeException | StackOverflowError again) {
             lines = List.of();
         }
+        if (tablesOnly && !lines.isEmpty()) {
+            LOG.warn("Page " + (page.index() + 1) + " could not be analysed; left out of this tables-only output", e);
+            return;
+        }
+        LOG.warn("Page " + (page.index() + 1) + " could not be analysed; kept as lines of text", e);
         builder.plainPage(page, lines);
+    }
+
+    private static WorkbookSink sink(Format format, OutputStream out) throws IOException {
+        return switch (format) {
+            case ODS -> new OdsWriter(out);
+            case CSV -> new CsvWriter(out);
+            case XLSX -> new XlsxWriter(out);
+        };
     }
 
     private static SheetBuilder.Split split(Sheets sheets) {

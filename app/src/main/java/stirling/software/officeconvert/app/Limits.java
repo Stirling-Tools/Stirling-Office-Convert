@@ -83,6 +83,13 @@ record Limits(
         }
     }
 
+    int clientLimit() {
+        if (perClient <= 0 || concurrent < 2) {
+            return perClient;
+        }
+        return Math.min(perClient, concurrent - 1);
+    }
+
     long maxUploadMb() {
         return maxUploadBytes / (1024 * 1024);
     }

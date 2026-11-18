@@ -126,7 +126,7 @@ final class TableAssembler {
                 chars > 0 && italicChars * 2 > chars,
                 mode(sizes, 0f),
                 Colours.isNearBlack(textRgb) ? null : textRgb,
-                fill(cell.box(), fills),
+                fill(textBox(cell.box(), lines), fills),
                 horizontal(cell.box(), lines, padding),
                 boxed ? vertical(cell.box(), lines) : VerticalAlignment.TOP,
                 cell.borders().top(),
@@ -145,6 +145,24 @@ final class TableAssembler {
             }
         }
         return best;
+    }
+
+    // Borderless cells are cut from text spacing and can reach into the next drawn row; the text itself sits on its fill.
+    private static Box textBox(Box cell, List<TextLine> lines) {
+        if (lines.isEmpty()) {
+            return cell;
+        }
+        float x = Float.MAX_VALUE;
+        float right = -Float.MAX_VALUE;
+        float top = Float.MAX_VALUE;
+        float bottom = -Float.MAX_VALUE;
+        for (TextLine l : lines) {
+            x = Math.min(x, l.x());
+            right = Math.max(right, l.right());
+            top = Math.min(top, l.top());
+            bottom = Math.max(bottom, l.bottom());
+        }
+        return right > x && bottom > top ? new Box(x, top, right, bottom) : cell;
     }
 
     private static Integer fill(Box cell, List<FillBox> fills) {

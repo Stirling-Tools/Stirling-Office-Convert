@@ -35,7 +35,8 @@ public final class OfficeConvert {
         PPTX,
         ODP,
         XLSX,
-        ODS;
+        ODS,
+        CSV;
 
         public static Format of(Path file) {
             String name = file.getFileName().toString().toLowerCase(Locale.ROOT);
@@ -55,8 +56,9 @@ public final class OfficeConvert {
                 case "odp" -> ODP;
                 case "xlsx" -> XLSX;
                 case "ods" -> ODS;
+                case "csv" -> CSV;
                 default -> throw new IllegalArgumentException("No output format for " + file.getFileName()
-                        + ": use .docx, .odt, .fodt, .xml, .rtf, .doc, .txt, .html, .htm, .json, .md, .epub, .azw3, .pptx, .odp, .xlsx or .ods");
+                        + ": use .docx, .odt, .fodt, .xml, .rtf, .doc, .txt, .html, .htm, .json, .md, .epub, .azw3, .pptx, .odp, .xlsx, .ods or .csv");
             };
         }
     }
@@ -162,7 +164,8 @@ public final class OfficeConvert {
         PdfToXlsx.Options workbook(Format format) {
             return PdfToXlsx.Options.defaults().withPages(firstPage, lastPage).withTables(tables).withPassword(password)
                     .withSheets(sheets).withTextFallback(pictureFallback)
-                    .withFormat(format == Format.ODS ? PdfToXlsx.Format.ODS : PdfToXlsx.Format.XLSX);
+                    .withFormat(format == Format.ODS ? PdfToXlsx.Format.ODS : format == Format.CSV ? PdfToXlsx.Format.CSV
+                            : PdfToXlsx.Format.XLSX);
         }
     }
 
@@ -209,7 +212,7 @@ public final class OfficeConvert {
                 case AZW3 -> PdfToAzw3.convert(pdf, out, settings.document(), settings.ebook());
                 case PPTX -> PdfToPptx.convert(pdf, out, settings.slides());
                 case ODP -> PdfToOdp.convert(pdf, out, settings.slides());
-                case XLSX, ODS -> PdfToXlsx.convert(pdf, out, settings.workbook(format));
+                case XLSX, ODS, CSV -> PdfToXlsx.convertAs(pdf, out, settings.workbook(format));
             }
             return null;
         });
@@ -234,7 +237,7 @@ public final class OfficeConvert {
                 case AZW3 -> PdfToAzw3.convert(pdf, out, settings.document(), settings.ebook());
                 case PPTX -> PdfToPptx.convert(pdf, out, settings.slides());
                 case ODP -> PdfToOdp.convert(pdf, out, settings.slides());
-                case XLSX, ODS -> PdfToXlsx.convert(pdf, out, settings.workbook(format));
+                case XLSX, ODS, CSV -> PdfToXlsx.convert(pdf, out, settings.workbook(format));
             }
             return null;
         });
@@ -263,7 +266,7 @@ public final class OfficeConvert {
         Objects.requireNonNull(pdf, "pdf");
         Objects.requireNonNull(format, "format");
         Objects.requireNonNull(settings, "settings");
-        float dpi = format == Format.XLSX || format == Format.ODS ? 72f : settings.figureDpi();
+        float dpi = format == Format.XLSX || format == Format.ODS || format == Format.CSV ? 72f : settings.figureDpi();
         return PdfFootprint.estimate(pdf, settings.firstPage(), settings.lastPage(), dpi);
     }
 

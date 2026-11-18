@@ -20,6 +20,7 @@ public final class HeaderFooter {
     private static final Pattern FIRST_PAGE_NUMBER =
             Pattern.compile("(?i)^(page|p\\.|pg\\.?)?\\s*[-\\u2013\\u2014(]?\\s*1\\s*[-\\u2013\\u2014)]?(\\s*(of|/)\\s*1)?$");
     private static final float NUMBER_GAP_LINES = 2f;
+    private static final float SLIDE_TITLE_SIZE = 1.2f;
 
     private final Map<String, RunningLine> candidates = new HashMap<>();
     private final Map<String, List<float[]>> anchors = new HashMap<>();
@@ -30,11 +31,15 @@ public final class HeaderFooter {
     private final List<RunningLine> accepted = new ArrayList<>();
     private final Set<String> furniture = new HashSet<>();
     private final Map<Integer, Integer> numberOffsets = new HashMap<>();
+    private final Map<Integer, int[]> numberZones = new HashMap<>();
+    private Boolean numbersOnTop;
     private Integer pageNumberOffset;
     private int pageCount;
+    private int landscapePages;
 
     void addPage(PageData page, List<Line> segments) {
         sampledPages.add(page.index());
+        landscapePages += page.width() > page.height() ? 1 : 0;
         float h = page.height();
         List<Seen> onPage = seen.computeIfAbsent(page.index(), k -> new ArrayList<>());
         for (Line seg : segments) {
@@ -52,6 +57,7 @@ public final class HeaderFooter {
             }
             for (int n : PageNumbers.in(seg)) {
                 numberOffsets.merge(n - page.index(), 1, Integer::sum);
+                numberZones.computeIfAbsent(n - page.index(), k -> new int[2])[top ? 0 : 1]++;
             }
         }
     }
@@ -106,7 +112,11 @@ public final class HeaderFooter {
         for (RunningLine r : candidates.values()) {
             sightings.computeIfAbsent(unplaced(r.signature), k -> new HashSet<>()).addAll(r.pages());
         }
+        float body = medianSize();
         for (RunningLine r : candidates.values()) {
+            if (titleSized(r, body, landscapePages * 2 > sampled)) {
+                continue;
+            }
             long even = r.occurrences.keySet().stream().filter(p -> p % 2 == 0).count();
             long odd = r.occurrences.size() - even;
             long ofParity = even == 0 ? sampled - evenSampled : odd == 0 ? evenSampled : sampled;
@@ -130,8 +140,37 @@ public final class HeaderFooter {
         if (sampled >= 4) {
             numberOffsets.entrySet().stream().max(Map.Entry.comparingByValue())
                     .filter(e -> e.getValue() >= Math.max(3, 0.3f * sampled))
-                    .ifPresent(e -> pageNumberOffset = e.getKey());
+                    .ifPresent(e -> {
+                        pageNumberOffset = e.getKey();
+                        int[] z = numberZones.get(e.getKey());
+                        numbersOnTop = z[0] >= 3 * z[1] ? Boolean.TRUE : z[1] >= 3 * z[0] ? Boolean.FALSE : null;
+                    });
         }
+    }
+
+    // On slides a repeated line at the top above body size is the slide title, not a running head.
+    private static boolean titleSized(RunningLine r, float body, boolean slides) {
+        return slides && r.top && body > 0 && r.occurrences.values().stream().allMatch(l -> l.size > SLIDE_TITLE_SIZE * body);
+    }
+
+    private float medianSize() {
+        java.util.TreeMap<Float, Integer> chars = new java.util.TreeMap<>();
+        int total = 0;
+        for (List<Seen> page : seen.values()) {
+            for (Seen s : page) {
+                int n = s.line().text().length();
+                chars.merge(Math.round(s.line().size * 2f) / 2f, n, Integer::sum);
+                total += n;
+            }
+        }
+        int half = total / 2;
+        for (Map.Entry<Float, Integer> e : chars.entrySet()) {
+            half -= e.getValue();
+            if (half < 0) {
+                return e.getKey();
+            }
+        }
+        return 0f;
     }
 
     private void acceptLonePageNumbers() {
@@ -195,7 +234,7 @@ public final class HeaderFooter {
             if (!top && seg.top <= h * (1 - ZONE) || marksText(seg, segments)) {
                 continue;
             }
-            if (carriesPageNumber(seg, page.index())) {
+            if (carriesPageNumber(seg, page.index()) && (numbersOnTop == null || numbersOnTop == top)) {
                 numberRows.add(seg.baseline);
                 out.add(seg);
             } else if (furniture.contains(signature(seg, top, page.width()))) {

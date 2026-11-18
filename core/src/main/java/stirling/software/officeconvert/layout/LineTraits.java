@@ -105,6 +105,27 @@ final class LineTraits {
                 && a.prefix().equals(b.prefix()) && a.suffix().equals(b.suffix()) && !a.suffix().isEmpty();
     }
 
+    // Code listings number every line; a long line before the next number is not a wrapped paragraph.
+    static boolean continuesLineNumbers(Line prev, Line cur) {
+        int a = lineNumber(prev);
+        int b = lineNumber(cur);
+        return a >= 0 && b == a + 1 && (prev.font.mono() && cur.font.mono() || numberColumn(prev) && numberColumn(cur));
+    }
+
+    private static int lineNumber(Line l) {
+        if (l.words.size() < 2) {
+            return -1;
+        }
+        String t = l.words.getFirst().text;
+        return t.matches("[0-9]{1,4}") ? Integer.parseInt(t) : -1;
+    }
+
+    private static boolean numberColumn(Line l) {
+        Glyph n = l.words.getFirst().first();
+        Glyph next = l.words.get(1).first();
+        return n.font != next.font || n.size < 0.9f * next.size;
+    }
+
     private static Marker leadingMarker(Line line) {
         return Marker.leading(line);
     }

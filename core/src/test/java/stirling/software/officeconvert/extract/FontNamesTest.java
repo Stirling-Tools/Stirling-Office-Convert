@@ -68,4 +68,10 @@ class FontNamesTest {
         assertFalse(FontNames.isOfficeFont("Myriad Pro"));
         assertFalse(FontNames.isOfficeFont(null));
     }
+
+    @Test
+    void newtxmathItalicIsTexMath() {
+        assertTrue(FontNames.isTexMath("NewTXMI"));
+        assertTrue(FontNames.isTexMath("ABCDEF+NewTXMI5"));
+    }
 }

@@ -36,7 +36,8 @@ enum OutputFormat {
     ODP((pdf, target, s) -> PdfToOdp.convert(pdf, target, s.slides())),
     PPT((pdf, target, s) -> PdfToPpt.convert(pdf, target, s.slides())),
     XLSX((pdf, target, s) -> PdfToXlsx.convert(pdf, target, s.books())),
-    ODS((pdf, target, s) -> PdfToXlsx.convert(pdf, target, s.books()));
+    ODS((pdf, target, s) -> PdfToXlsx.convert(pdf, target, s.books())),
+    CSV((pdf, target, s) -> PdfToXlsx.convert(pdf, target, s.books()));
 
     static final String PDF = "pdf";
 

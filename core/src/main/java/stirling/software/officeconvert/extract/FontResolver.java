@@ -99,6 +99,9 @@ public final class FontResolver {
             if (unnamed) {
                 shapes = shapes != null ? (namelessSerif = shapes) : namelessSerif;
             }
+            if (shapes == null && !mono && TexControlCodes.pkFont(font)) {
+                shapes = true;
+            }
             serif = shapes != null ? shapes : serif;
             boolean narrow = !mono && !serif && GlyphShapes.condensed(font, bold);
             family = mono ? "Courier New" : serif ? "Times New Roman" : narrow ? "Arial Narrow" : "Arial";

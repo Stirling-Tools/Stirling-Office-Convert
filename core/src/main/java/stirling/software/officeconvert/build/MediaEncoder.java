@@ -83,6 +83,13 @@ final class MediaEncoder {
     private int textFreeFigures;
     private BufferedImage textFreeRender;
 
+    private boolean slanted;
+
+    MediaEncoder slantedTextAsArt(boolean on) {
+        slanted = on;
+        return this;
+    }
+
     MediaEncoder(PDDocument document, float figureDpi, Pictures pictures) {
         this.document = document;
         this.figureDpi = figureDpi;
@@ -336,7 +343,7 @@ final class MediaEncoder {
 
     private FigureRenderer paperRenderer() {
         if (paperRenderer == null) {
-            paperRenderer = new FigureRenderer(document, false, true);
+            paperRenderer = new FigureRenderer(document, false, true).withSlantedText(slanted);
             paperRenderer.setSubsamplingAllowed(true);
         }
         return paperRenderer;
@@ -344,7 +351,7 @@ final class MediaEncoder {
 
     private PDFRenderer textFree() {
         if (textFreeRenderer == null) {
-            textFreeRenderer = new FigureRenderer(document, false);
+            textFreeRenderer = new FigureRenderer(document, false).withSlantedText(slanted);
             textFreeRenderer.setSubsamplingAllowed(true);
         }
         return textFreeRenderer;

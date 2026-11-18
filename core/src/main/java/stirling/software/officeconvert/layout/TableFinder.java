@@ -46,7 +46,7 @@ final class TableFinder {
                 }
                 if (!Regions.overlapsMostly(b, claimed)) {
                     found.add(f.gridded() ? t : TableShaper.addFrameHeader(t, f.box(), segments));
-                    claimed.add(b);
+                    claimed.add(boxOf(found.getLast()));
                 }
             }
         }
@@ -62,7 +62,7 @@ final class TableFinder {
                 boolean outgrows = b.x() < region.x() - OUTGROW || b.right() > region.right() + OUTGROW
                         || b.top() < region.top() - OUTGROW || b.bottom() > region.bottom() + OUTGROW;
                 TableDetection.Found kept = outgrows ? rejudged(page, b, rest, rules, fills, strong) : t;
-                if (kept != null && !Regions.overlapsMostly(boxOf(kept), claimed)) {
+                if (kept != null && !Regions.overlapsMostly(boxOf(kept), claimed) && !wordsInside(rest, kept).isEmpty()) {
                     found.add(kept);
                     claimed.add(boxOf(kept));
                 }

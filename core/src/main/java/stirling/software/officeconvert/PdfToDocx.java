@@ -97,6 +97,24 @@ public final class PdfToDocx {
     @FunctionalInterface
     interface WriterFactory<W extends DocSink & Closeable> {
         W open(OutputStream out) throws IOException;
+
+        default boolean keepsSlantedText() {
+            return false;
+        }
+    }
+
+    static <W extends DocSink & Closeable> WriterFactory<W> textOnly(WriterFactory<W> format) {
+        return new WriterFactory<>() {
+            @Override
+            public W open(OutputStream out) throws IOException {
+                return format.open(out);
+            }
+
+            @Override
+            public boolean keepsSlantedText() {
+                return true;
+            }
+        };
     }
 
     public static void convert(Path pdf, Path docx, Options options) throws IOException {
@@ -154,6 +172,9 @@ public final class PdfToDocx {
         int first = range[0];
         int last = range[1];
         PageReader reader = new PageReader(doc);
+        if (format.keepsSlantedText()) {
+            reader.keepSlantedText();
+        }
 
         DocStats stats = new DocStats();
         Map<Integer, PageData> cache = new HashMap<>();

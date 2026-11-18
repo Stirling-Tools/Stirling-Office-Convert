@@ -12,7 +12,9 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.Arrays;
+import java.util.BitSet;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 import org.apache.fontbox.ttf.TTFParser;
@@ -142,5 +144,59 @@ class SfntTest {
             assertEquals(program.length, file.getInt(LENGTH1));
             assertEquals("Tidy fonts", new PDFTextStripper().getText(d).strip());
         }
+    }
+
+    private static byte[] font(Map<String, byte[]> tables, int aliasesOfGlyf) {
+        int n = tables.size() + aliasesOfGlyf;
+        int at = 12 + 16 * n;
+        ByteBuffer out = ByteBuffer.allocate(at + tables.values().stream().mapToInt(t -> t.length + 3 & ~3).sum());
+        out.putInt(0, 0x00010000).putShort(4, (short) n);
+        int r = 12;
+        int glyfAt = 0;
+        for (Map.Entry<String, byte[]> e : tables.entrySet()) {
+            out.put(r, e.getKey().getBytes(StandardCharsets.ISO_8859_1)).putInt(r + 8, at)
+                    .putInt(r + 12, e.getValue().length).put(at, e.getValue());
+            glyfAt = e.getKey().equals("glyf") ? at : glyfAt;
+            r += 16;
+            at += e.getValue().length + 3 & ~3;
+        }
+        for (int i = 0; i < aliasesOfGlyf; i++) {
+            String id = Integer.toString(i, 36);
+            out.put(r, ("z00" + id).substring(id.length()).getBytes(StandardCharsets.ISO_8859_1))
+                    .putInt(r + 8, glyfAt).putInt(r + 12, tables.get("glyf").length);
+            r += 16;
+        }
+        return out.array();
+    }
+
+    private static Map<String, byte[]> glyphTables(int glyphs, byte[] loca, int glyfLength) {
+        Map<String, byte[]> t = new LinkedHashMap<>();
+        t.put("head", new byte[54]);
+        t.put("hhea", ByteBuffer.allocate(36).putShort(34, (short) 1).array());
+        t.put("maxp", ByteBuffer.allocate(6).putInt(0, 0x00005000).putShort(4, (short) glyphs).array());
+        t.put("hmtx", new byte[4]);
+        t.put("loca", loca);
+        t.put("glyf", new byte[glyfLength]);
+        return t;
+    }
+
+    @Test
+    void aSubsetRefusesLocaOffsetsThatRunBackwards() {
+        int glyphs = 32_766;
+        ByteBuffer loca = ByteBuffer.allocate((glyphs + 1) * 2);
+        for (int g = 0; g <= glyphs; g++) {
+            loca.putShort(2 * g, (short) (g % 2 == 0 ? 0 : 0xFFFF));
+        }
+        BitSet used = new BitSet();
+        used.set(0, glyphs);
+
+        assertNull(Sfnt.subset(font(glyphTables(glyphs, loca.array(), 0x1FFFE), 0), used, true));
+    }
+
+    @Test
+    void aRepairRefusesTablesThatOverlapIntoAHugeFont() {
+        byte[] font = font(glyphTables(1, new byte[4], 500_000), 4_000);
+
+        assertNull(Sfnt.complete(font));
     }
 }

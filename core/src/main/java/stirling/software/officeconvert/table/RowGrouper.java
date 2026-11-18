@@ -251,11 +251,19 @@ final class RowGrouper {
         for (int c = 0; c < line.columns(); c++) {
             if (line.has(c)
                     && anchor.has(c)
-                    && !CellText.wrapsInto(line.cell(c), anchor.cell(c).getFirst(), wrap(c))) {
+                    && (!CellText.wrapsInto(line.cell(c), anchor.cell(c).getFirst(), wrap(c))
+                            || startsNewItem(line.cell(c), anchor.cell(c)) && siblingItems(line.cell(c), anchor.cell(c)))) {
                 return false;
             }
         }
         return true;
+    }
+
+    private static boolean siblingItems(List<PdfWord> above, List<PdfWord> next) {
+        String lead = next.getFirst().text();
+        return ListMarkers.isMarker(lead)
+                || ListMarkers.isMarker(above.getFirst().text())
+                || above.size() > 1 && next.size() > 1 && lead.equalsIgnoreCase(above.getFirst().text());
     }
 
     static boolean startsNewItem(List<PdfWord> above, List<PdfWord> next) {

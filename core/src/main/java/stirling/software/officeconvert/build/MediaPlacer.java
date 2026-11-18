@@ -29,8 +29,13 @@ final class MediaPlacer {
     private final ParagraphFactory paragraphs;
 
     MediaPlacer(PDDocument document, float figureDpi, Pictures pictures, DocSink sink, ParagraphFactory paragraphs) {
+        this(document, figureDpi, pictures, sink, paragraphs, false);
+    }
+
+    MediaPlacer(PDDocument document, float figureDpi, Pictures pictures, DocSink sink, ParagraphFactory paragraphs,
+            boolean slantedAsArt) {
         this.document = document;
-        this.media = new MediaEncoder(document, figureDpi, pictures);
+        this.media = new MediaEncoder(document, figureDpi, pictures).slantedTextAsArt(slantedAsArt);
         this.sink = sink;
         this.paragraphs = paragraphs;
     }

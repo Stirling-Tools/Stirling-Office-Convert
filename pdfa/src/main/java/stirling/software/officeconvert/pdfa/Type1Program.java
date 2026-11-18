@@ -10,6 +10,8 @@ import java.util.Map;
 
 import org.apache.fontbox.type1.Type1Font;
 
+import stirling.software.officeconvert.fonts.CharStringExpansion;
+
 final class Type1Program extends FontProgram {
 
     private final Type1Font font;

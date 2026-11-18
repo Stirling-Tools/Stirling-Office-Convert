@@ -34,7 +34,7 @@ class FormulaLinesTest {
     }
 
     private static String text(List<Glyph> glyphs) {
-        return glyphs.stream().sorted(Comparator.comparingDouble((Glyph x) -> x.x)).map(x -> x.text + mark(x))
+        return glyphs.stream().sorted(Comparator.comparingDouble((Glyph x) -> x.x)).map(x -> x.text.stripTrailing() + mark(x) + x.text.substring(x.text.stripTrailing().length()))
                 .collect(Collectors.joining());
     }
 
@@ -80,6 +80,24 @@ class FormulaLinesTest {
         Rule bar = new Rule(true, 98, 100, 106, 0.5f, 0);
         FormulaLines.Rebuilt r = FormulaLines.rebuild(in, List.of(bar), List.of());
         assertEquals("1/N ∗ x", text(r.glyphs()));
+        assertTrue(r.consumed().contains(bar), "the fraction bar is not drawn again");
+    }
+
+    @Test
+    void aWebFractionKeepsItsBarWhenTexPathsHitTheWorkCap() {
+        List<Glyph> in = new ArrayList<>();
+        g(in, "1", 100.5f, 4, 96, 7.8f, MAIN);
+        g(in, "N", 100, 6, 107, 7.8f, ITALIC);
+        g(in, "∗", 109, 4, 100, 7.8f, MAIN);
+        g(in, "x", 115, 4.5f, 100, 7.8f, ITALIC);
+        g(in, "y", 300, 4.5f, 600, 7.8f, new FontInfo("Cambria Math", false, true, true, false, false, "CMMI10", true));
+        Rule bar = new Rule(true, 98, 100, 106, 0.5f, 0);
+        List<Rule> rules = new ArrayList<>();
+        rules.add(bar);
+        for (int i = 0; i < 4_500; i++) {
+            rules.add(new Rule(false, 400 + i * 0.05f, 300, 320, 0.5f, 0));
+        }
+        FormulaLines.Rebuilt r = FormulaLines.rebuild(in, rules, List.of());
         assertTrue(r.consumed().contains(bar), "the fraction bar is not drawn again");
     }
 

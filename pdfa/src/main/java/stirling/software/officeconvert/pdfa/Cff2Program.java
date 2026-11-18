@@ -10,6 +10,8 @@ import org.apache.fontbox.ttf.HorizontalMetricsTable;
 import org.apache.fontbox.ttf.PostScriptTable;
 import org.apache.fontbox.ttf.TrueTypeFont;
 
+import stirling.software.officeconvert.fonts.CharStringExpansion;
+
 final class Cff2Program extends FontProgram {
 
     private final Cff2 cff2;

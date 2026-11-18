@@ -10,18 +10,48 @@ final class FrameEdgeRows {
 
     private FrameEdgeRows() {}
 
+    private static final int MAX_ROWS_ABOVE = 3;
+
+    // Header rows stacked over a ruled table; above the first, a row may be a group header whose labels each span two columns.
     static List<Line> above(Box frame, float[] edges, List<Line> segments) {
-        return nearest(frame, edges, segments, true);
+        List<Line> out = new ArrayList<>(nearest(frame, edges, segments, true, true));
+        float top = out.stream().map(l -> l.top).min(Float::compare).orElse(Float.NaN);
+        for (int k = 1; k < MAX_ROWS_ABOVE && !Float.isNaN(top); k++) {
+            List<Line> row = nearest(new Box(frame.x(), top, frame.right(), frame.bottom()), edges, segments, true, false);
+            if (row.isEmpty() || !fits(row, edges) && !groupHeader(row, edges)) {
+                break;
+            }
+            out.addAll(row);
+            top = row.stream().map(l -> l.top).min(Float::compare).orElseThrow();
+        }
+        return out;
+    }
+
+    private static boolean groupHeader(List<Line> row, float[] edges) {
+        boolean spans = false;
+        for (Line l : row) {
+            for (Word w : l.words) {
+                int crossed = 0;
+                for (int e = 1; e < edges.length - 1; e++) {
+                    crossed += w.x < edges[e] - 1 && w.right > edges[e] + 1 ? 1 : 0;
+                }
+                if (crossed > 1) {
+                    return false;
+                }
+                spans |= crossed == 1;
+            }
+        }
+        return spans;
     }
 
     static List<Line> below(Box frame, float[] edges, List<Line> segments) {
-        List<Line> row = nearest(frame, edges, segments, false);
+        List<Line> row = nearest(frame, edges, segments, false, true);
         if (row.isEmpty()) {
             return row;
         }
         float bottom = row.stream().map(l -> l.bottom).max(Float::compare).orElseThrow();
         Box past = new Box(frame.x(), frame.top(), frame.right(), bottom);
-        return nearest(past, edges, segments, false).isEmpty() ? row : List.of();
+        return nearest(past, edges, segments, false, true).isEmpty() ? row : List.of();
     }
 
     private static final int MAX_HEADER_ROWS = 4;
@@ -67,7 +97,7 @@ final class FrameEdgeRows {
         return false;
     }
 
-    private static List<Line> nearest(Box frame, float[] edges, List<Line> segments, boolean above) {
+    private static List<Line> nearest(Box frame, float[] edges, List<Line> segments, boolean above, boolean mustFit) {
         Line closest = null;
         for (Line l : segments) {
             boolean outside = above ? l.bottom <= frame.top() + 1 && l.bottom > frame.top() - 2 * l.size
@@ -89,7 +119,7 @@ final class FrameEdgeRows {
                 row.add(l);
             }
         }
-        return fits(row, edges) ? row : List.of();
+        return !mustFit || fits(row, edges) ? row : List.of();
     }
 
     private static boolean fits(List<Line> row, float[] edges) {

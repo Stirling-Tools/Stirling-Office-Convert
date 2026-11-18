@@ -117,6 +117,9 @@ final class Sfnt {
         for (int g = 0; g <= glyphs; g++) {
             offsets[g] = longOffsets ? b.getInt(loca.offset + 4 * g) & 0xFFFFFFFFL
                     : (b.getShort(loca.offset + 2 * g) & 0xFFFFL) * 2;
+            if (g > 0 && offsets[g] < offsets[g - 1]) {
+                return null;
+            }
         }
         BitSet keep = closure(font, glyf.offset, offsets, used, glyphs);
         long size = 0;
@@ -124,7 +127,7 @@ final class Sfnt {
             long length = Math.max(0, offsets[g + 1] - offsets[g]);
             size += length + (length & 1);
         }
-        if (size > Integer.MAX_VALUE - 16) {
+        if (size > glyf.length + (long) glyphs) {
             return null;
         }
         boolean shortLoca = size <= 0x1FFFE;
@@ -179,7 +182,7 @@ final class Sfnt {
             out.put("post", post);
         }
         byte[] result = assemble(b.getInt(0), out);
-        return sameGlyphs(font, result, keep) ? result : null;
+        return result != null && sameGlyphs(font, result, keep) ? result : null;
     }
 
     static byte[] complete(byte[] font) {
@@ -194,6 +197,7 @@ final class Sfnt {
         }
         List<Table> whole = new ArrayList<>();
         Set<String> tags = new HashSet<>();
+        long kept = 0;
         for (int i = 0; i < n; i++) {
             int r = 12 + 16 * i;
             String tag = new String(font, r, 4, java.nio.charset.StandardCharsets.ISO_8859_1);
@@ -204,6 +208,7 @@ final class Sfnt {
             }
             if (offset >= 12L + 16L * n && offset + length <= font.length && !UNUSED.contains(tag)) {
                 whole.add(new Table(tag, (int) offset, (int) length));
+                kept += length;
             }
         }
         for (String needed : List.of("head", "hhea", "maxp", "hmtx", "loca", "glyf")) {
@@ -211,7 +216,7 @@ final class Sfnt {
                 return null;
             }
         }
-        if (!glyphsInside(font, whole)) {
+        if (kept > 2L * font.length || !glyphsInside(font, whole)) {
             return null;
         }
         TreeMap<String, byte[]> out = new TreeMap<>();
@@ -219,6 +224,9 @@ final class Sfnt {
             out.put(t.tag, Arrays.copyOfRange(font, t.offset, t.offset + t.length));
         }
         byte[] result = assemble(version, out);
+        if (result == null) {
+            return null;
+        }
         try (TrueTypeFont parsed = new TTFParser(true).parse(new RandomAccessReadBuffer(result))) {
             return parsed.getNumberOfGlyphs() > 0 && parsed.getGlyph() != null ? result : null;
         } catch (IOException | RuntimeException e) {
@@ -270,6 +278,9 @@ final class Sfnt {
         long size = 12L + 16L * n;
         for (byte[] t : tables.values()) {
             size += t.length + 3L & ~3L;
+        }
+        if (size > Integer.MAX_VALUE - 8) {
+            return null;
         }
         byte[] out = new byte[(int) size];
         ByteBuffer b = ByteBuffer.wrap(out);

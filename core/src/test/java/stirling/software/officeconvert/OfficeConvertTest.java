@@ -67,6 +67,16 @@ class OfficeConvertTest {
     }
 
     @Test
+    void anExplicitFormatWinsOverTheFileName() throws IOException {
+        Path pdf = SpreadsheetPdfs.report(dir, 0);
+        Path out = dir.resolve("table.xlsx");
+        OfficeConvert.convert(pdf, out, OfficeConvert.Format.CSV, OfficeConvert.Settings.defaults());
+        String csv = Files.readString(out);
+        assertFalse(csv.startsWith("PK"), "a workbook was written");
+        assertTrue(csv.contains("Region"), csv);
+    }
+
+    @Test
     void streamsAndText() throws IOException {
         Path pdf = sample();
         ByteArrayOutputStream out = new ByteArrayOutputStream();

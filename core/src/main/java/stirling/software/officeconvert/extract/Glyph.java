@@ -34,6 +34,9 @@ public final class Glyph {
 
     public String math;
 
+    // Ink centre below the baseline for TeX math glyphs that hang from it (big delimiters, radicals).
+    public float hang = Float.NaN;
+
     public Glyph(
             String text,
             float x,
@@ -77,6 +80,7 @@ public final class Glyph {
         g.invisible = invisible;
         g.icon = icon == null ? null : new IconShape(icon.scaled(k), icon.rgb(), icon.key() + "|" + k);
         g.math = math;
+        g.hang = hang * k;
         return g;
     }
 
@@ -103,6 +107,7 @@ public final class Glyph {
         g.invisible = invisible;
         g.icon = icon;
         g.math = math;
+        g.hang = hang;
         return g;
     }
 

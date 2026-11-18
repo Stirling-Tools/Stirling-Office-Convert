@@ -32,7 +32,20 @@ final class FontPrograms {
         return type1(fontName, 0, 0, true);
     }
 
+    static Type1 fanOutType1(String fontName, int levels) {
+        return type1(fontName, 0, 0, false, levels, false);
+    }
+
+    static Type1 missingComponentsType1(String fontName, int notdefLevels) {
+        return type1(fontName, 0, 0, false, notdefLevels, true);
+    }
+
     private static Type1 type1(String fontName, int subrPadding, int widthTenths, boolean plain) {
+        return type1(fontName, subrPadding, widthTenths, plain, 0, false);
+    }
+
+    private static Type1 type1(String fontName, int subrPadding, int widthTenths, boolean plain, int fanOut,
+            boolean fanOutOnNotdef) {
         StringBuilder clear = new StringBuilder();
         clear.append("%!PS-AdobeFont-1.0: ").append(fontName).append(" 001\n")
                 .append("12 dict begin\n/FontInfo 2 dict dup begin /FullName (").append(fontName)
@@ -45,11 +58,14 @@ final class FontPrograms {
                 + "/ND{noaccess def}executeonly def\n/NP{noaccess put}executeonly def\n/lenIV " + (plain ? -1 : 4)
                 + " def\n"
                 + "/BlueValues [] def\n/MinFeature{16 16}def\n/password 5839 def\n");
-        int subrs = 5 + subrPadding;
+        int subrs = 5 + subrPadding + (fanOut > 0 ? fanOut + 1 : 0);
         write(priv, "/Subrs " + subrs + " array\n");
         for (int i = 0; i < subrs; i++) {
             byte[] cs = i == 4 ? concat(num(0), num(700), new byte[] {5}, num(400), num(0), new byte[] {5}, num(0),
                     num(-700), new byte[] {5, 11})
+                    : fanOut > 0 && i >= 5 ? (i < 5 + fanOut
+                            ? concat(repeat(concat(num(i + 1), new byte[] {10}), 2), new byte[] {11})
+                            : new byte[] {11})
                     : i >= 5 ? concat(repeat(num(1), 40), new byte[] {11}) : new byte[] {11};
             byte[] enc = plain ? cs : charstring(cs);
             write(priv, "dup " + i + " " + enc.length + " RD ");
@@ -57,19 +73,22 @@ final class FontPrograms {
             write(priv, " NP\n");
         }
         write(priv, "ND\n2 index /CharStrings " + (NAMES.size() + 1) + " dict dup begin\n");
-        glyph(priv, plain, ".notdef", concat(num(0), num(250), new byte[] {13, 14}));
+        byte[] notdefFan = fanOutOnNotdef ? concat(num(5), new byte[] {10}) : new byte[0];
+        glyph(priv, plain, ".notdef", concat(num(0), num(250), new byte[] {13}, notdefFan, new byte[] {14}));
         for (String n : NAMES) {
             byte[] body;
             if ("space".equals(n)) {
                 body = concat(num(0), num(250), new byte[] {13, 14});
             } else if ("Aacute".equals(n)) {
-                body = concat(num(0), num(width("A")), new byte[] {13}, num(0), num(100), num(200), num(65), num(194),
-                        new byte[] {12, 6});
+                body = concat(num(0), num(width("A")), new byte[] {13}, num(0), num(100), num(200),
+                        num(fanOutOnNotdef ? 199 : 65), num(fanOutOnNotdef ? 200 : 194), new byte[] {12, 6});
             } else {
                 int w = width(n);
                 byte[] advance = widthTenths == 0 ? num(w) : concat(num(w * 10 + widthTenths), num(10),
                         new byte[] {12, 12});
-                body = concat(num(0), advance, new byte[] {13}, num(50), num(0), new byte[] {21}, num(4),
+                byte[] fan = fanOut > 0 && !fanOutOnNotdef && "A".equals(n) ? concat(num(5), new byte[] {10})
+                        : new byte[0];
+                body = concat(num(0), advance, new byte[] {13}, fan, num(50), num(0), new byte[] {21}, num(4),
                         new byte[] {10, 9},
                         repeat(concat(num(10), num(0), new byte[] {5}, num(-10), num(0), new byte[] {5}), 30),
                         new byte[] {14});
