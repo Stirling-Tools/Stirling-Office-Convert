@@ -6,6 +6,7 @@ import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
+import java.util.regex.Pattern;
 
 import stirling.software.officeconvert.sheet.CellValue;
 import stirling.software.officeconvert.sheet.Row;
@@ -17,6 +18,8 @@ import stirling.software.officeconvert.sheet.WorkbookSink;
 public final class CsvWriter implements WorkbookSink {
 
     private static final String EOL = "\r\n";
+
+    private static final Pattern SIGNED_NUMBER = Pattern.compile("[+-]\\d[\\d,.\\s]*%?");
 
     private final Writer out;
     private boolean anySheet;
@@ -60,10 +63,20 @@ public final class CsvWriter implements WorkbookSink {
         if (v.isEmpty()) {
             return "";
         }
+        if (v.kind() == CellValue.Kind.NUMBER) {
+            return v.text().isEmpty() ? SheetXml.number(v.number()) : ScriptMarks.strip(v.text());
+        }
         if (!v.text().isEmpty()) {
-            return ScriptMarks.strip(v.text());
+            return inert(ScriptMarks.strip(v.text()));
         }
         return SheetXml.number(v.number());
+    }
+
+    private static String inert(String s) {
+        if (s.isEmpty() || "=+-@\t\r".indexOf(s.charAt(0)) < 0 || SIGNED_NUMBER.matcher(s).matches()) {
+            return s;
+        }
+        return "'" + s;
     }
 
     static void field(StringBuilder sb, String s) {

@@ -225,7 +225,7 @@ public final class DocStats {
             boolean boldBody = bold && !bodyBold && size > bodySize - 0.6f;
             if ((bigger || boldBody) && chars < totalChars * 0.25f) {
                 candidates.add(new Tier(size, bold, e.getValue(), tierFirstPage.get(key), tierLastPage.get(key),
-                        tierLabels.getOrDefault(key, 0) == e.getValue(), tierTexts.get(key).size() == 1));
+                        tierLabels.getOrDefault(key, 0).equals(e.getValue()), tierTexts.get(key).size() == 1));
             }
         }
         candidates.sort(

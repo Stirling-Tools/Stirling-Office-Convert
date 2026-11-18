@@ -135,6 +135,8 @@ final class GlyphCollector extends PDFStreamEngine {
     private final Map<Glyph, String> alternatives = new IdentityHashMap<>();
     private final Set<Glyph> marks = Collections.newSetFromMap(new IdentityHashMap<>());
     private final Set<Glyph> overlines = Collections.newSetFromMap(new IdentityHashMap<>());
+
+    private final Set<Glyph> texCodes = Collections.newSetFromMap(new IdentityHashMap<>());
     private final Set<Glyph> bars = Collections.newSetFromMap(new IdentityHashMap<>());
     private boolean inPage;
     private int seq;
@@ -543,7 +545,8 @@ final class GlyphCollector extends PDFStreamEngine {
         composeOverlines(glyphs);
         assembleRadicals(glyphs);
         composeMarks(glyphs);
-        TexControlCodes.resolve(glyphs);
+        TexControlCodes.resolve(glyphs, texCodes);
+        texCodes.clear();
         settleAlternatives(glyphs);
         current = new ArrayList<>();
         nextIndex = pageIndex + 1;
@@ -789,7 +792,7 @@ final class GlyphCollector extends PDFStreamEngine {
     private boolean slantAsArt = true;
 
     private void processTextPosition(TextPosition tp) {
-        if (slantAsArt && getGraphicsState().getTextState().getRenderingMode().isFill()
+        if (slantAsArt && tp.getFont() instanceof PDVectorFont && getGraphicsState().getTextState().getRenderingMode().isFill()
                 && SkewedText.skewed(tp.getTextMatrix())) {
             return;
         }
@@ -894,6 +897,9 @@ final class GlyphCollector extends PDFStreamEngine {
         if (WordContext.mark(unicode) && codes != null && codes.length == 1
                 && (positions.mapped(pdFont, codes[0]) || positions.unmapped.shapeRead(pdFont, codes[0], unicode))) {
             marks.add(g);
+        }
+        if (tex != null) {
+            texCodes.add(g);
         }
         if (overline) {
             overlines.add(g);

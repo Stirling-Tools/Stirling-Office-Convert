@@ -169,7 +169,7 @@ public final class PdfToXlsx {
         int[] range = PdfFiles.pageRange(total, options.firstPage(), options.lastPage());
         int first = range[0];
         int last = range[1];
-        PageReader reader = new PageReader(doc);
+        PageReader reader = new PageReader(doc).keepSlantedText();
         DocStats stats = new DocStats();
         ConventionEvidence evidence = new ConventionEvidence();
         Map<Integer, PageData> cache = new HashMap<>();

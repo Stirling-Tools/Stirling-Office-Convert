@@ -109,6 +109,9 @@ final class CodeMarks {
                 bars.add(new Box(r.pos() - half, r.start(), r.pos() + half, r.end()));
             }
         }
+        if (bars.size() > MAX_INPUT) {
+            return List.of();
+        }
         bars.sort(java.util.Comparator.comparingDouble(Box::top).thenComparingDouble(Box::x));
         List<Box> out = new ArrayList<>();
         boolean[] used = new boolean[bars.size()];

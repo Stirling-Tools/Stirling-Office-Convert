@@ -2,6 +2,7 @@ package stirling.software.officeconvert.extract;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.font.PDFont;
@@ -57,10 +58,10 @@ final class TexControlCodes {
         return true;
     }
 
-    static void resolve(List<RawGlyph> glyphs) {
+    static void resolve(List<RawGlyph> glyphs, Set<Glyph> placeholders) {
         for (int i = 0; i < glyphs.size(); i++) {
             Glyph g = glyphs.get(i).glyph();
-            if (g.text.length() != 1 || g.text.charAt(0) < BASE || g.text.charAt(0) > BASE + 0x88) {
+            if (!placeholders.contains(g) || g.text.length() != 1 || g.text.charAt(0) < BASE || g.text.charAt(0) > BASE + 0x88) {
                 continue;
             }
             int code = g.text.charAt(0) - BASE;

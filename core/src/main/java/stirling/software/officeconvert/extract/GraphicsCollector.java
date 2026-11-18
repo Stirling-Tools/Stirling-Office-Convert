@@ -345,7 +345,12 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
         }
         AffineTransform at = trm.createAffineTransform();
         at.scale(0.001, 0.001);
-        PathIterator it = vector.getNormalizedPath(code).getPathIterator(at);
+        PathIterator it;
+        try {
+            it = vector.getNormalizedPath(code).getPathIterator(at);
+        } catch (IOException | RuntimeException e) {
+            return;
+        }
         float[] c = new float[6];
         float lastX = 0;
         float lastY = 0;

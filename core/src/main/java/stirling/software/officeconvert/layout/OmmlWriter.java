@@ -1,6 +1,8 @@
 package stirling.software.officeconvert.layout;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
@@ -298,18 +300,42 @@ final class OmmlWriter {
     }
 
     private static int fenceEnd(List<Node> nodes, int open) {
-        int depth = 0;
+        Deque<Character> stack = new ArrayDeque<>();
+        stack.push(((Text) nodes.get(open)).text().charAt(0));
         for (int k = open + 1; k < nodes.size(); k++) {
-            Text t = closer(nodes.get(k));
-            Text o = nodes.get(k) instanceof Text x && x.fence() && OPEN.indexOf(x.text().charAt(0)) >= 0
-                    && !x.text().equals("|") && !x.text().equals("‖") ? x : null;
-            if (o != null) {
-                depth++;
-            } else if (t != null && depth-- == 0) {
+            Node node = nodes.get(k);
+            Text t = closer(node);
+            boolean opener = node instanceof Text x && x.fence() && OPEN.indexOf(x.text().charAt(0)) >= 0;
+            if (t != null && bar(t.text().charAt(0))) {
+                char c = t.text().charAt(0);
+                if (stack.peek() == c) {
+                    stack.pop();
+                } else if (opener) {
+                    stack.push(c);
+                } else {
+                    popBracket(stack);
+                }
+            } else if (t != null) {
+                popBracket(stack);
+            } else if (opener) {
+                stack.push(((Text) node).text().charAt(0));
+            }
+            if (stack.isEmpty()) {
                 return k;
             }
         }
         return open + 1 < nodes.size() && nodes.get(open + 1) instanceof Stack ? open : -1;
+    }
+
+    private static boolean bar(char c) {
+        return c == '|' || c == '‖';
+    }
+
+    private static void popBracket(Deque<Character> stack) {
+        while (stack.size() > 1 && bar(stack.peek())) {
+            stack.pop();
+        }
+        stack.pop();
     }
 
     private static Text closer(Node n) {
