@@ -123,8 +123,9 @@ subprojects {
 }
 
 gradle.taskGraph.whenReady {
+    val signedLater = (findProperty("officeconvert.signStagingLater")?.toString() ?: "false").toBoolean()
     val releasing = allTasks.any {
-        it.name.contains("ToCentralPortalRepository") || it.name.contains("ToR2StagingRepository")
+        it.name.contains("ToCentralPortalRepository") || (!signedLater && it.name.contains("ToR2StagingRepository"))
     }
     if (releasing && !version.toString().endsWith("SNAPSHOT")
             && (findProperty("signing.key") ?: System.getenv("GPG_SIGNING_KEY")) == null) {
