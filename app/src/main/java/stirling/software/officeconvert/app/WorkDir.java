@@ -5,19 +5,26 @@ import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
 import java.nio.channels.OverlappingFileLockException;
 import java.nio.file.DirectoryStream;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.nio.file.attribute.UserPrincipal;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 final class WorkDir implements AutoCloseable {
+
+    static final String PARENT = "stirling-office-convert";
 
     static final String PREFIX = "office-convert-app";
 
@@ -25,30 +32,65 @@ final class WorkDir implements AutoCloseable {
 
     private static final String LOCK = ".lock";
 
+    private static final Set<Path> OWNED = ConcurrentHashMap.newKeySet();
+
     private final Path root;
     private final FileChannel channel;
-    private final FileLock lock;
 
-    private WorkDir(Path root, FileChannel channel, FileLock lock) {
+    private WorkDir(Path root, FileChannel channel) {
         this.root = root;
         this.channel = channel;
-        this.lock = lock;
     }
 
     static WorkDir open(Path tmp) throws IOException {
-        sweep(tmp, Instant.now());
-        Path root = Files.createTempDirectory(tmp, PREFIX);
-        FileChannel channel = FileChannel.open(root.resolve(LOCK), StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+        Path parent = parent(tmp);
+        sweep(parent, Instant.now());
+        Path root = key(Files.createTempDirectory(parent, PREFIX));
+        Path pending = root.resolve(LOCK + ".new");
+        FileChannel channel = FileChannel.open(pending, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
         try {
-            return new WorkDir(root, channel, channel.lock());
+            channel.lock();
+            Files.move(pending, root.resolve(LOCK), StandardCopyOption.ATOMIC_MOVE);
+            OWNED.add(root);
+            return new WorkDir(root, channel);
         } catch (IOException | RuntimeException e) {
             channel.close();
+            delete(root);
             throw e;
         }
     }
 
     static WorkDir open() throws IOException {
         return open(Path.of(System.getProperty("java.io.tmpdir")));
+    }
+
+    static Path parent(Path tmp) throws IOException {
+        Path parent = tmp.resolve(PARENT + "-" + System.getProperty("user.name", "user").replaceAll("[^A-Za-z0-9._-]", "_"));
+        try {
+            if (tmp.getFileSystem().supportedFileAttributeViews().contains("posix")) {
+                Files.createDirectory(parent, PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")));
+            } else {
+                Files.createDirectory(parent);
+            }
+        } catch (FileAlreadyExistsException e) {
+            if (!Files.isDirectory(parent, LinkOption.NOFOLLOW_LINKS) || !mine(parent, tmp)) {
+                return key(Files.createTempDirectory(tmp, PARENT));
+            }
+        }
+        return key(parent);
+    }
+
+    private static boolean mine(Path dir, Path tmp) {
+        UserPrincipal me = owner(tmp);
+        try {
+            return me != null && me.equals(Files.getOwner(dir, LinkOption.NOFOLLOW_LINKS));
+        } catch (IOException | UnsupportedOperationException e) {
+            return false;
+        }
+    }
+
+    private static Path key(Path p) {
+        return p.toAbsolutePath().normalize();
     }
 
     Path root() {
@@ -62,25 +104,25 @@ final class WorkDir implements AutoCloseable {
     @Override
     public void close() {
         try {
-            lock.release();
             channel.close();
         } catch (IOException e) {
             System.out.println("Could not release " + root.resolve(LOCK) + ": " + e.getMessage());
         }
         delete(root);
+        OWNED.remove(root);
     }
 
-    static int sweep(Path tmp, Instant now) {
-        UserPrincipal me = owner(tmp);
+    static int sweep(Path parent, Instant now) {
+        UserPrincipal me = owner(parent);
         int removed = 0;
-        try (DirectoryStream<Path> found = Files.newDirectoryStream(tmp, PREFIX + "*")) {
+        try (DirectoryStream<Path> found = Files.newDirectoryStream(parent, PREFIX + "*")) {
             for (Path dir : found) {
-                if (abandoned(dir, me, now) && delete(dir)) {
+                if (!OWNED.contains(key(dir)) && abandoned(dir, me, now) && delete(dir)) {
                     removed++;
                 }
             }
         } catch (IOException e) {
-            System.out.println("Could not look for old uploads in " + tmp + ": " + e.getMessage());
+            System.out.println("Could not look for old uploads in " + parent + ": " + e.getMessage());
         }
         if (removed > 0) {
             System.out.println("Deleted " + removed + " upload folder(s) left behind by a stopped server");

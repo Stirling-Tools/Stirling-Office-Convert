@@ -23,7 +23,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
@@ -130,6 +129,12 @@ final class ConvertHandler implements HttpHandler, AutoCloseable {
 
     private static final String BUSY = "The converter is busy right now. Please try again in a minute.";
 
+    private static final Refusal CLIENT_STUCK = new Refusal(429, "busy",
+            "A file you sent earlier is still being stopped. Please try again later.");
+
+    private static final Refusal REFUSED = new Refusal(422, "refused",
+            "This file could not be stopped when it ran out of time before, so it is refused.");
+
     private final Limits limits;
     private final Semaphore slots;
     private final LibreOffice libreOffice;
@@ -138,6 +143,7 @@ final class ConvertHandler implements HttpHandler, AutoCloseable {
     private final StuckJobs stuck = new StuckJobs();
     private final WorkDir work;
     private final AtomicLong stored = new AtomicLong();
+    private final AtomicInteger jobs = new AtomicInteger();
     private final Map<String, Integer> clients = new ConcurrentHashMap<>();
     private final ExecutorService workers = Executors.newCachedThreadPool(r -> {
         Thread t = new Thread(r, "convert");
@@ -188,6 +194,7 @@ final class ConvertHandler implements HttpHandler, AutoCloseable {
             this.dir = dir;
             this.upload = dir.resolve("upload");
             this.client = client;
+            jobs.incrementAndGet();
         }
 
         synchronized void stored(long n) {
@@ -214,7 +221,7 @@ final class ConvertHandler implements HttpHandler, AutoCloseable {
         synchronized void conversionEnded() {
             converting = false;
             if (markedStuck) {
-                stuck.ended(client);
+                stuck.ended(client, digest);
                 markedStuck = false;
             }
             if (requestDone) {
@@ -234,6 +241,7 @@ final class ConvertHandler implements HttpHandler, AutoCloseable {
             bytes = 0;
             WorkDir.delete(dir);
             leave(client);
+            jobs.decrementAndGet();
         }
     }
 
@@ -243,7 +251,25 @@ final class ConvertHandler implements HttpHandler, AutoCloseable {
 
     @Override
     public void close() {
-        work.close();
+        close(Duration.ZERO);
+    }
+
+    void close(Duration grace) {
+        workers.shutdown();
+        long until = System.nanoTime() + grace.toNanos();
+        while (jobs.get() > 0 && System.nanoTime() < until) {
+            try {
+                Thread.sleep(50);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+        if (jobs.get() == 0) {
+            work.close();
+        } else {
+            System.out.println(jobs.get() + " conversion(s) still running at shutdown; their uploads are deleted on the next start");
+        }
     }
 
     @Override
@@ -257,7 +283,7 @@ final class ConvertHandler implements HttpHandler, AutoCloseable {
             long start = System.nanoTime();
             String client = client(ex);
             if (stuck.holds(client)) {
-                fail(ex, 429, "busy", "A file you sent earlier is still being stopped. Please try again later.");
+                fail(ex, CLIENT_STUCK.status, CLIENT_STUCK.code, CLIENT_STUCK.getMessage());
                 log(start, 0, "client-stuck");
                 return;
             }
@@ -285,7 +311,7 @@ final class ConvertHandler implements HttpHandler, AutoCloseable {
                 current.name = uploadName(q.get("name"));
                 Input input = receive(ex.getRequestBody(), current);
                 if (stuck.refused(current.digest)) {
-                    throw new Refusal(422, "refused", "This file could not be stopped when it ran out of time before, so it is refused.");
+                    throw REFUSED;
                 }
                 if (input == Input.PDF) {
                     String target = format == null ? "docx" : format;
@@ -504,34 +530,32 @@ final class ConvertHandler implements HttpHandler, AutoCloseable {
         if (!slot) {
             throw new Refusal(503, "busy", BUSY);
         }
-        Future<Done> work;
+        if (stuck.holds(job.client) || stuck.refused(job.digest)) {
+            gate.release();
+            admitted.decrementAndGet();
+            throw stuck.holds(job.client) ? CLIENT_STUCK : REFUSED;
+        }
         job.started();
-        try {
-            work = workers.submit(() -> {
-                try {
-                    return task.run();
-                } finally {
-                    gate.release();
-                    admitted.decrementAndGet();
-                    job.conversionEnded();
-                }
-            });
-        } catch (RejectedExecutionException e) {
+        Worker<Done> work = new Worker<>(task::run, () -> {
             gate.release();
             admitted.decrementAndGet();
             job.conversionEnded();
+        });
+        try {
+            work.start(workers);
+        } catch (RejectedExecutionException e) {
+            work.stop(0, TimeUnit.SECONDS);
             throw new Refusal(503, "busy", BUSY);
         }
         try {
-            return work.get(limits.timeoutSeconds(), TimeUnit.SECONDS);
+            return work.await(limits.timeoutSeconds(), TimeUnit.SECONDS);
         } catch (TimeoutException e) {
-            work.cancel(true);
-            if (!awaitStop(work) && !office && job.markStuck()) {
+            if (!work.stop(STOP_WAIT_MILLIS, TimeUnit.MILLISECONDS) && !office && job.markStuck()) {
                 stuckConversion();
             }
             throw timedOut(pdf);
         } catch (InterruptedException e) {
-            work.cancel(true);
+            work.stop(0, TimeUnit.SECONDS);
             Thread.currentThread().interrupt();
             throw new Refusal(503, "busy", "The server is shutting down.");
         } catch (ExecutionException e) {
@@ -664,19 +688,6 @@ final class ConvertHandler implements HttpHandler, AutoCloseable {
         }
         System.out.println("Conversion failed: " + e);
         return new Refusal(500, "error", "Something went wrong converting this file.");
-    }
-
-    private static boolean awaitStop(Future<?> job) {
-        long until = System.nanoTime() + STOP_WAIT_MILLIS * 1_000_000;
-        while (!job.isDone() && System.nanoTime() < until) {
-            try {
-                Thread.sleep(100);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return job.isDone();
-            }
-        }
-        return job.isDone();
     }
 
     private Input receive(InputStream body, Job job) throws IOException, Refusal {

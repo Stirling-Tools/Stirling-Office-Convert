@@ -22,7 +22,11 @@ class WorkDirTest {
     Path tmp;
 
     private Path folder(String name, Instant modified) throws IOException {
-        Path dir = Files.createDirectory(tmp.resolve(name));
+        return folder(WorkDir.parent(tmp), name, modified);
+    }
+
+    private static Path folder(Path in, String name, Instant modified) throws IOException {
+        Path dir = Files.createDirectory(in.resolve(name));
         Files.writeString(dir.resolve("in.pdf"), "upload");
         Files.setLastModifiedTime(dir, FileTime.from(modified));
         return dir;
@@ -44,7 +48,35 @@ class WorkDirTest {
             assertTrue(Files.exists(recent));
             assertTrue(Files.exists(other));
 
-            assertEquals(0, WorkDir.sweep(tmp, Instant.now()));
+            assertEquals(0, WorkDir.sweep(WorkDir.parent(tmp), Instant.now()));
+            assertTrue(Files.isDirectory(live.root()));
+        }
+    }
+
+    @Test
+    void neverTouchesMatchingFoldersOutsideItsOwnParent() throws IOException {
+        Path stray = folder(tmp, WorkDir.PREFIX + "stray", Instant.EPOCH);
+        Files.writeString(stray.resolve(".lock"), "");
+
+        try (WorkDir live = WorkDir.open(tmp)) {
+            assertTrue(live.root().startsWith(WorkDir.parent(tmp)));
+            assertTrue(Files.exists(stray));
+        }
+    }
+
+    @Test
+    void aSweepInTheOwnersJvmKeepsTheOwnersLock() throws Exception {
+        try (WorkDir live = WorkDir.open(tmp)) {
+            Path parent = WorkDir.parent(tmp);
+            assertEquals(0, WorkDir.sweep(parent, Instant.now()));
+
+            Process other = new ProcessBuilder(Path.of(System.getProperty("java.home"), "bin", "java").toString(), "-cp",
+                    System.getProperty("java.class.path"), SweepMain.class.getName(), parent.toString())
+                    .redirectErrorStream(true).start();
+            String out = new String(other.getInputStream().readAllBytes()).strip();
+            assertEquals(0, other.waitFor());
+
+            assertTrue(out.endsWith("0"), out);
             assertTrue(Files.isDirectory(live.root()));
         }
     }
@@ -63,16 +95,17 @@ class WorkDirTest {
     void neverFollowsALinkOrTouchesAFile() throws IOException {
         Path target = Files.createDirectory(tmp.resolve("target"));
         Files.writeString(target.resolve("keep.txt"), "keep");
-        Path link = tmp.resolve(WorkDir.PREFIX + "link");
+        Path parent = WorkDir.parent(tmp);
+        Path link = parent.resolve(WorkDir.PREFIX + "link");
         try {
             Files.createSymbolicLink(link, target);
         } catch (UnsupportedOperationException | IOException e) {
             assumeTrue(false, "symbolic links are not available here");
         }
-        Path file = Files.writeString(tmp.resolve(WorkDir.PREFIX + "file"), "keep");
+        Path file = Files.writeString(parent.resolve(WorkDir.PREFIX + "file"), "keep");
         Files.setLastModifiedTime(file, FileTime.from(Instant.EPOCH));
 
-        WorkDir.sweep(tmp, Instant.now().plus(WorkDir.UNLOCKED_AGE).plusSeconds(60));
+        WorkDir.sweep(parent, Instant.now().plus(WorkDir.UNLOCKED_AGE).plusSeconds(60));
 
         assertTrue(Files.exists(target.resolve("keep.txt")));
         assertTrue(Files.exists(file));
