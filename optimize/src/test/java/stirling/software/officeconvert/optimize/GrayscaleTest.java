@@ -495,6 +495,35 @@ class GrayscaleTest {
     }
 
     @Test
+    void aHeavilyCompressedColourJpegDoesNotGrowWhenTurnedGray() throws Exception {
+        byte[] source = colourJpeg(0.3f);
+        Path out = optimize(doc -> {
+            PDPage page = page(doc, "q 400 0 0 300 0 0 cm /Im0 Do Q");
+            COSStream image = doc.getDocument().createCOSStream();
+            try (OutputStream os = image.createRawOutputStream()) {
+                os.write(source);
+            }
+            image.setItem(COSName.TYPE, COSName.XOBJECT);
+            image.setItem(COSName.SUBTYPE, COSName.IMAGE);
+            image.setItem(COSName.FILTER, COSName.DCT_DECODE);
+            image.setInt(COSName.WIDTH, 400);
+            image.setInt(COSName.HEIGHT, 300);
+            image.setInt(COSName.BITS_PER_COMPONENT, 8);
+            image.setItem(COSName.COLORSPACE, COSName.DEVICERGB);
+            COSDictionary xobjects = new COSDictionary();
+            xobjects.setItem(COSName.getPDFName("Im0"), image);
+            page.getResources().getCOSObject().setItem(COSName.XOBJECT, xobjects);
+        });
+
+        try (PDDocument doc = Loader.loadPDF(out.toFile())) {
+            PDImageXObject image = (PDImageXObject) doc.getPage(0).getResources().getXObject(COSName.getPDFName("Im0"));
+            assertEquals("DeviceGray", image.getColorSpace().getName());
+            long gray = image.getCOSObject().getLength();
+            assertTrue(gray <= source.length, gray + " bytes of gray JPEG from " + source.length + " bytes of colour");
+        }
+    }
+
+    @Test
     void aPdfaDocumentGainsAPdfaOutputIntentForItsNewGray() throws Exception {
         Path out = optimize(doc -> {
             page(doc, "1 0 0 rg 0 0 10 10 re f");
@@ -558,6 +587,32 @@ class GrayscaleTest {
         }
         page.getCOSObject().setItem(COSName.CONTENTS, content);
         return page;
+    }
+
+    private static byte[] colourJpeg(float quality) throws Exception {
+        java.awt.image.BufferedImage image = new java.awt.image.BufferedImage(400, 300,
+                java.awt.image.BufferedImage.TYPE_INT_RGB);
+        java.util.Random random = new java.util.Random(7);
+        for (int y = 0; y < image.getHeight(); y++) {
+            for (int x = 0; x < image.getWidth(); x++) {
+                int r = (x * 255 / 400 + random.nextInt(48)) & 0xff;
+                int g = (y * 255 / 300 + random.nextInt(48)) & 0xff;
+                int b = ((x + y) * 255 / 700 + random.nextInt(48)) & 0xff;
+                image.setRGB(x, y, r << 16 | g << 8 | b);
+            }
+        }
+        javax.imageio.ImageWriter writer = javax.imageio.ImageIO.getImageWritersByFormatName("jpeg").next();
+        javax.imageio.ImageWriteParam param = writer.getDefaultWriteParam();
+        param.setCompressionMode(javax.imageio.ImageWriteParam.MODE_EXPLICIT);
+        param.setCompressionQuality(quality);
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        try (javax.imageio.stream.ImageOutputStream out = javax.imageio.ImageIO.createImageOutputStream(bytes)) {
+            writer.setOutput(out);
+            writer.write(null, new javax.imageio.IIOImage(image, null, null), param);
+        } finally {
+            writer.dispose();
+        }
+        return bytes.toByteArray();
     }
 
     private static String content(Path pdf) throws Exception {
