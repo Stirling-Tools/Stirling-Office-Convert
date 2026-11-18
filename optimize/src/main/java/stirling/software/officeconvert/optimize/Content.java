@@ -75,7 +75,7 @@ final class Content {
                 lastStart = out.size();
                 if (raw) {
                     out.write(input, s0, s1 - s0);
-                    regularEnd = Lexical.regular(input[s1 - 1] & 0xFF);
+                    regularEnd = Lexical.regular(input[s1 - 1] & 0xFF) || kind == ContentLexer.Kind.NAME && s1 - s0 == 1;
                 } else if (kind == ContentLexer.Kind.NUMBER) {
                     Lexical.writeNumber(input, s0, s1, out);
                     regularEnd = true;
