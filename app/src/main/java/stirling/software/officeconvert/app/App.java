@@ -28,6 +28,7 @@ public final class App {
         LibreOffice libreOffice = LibreOffice.find(limits.libreOffice(), limits.libreOfficeTemplate(),
                 limits.libreOfficeConcurrent());
         ConvertHandler convert = new ConvertHandler(limits, libreOffice);
+        Runtime.getRuntime().addShutdownHook(Thread.ofPlatform().unstarted(convert::close));
         HttpServer server = HttpServer.create(new InetSocketAddress(limits.host(), limits.port()), 64);
         server.createContext("/", new PageHandler(limits, libreOffice, convert::healthy));
         server.createContext("/convert", convert);
