@@ -110,7 +110,7 @@ final class HtmlInput {
         if (!is(source, requested)) {
             return null;
         }
-        return render(source, sink, options, renderer, options.htmlAssets().session());
+        return render(source, sink, options, renderer, options.htmlAssets().session(), options.zoom());
     }
 
     private static Result renderPackage(Path source, Format requested, OutputStream sink, Options options,
@@ -145,7 +145,7 @@ final class HtmlInput {
             Path page = Files.createTempFile("office-to-pdf-", ".html");
             try {
                 pkg.extractPage(page);
-                return render(page, sink, options, renderer, pkg);
+                return render(page, sink, options, renderer, pkg, options.zoom());
             } finally {
                 OfficeToPdf.deleteQuietly(page);
             }
@@ -165,7 +165,7 @@ final class HtmlInput {
         try {
             Files.writeString(page, ebook.book().html(), StandardCharsets.UTF_8);
             return render(page, sink, BookFonts.with(options, ebook.book().fonts(), ebook.assets()), renderer,
-                    ebook.assets());
+                    ebook.assets(), 1f);
         } finally {
             OfficeToPdf.deleteQuietly(page);
         }
@@ -176,7 +176,7 @@ final class HtmlInput {
         Path page = Files.createTempFile("office-to-pdf-", ".html");
         try {
             Files.writeString(page, html, StandardCharsets.UTF_8);
-            return render(page, sink, options, renderer, HtmlAssets.NONE);
+            return render(page, sink, options, renderer, HtmlAssets.NONE, 1f);
         } finally {
             OfficeToPdf.deleteQuietly(page);
         }
@@ -221,7 +221,7 @@ final class HtmlInput {
     }
 
     private static Result render(Path source, OutputStream sink, Options options, OfficeToPdf.Renderer renderer,
-            HtmlAssets assets) throws IOException {
+            HtmlAssets assets, float scale) throws IOException {
         long bytes = Files.size(source);
         if (bytes > MAX_BYTES) {
             throw new IOException("The HTML file is larger than " + (MAX_BYTES >> 20) + " MB");
@@ -229,12 +229,12 @@ final class HtmlInput {
         HtmlAssets once = HtmlDocument.readOnce(assets);
         Path pkg = Files.createTempFile("office-to-pdf-", ".docx");
         try {
-            HtmlDocument.Laid laid = lay(source, pkg, options, bytes, 1f, once, Map.of());
+            HtmlDocument.Laid laid = lay(source, pkg, options, bytes, 1f, scale, once, Map.of());
             float zoom = 1f;
             if (laid.fit() < 0.99f) {
                 // content wider than the page: laid out again on larger paper, then shrunk to fit as browsers print
                 zoom = laid.fit();
-                laid = lay(source, pkg, options, bytes, zoom, once, Map.of());
+                laid = lay(source, pkg, options, bytes, zoom, scale, once, Map.of());
             }
             OfficeToPdf.stopIfInterrupted();
             options = withFonts(options, laid.fonts());
@@ -254,9 +254,10 @@ final class HtmlInput {
                             }
                         }));
                 OfficeToPdf.stopIfInterrupted();
-                laid = lay(source, pkg, options, bytes, zoom, once, pages);
+                laid = lay(source, pkg, options, bytes, zoom, scale, once, pages);
             }
-            if (laid.fit() >= 0.99f) {
+            float printed = laid.fit() * laid.scale();
+            if (laid.fit() >= 0.99f && laid.scale() == 1f) {
                 return Rewritten.render(pkg, source, laid.converted(), sink, options, renderer, strings(laid),
                         job -> { });
             }
@@ -267,7 +268,7 @@ final class HtmlInput {
                     r = Rewritten.render(pkg, source, laid.converted(), os, options, renderer, strings(laid),
                             job -> { });
                 }
-                PageScale.shrink(wide, laid.fit(), sink);
+                PageScale.shrink(wide, laid.fit() >= 0.99f ? laid.scale() : printed, sink);
                 return r;
             } finally {
                 OfficeToPdf.deleteQuietly(wide);
@@ -300,11 +301,11 @@ final class HtmlInput {
         return options.fonts(set.build());
     }
 
-    private static HtmlDocument.Laid lay(Path source, Path pkg, Options options, long bytes, float zoom,
+    private static HtmlDocument.Laid lay(Path source, Path pkg, Options options, long bytes, float zoom, float scale,
             HtmlAssets assets, Map<String, Integer> targetPages) throws IOException {
         Admission.Ticket ticket = Admission.jvm().enter(HtmlDocument.estimate(bytes));
         try (OutputStream os = new BufferedOutputStream(Files.newOutputStream(pkg), 1 << 16)) {
-            return HtmlDocument.lay(source, os, options.fontLibrary(), zoom, assets, targetPages);
+            return HtmlDocument.lay(source, os, options.fontLibrary(), zoom, scale, assets, targetPages);
         } finally {
             ticket.close();
         }
