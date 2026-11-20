@@ -22,6 +22,7 @@ import stirling.software.officeconvert.OfficeConvert;
 import stirling.software.officeconvert.PdfToDocx;
 import stirling.software.officeconvert.PdfToPptx;
 import stirling.software.officeconvert.PdfToXlsx;
+import stirling.software.officeconvert.UnsupportedFormatException;
 import stirling.software.officeconvert.lineart.LineArt;
 import stirling.software.officeconvert.optimize.PdfOptimizer;
 import stirling.software.officeconvert.pdfa.PdfToPdfA;
@@ -305,7 +306,7 @@ public final class Main {
     private static void pdfToOffice(Path pdf, Path target, OutputFormat.Settings settings) throws IOException {
         OutputFormat format = OutputFormat.of(extension(target));
         if (format == null) {
-            throw new IOException("unknown output format ." + extension(target));
+            throw new UnsupportedFormatException("unknown output format ." + extension(target));
         }
         format.convert(pdf, target, settings);
     }
@@ -552,7 +553,7 @@ public final class Main {
                         + " refused); redirects are followed only with --follow-redirects (5 hops, each checked) and"
                         + " cookies kept only with --allow-cookies. Fetching stops after 60 s, 64 MB or 300 requests."
                         + System.lineSeparator()
-                        + "The output's extension picks the format: .docx, .odt, .fodt, .xml (flat ODT), .rtf, .doc (RTF content),"
+                        + "The output's extension picks the format: .docx, .odt, .fodt, .xml (flat ODT), .rtf,"
                         + " .txt, .html (one file, pictures inline), .json (the document model), .md, .epub, .azw3, .pptx, .odp, .ppt, .xlsx, .ods or .csv (cell values only); --format names it for a directory of outputs."
                         + System.lineSeparator()
                         + "--pdfa makes an archival PDF/A copy of each PDF (in.pdfa.pdf unless -o names it): fonts are embedded,"

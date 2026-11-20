@@ -14,6 +14,8 @@ import javax.xml.stream.XMLStreamConstants;
 import javax.xml.stream.XMLStreamException;
 import javax.xml.stream.XMLStreamReader;
 
+import stirling.software.officeconvert.UnsupportedFormatException;
+
 final class Transform {
 
     static final String CT = "application/vnd.openxmlformats-officedocument.wordprocessingml.";
@@ -82,7 +84,7 @@ final class Transform {
         }
         if (!r.isStartElement() || !Names.W2003.equals(r.getNamespaceURI())
                 || !"wordDocument".equals(r.getLocalName())) {
-            throw new IOException("The file is not a Word 2003 XML document");
+            throw new UnsupportedFormatException("The file is not a Word 2003 XML document");
         }
         while (true) {
             int e = r.next();

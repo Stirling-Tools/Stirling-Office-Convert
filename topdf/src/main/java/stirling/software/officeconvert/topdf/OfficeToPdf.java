@@ -24,6 +24,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
 
+import stirling.software.officeconvert.UnsupportedFormatException;
 import stirling.software.officeconvert.extract.PdfFiles;
 import stirling.software.officeconvert.jpx.JpxImageIO;
 import stirling.software.officeconvert.memory.Admission;
@@ -326,7 +327,7 @@ public final class OfficeToPdf {
         try {
             format = Format.of(in);
         } catch (IllegalArgumentException e) {
-            throw new IOException(e.getMessage(), e);
+            throw new UnsupportedFormatException(e.getMessage(), e);
         }
         AtomicReference<Result> result = new AtomicReference<>();
         Path inName = in.getFileName();
@@ -402,8 +403,9 @@ public final class OfficeToPdf {
         try {
             format = Format.of(in);
         } catch (IllegalArgumentException e) {
-            throw new IOException(e.getMessage(), e);
+            throw new UnsupportedFormatException(e.getMessage(), e);
         }
+        requireContent(in, format);
         if (LegacyOffice.powerPoint(in)) {
             return Footprint.legacy(Files.size(in));
         }
@@ -548,9 +550,17 @@ public final class OfficeToPdf {
         return zip || ole2;
     }
 
+    private static void requireContent(Path source, Format format) throws IOException {
+        boolean plainText = format == Format.TEXT || format == Format.CSV || format == Format.TSV;
+        if (!plainText && Files.size(source) == 0) {
+            throw new IOException("The file is empty");
+        }
+    }
+
     static Result render(Path source, Format requested, OutputStream sink, Options options, Renderer renderer)
             throws IOException {
         stopIfInterrupted();
+        requireContent(source, requested);
         if (BookPages.wanted(options)) {
             return BookPages.render(source, requested, sink, options, renderer);
         }
@@ -623,11 +633,11 @@ public final class OfficeToPdf {
         }
         Path name = source.getFileName();
         if (name != null && name.toString().toLowerCase(Locale.ROOT).endsWith(".rtf") && !container(source)) {
-            throw new IOException("The file is not an RTF document: it does not start with {\\rtf");
+            throw new UnsupportedFormatException("The file is not an RTF document: it does not start with {\\rtf");
         }
         String unsupported = UnsupportedFormats.byContent(source);
         if (unsupported != null) {
-            throw new IOException(unsupported);
+            throw new UnsupportedFormatException(unsupported);
         }
         return render(source, requested, sink, options, renderer, OfficeZip.Limits.DEFAULT);
     }
@@ -1123,7 +1133,7 @@ public final class OfficeToPdf {
             return Format.XLSX;
         }
         if (t.contains("drawingml") || t.contains("visio") || t.contains("xps")) {
-            throw new IOException("The file is not a Word, PowerPoint or Excel document (its main part is " + type + ")");
+            throw new UnsupportedFormatException("The file is not a Word, PowerPoint or Excel document (its main part is " + type + ")");
         }
         return switch (requested) {
             case PPT -> Format.PPTX;

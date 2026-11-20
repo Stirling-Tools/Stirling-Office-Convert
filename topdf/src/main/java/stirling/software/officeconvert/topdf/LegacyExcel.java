@@ -13,6 +13,7 @@ import java.util.List;
 import org.apache.poi.poifs.filesystem.DirectoryNode;
 import org.apache.poi.poifs.filesystem.POIFSFileSystem;
 
+import stirling.software.officeconvert.UnsupportedFormatException;
 import stirling.software.officeconvert.memory.Admission;
 import stirling.software.officeconvert.topdf.OfficeToPdf.Options;
 import stirling.software.officeconvert.topdf.OfficeToPdf.Result;
@@ -103,7 +104,7 @@ final class LegacyExcel {
         }
         if (!Biff5Package.is(stream)) {
             if (!Biff5Package.globals8(stream)) {
-                throw new IOException(UNKNOWN);
+                throw new UnsupportedFormatException(UNKNOWN);
             }
             return bareBiff8(stream, sink, options, renderer);
         }

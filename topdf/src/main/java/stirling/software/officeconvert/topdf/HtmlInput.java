@@ -13,6 +13,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.function.Consumer;
 
+import stirling.software.officeconvert.UnsupportedFormatException;
 import stirling.software.officeconvert.memory.Admission;
 import stirling.software.officeconvert.topdf.OfficeToPdf.Format;
 import stirling.software.officeconvert.topdf.OfficeToPdf.Options;
@@ -98,10 +99,10 @@ final class HtmlInput {
                 return renderBook(read(source, 4, Fb2Book::read), sink, options, renderer);
             }
             if (Fb2Book.named(source)) {
-                throw new IOException("The file is not a FictionBook (FB2) book");
+                throw new UnsupportedFormatException("The file is not a FictionBook (FB2) book");
             }
             if (MobiBook.named(source)) {
-                throw new IOException(MobiBook.unsupported(head(source)));
+                throw new UnsupportedFormatException(MobiBook.unsupported(head(source)));
             }
         }
         if (packaged(source, requested)) {
@@ -118,7 +119,7 @@ final class HtmlInput {
         try (HtmlPackage pkg = HtmlPackage.open(source)) {
             boolean book = EpubBook.is(pkg);
             if (requested == Format.EPUB && !book) {
-                throw new IOException("The file is not an EPUB book: it has no META-INF/container.xml");
+                throw new UnsupportedFormatException("The file is not an EPUB book: it has no META-INF/container.xml");
             }
             if (book && (requested == Format.EPUB || options.allowPackages())) {
                 return renderBook(pkg, sink, options, renderer);

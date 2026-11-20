@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
+import stirling.software.officeconvert.UnsupportedFormatException;
 import stirling.software.officeconvert.memory.Admission;
 import stirling.software.officeconvert.topdf.OfficeToPdf.Options;
 import stirling.software.officeconvert.topdf.OfficeToPdf.Result;
@@ -63,7 +64,7 @@ final class XmlInput {
         }
         Path name = source.getFileName();
         if (name != null && name.toString().toLowerCase(Locale.ROOT).endsWith(".xml")) {
-            throw new IOException(UNKNOWN);
+            throw new UnsupportedFormatException(UNKNOWN);
         }
         return null;
     }

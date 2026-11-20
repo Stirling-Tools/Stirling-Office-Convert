@@ -19,6 +19,7 @@ import org.apache.poi.poifs.filesystem.DirectoryNode;
 import org.apache.poi.poifs.filesystem.POIFSFileSystem;
 import org.apache.poi.sl.usermodel.PictureData.PictureType;
 
+import stirling.software.officeconvert.UnsupportedFormatException;
 import stirling.software.officeconvert.topdf.crypt.Passwords;
 
 /** Legacy binary Office files (OLE2): the one way for tracks to open them, with their pictures bounded. */
@@ -107,7 +108,7 @@ public final class LegacyOffice {
             throw new Passwords.Refused(Passwords.refusal(password), e);
         } catch (OldPowerPointFormatException e) {
             fs.close();
-            throw new IOException("PowerPoint 95 and older files are not supported; save the file as .pptx", e);
+            throw new UnsupportedFormatException("PowerPoint 95 and older files are not supported; save the file as .pptx", e);
         } catch (IOException | RuntimeException | StackOverflowError e) {
             fs.close();
             if (Thread.currentThread().isInterrupted()) {

@@ -32,6 +32,7 @@ import org.apache.poi.poifs.filesystem.Entry;
 import org.apache.poi.poifs.filesystem.POIFSFileSystem;
 import org.apache.poi.ss.util.CellRangeAddress;
 
+import stirling.software.officeconvert.UnsupportedFormatException;
 import stirling.software.officeconvert.memory.Admission;
 import stirling.software.officeconvert.topdf.io.ActiveContent;
 
@@ -126,7 +127,7 @@ public final class XlsPackage {
         } catch (EncryptedDocumentException e) {
             throw new IOException(PASSWORD, e);
         } catch (OldFileFormatException e) {
-            throw new IOException("The file is an Excel 5.0/95 or older workbook, which is not supported; save it as"
+            throw new UnsupportedFormatException("The file is an Excel 5.0/95 or older workbook, which is not supported; save it as"
                     + " .xlsx", e);
         } catch (RuntimeException e) {
             throw new IOException("The Excel 97-2003 workbook could not be read: "

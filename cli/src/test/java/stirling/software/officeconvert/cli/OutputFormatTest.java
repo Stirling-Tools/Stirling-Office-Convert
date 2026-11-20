@@ -22,8 +22,15 @@ class OutputFormatTest {
     void unknownFormatListsTheChoices() throws Usage {
         assertEquals("pdf", OutputFormat.known("pdf"));
         assertEquals("ods", OutputFormat.known("ods"));
-        assertEquals("unknown output format 'foo': use docx, odt, fodt, xml, rtf, doc, txt, html, json, md, epub, azw3,"
+        assertEquals("unknown output format 'foo': use docx, odt, fodt, xml, rtf, txt, html, json, md, epub, azw3,"
                 + " pptx, odp, ppt, xlsx, ods or csv (pdf for Office input)",
                 assertThrows(Usage.class, () -> OutputFormat.known("foo")).getMessage());
+    }
+
+    @Test
+    void wordDocOutputIsRefused() {
+        assertNull(OutputFormat.of("doc"));
+        assertEquals("Word 97-2003 .doc output is not supported: use docx, or rtf for a file Word 97 opens",
+                assertThrows(Usage.class, () -> OutputFormat.known("doc")).getMessage());
     }
 }
