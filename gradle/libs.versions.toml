@@ -22,3 +22,4 @@ junit-jupiter-params = { module = "org.junit.jupiter:junit-jupiter-params" }
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
 verapdf-validation-model = { module = "org.verapdf:validation-model", version = "1.30.2" }
 jai-imageio-jpeg2000 = { module = "com.github.jai-imageio:jai-imageio-jpeg2000", version = "1.4.0" }
+jai-imageio-core = { module = "com.github.jai-imageio:jai-imageio-core", version = "1.4.0" }
