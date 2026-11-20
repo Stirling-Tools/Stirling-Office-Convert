@@ -1,6 +1,7 @@
 package stirling.software.officeconvert.optimize;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -17,6 +18,7 @@ import java.util.Random;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSBase;
+import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSStream;
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -24,6 +26,7 @@ import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.PDResources;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
+import org.apache.pdfbox.pdmodel.common.PDStream;
 import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.junit.jupiter.api.Test;
@@ -212,6 +215,132 @@ class DownsampleTest {
     }
 
     @Test
+    void aPaletteImageDrawnSmallIsResampledAndKeepsItsColours() throws Exception {
+        int[] palette = {0xFFFFFF, 0x1F4E9A, 0xC03020, 0x2A9A4E};
+        Path in = pdf(doc -> draw(doc, indexed(doc, 1200, 1200, palette), 144));
+
+        BufferedImage decoded = decodedOnlyImage(optimize(in, AT_150_DPI));
+
+        assertTrue(Math.abs(decoded.getWidth() - 300) <= 5, "width " + decoded.getWidth());
+        for (int block = 0; block < 4; block++) {
+            int x = (block * 300 + 150) * decoded.getWidth() / 1200;
+            assertEquals(palette[block], decoded.getRGB(x, decoded.getHeight() / 2) & 0xFFFFFF, "block " + block);
+        }
+    }
+
+    @Test
+    void aSoftMaskIsResampledWithItsImage() throws Exception {
+        Path in = pdf(doc -> {
+            PDImageXObject image = LosslessFactory.createFromImage(doc, noise(1200, 1200));
+            PDImageXObject mask = LosslessFactory.createFromImage(doc, gradient(1200, 1200));
+            image.getCOSObject().setItem(COSName.SMASK, mask.getCOSObject());
+            draw(doc, image, 144);
+        });
+
+        try (PDDocument doc = Loader.loadPDF(optimize(in, AT_150_DPI).toFile())) {
+            PDResources resources = doc.getPage(0).getResources();
+            COSStream image = ((PDImageXObject) resources.getXObject(resources.getXObjectNames().iterator().next()))
+                    .getCOSObject();
+            COSStream mask = assertInstanceOf(COSStream.class, image.getDictionaryObject(COSName.SMASK));
+            assertTrue(image.getInt(COSName.WIDTH) < 1200, "width " + image.getInt(COSName.WIDTH));
+            assertEquals(image.getInt(COSName.WIDTH), mask.getInt(COSName.WIDTH));
+            assertEquals(image.getInt(COSName.HEIGHT), mask.getInt(COSName.HEIGHT));
+        }
+    }
+
+    @Test
+    void aSoftMaskSharedWithAnImageKeptWholeIsLeftAtItsResolution() throws Exception {
+        Path in = pdf(doc -> {
+            PDImageXObject mask = LosslessFactory.createFromImage(doc, gradient(1200, 1200));
+            PDImageXObject small = LosslessFactory.createFromImage(doc, noise(1200, 1200));
+            PDImageXObject large = LosslessFactory.createFromImage(doc, noise(1200, 1200));
+            small.getCOSObject().setItem(COSName.SMASK, mask.getCOSObject());
+            large.getCOSObject().setItem(COSName.SMASK, mask.getCOSObject());
+            draw(doc, small, 144);
+            draw(doc, large, 576);
+        });
+
+        try (PDDocument doc = Loader.loadPDF(optimize(in, AT_150_DPI).toFile())) {
+            List<Integer> maskWidths = new ArrayList<>();
+            for (PDPage page : doc.getPages()) {
+                PDResources resources = page.getResources();
+                COSStream image = ((PDImageXObject) resources.getXObject(resources.getXObjectNames().iterator().next()))
+                        .getCOSObject();
+                COSStream mask = assertInstanceOf(COSStream.class, image.getDictionaryObject(COSName.SMASK));
+                maskWidths.add(mask.getInt(COSName.WIDTH));
+            }
+            assertTrue(maskWidths.get(0) < 1200, "resampled image's mask " + maskWidths);
+            assertEquals(1200, maskWidths.get(1));
+        }
+    }
+
+    @Test
+    void aTwoColourPatternIsNotFlattenedOntoItsOwnPalette() throws Exception {
+        int[] palette = {0x000000, 0xFFFFFF};
+        Path in = pdf(doc -> draw(doc, checkered(doc, 1200, 1200, palette), 144));
+
+        BufferedImage decoded = decodedOnlyImage(optimize(in, AT_150_DPI));
+
+        int min = 255;
+        int max = 0;
+        for (int y = 0; y < decoded.getHeight(); y++) {
+            for (int x = 0; x < decoded.getWidth(); x++) {
+                int v = decoded.getRGB(x, y) & 0xFF;
+                min = Math.min(min, v);
+                max = Math.max(max, v);
+            }
+        }
+        assertTrue(max - min < 64, "a fine checkerboard resamples to gray, not to " + min + ".." + max);
+    }
+
+    @Test
+    void aSmoothGradientIsNotPosterisedOntoAPalette() throws Exception {
+        Path in = pdf(doc -> draw(doc, LosslessFactory.createFromImage(doc, gradientWithText(1200, 1200)), 144));
+
+        try (PDDocument doc = Loader.loadPDF(optimize(in, AT_150_DPI).toFile())) {
+            PDResources resources = doc.getPage(0).getResources();
+            PDImageXObject image = (PDImageXObject) resources.getXObject(resources.getXObjectNames().iterator().next());
+            assertFalse(image.getColorSpace() instanceof org.apache.pdfbox.pdmodel.graphics.color.PDIndexed,
+                    image.getColorSpace().getName());
+        }
+    }
+
+    @Test
+    void aSeparationThatMarksNothingIsLeftAlone() throws Exception {
+        Path in = pdf(doc -> {
+            PDImageXObject image = indexed(doc, 1200, 1200, new int[] {0, 0xFFFFFF});
+            COSArray none = new COSArray();
+            none.add(COSName.SEPARATION);
+            none.add(COSName.getPDFName("None"));
+            none.add(COSName.DEVICEGRAY);
+            COSDictionary function = new COSDictionary();
+            function.setInt(COSName.FUNCTION_TYPE, 2);
+            COSArray domain = new COSArray();
+            domain.setFloatArray(new float[] {0, 1});
+            function.setItem(COSName.DOMAIN, domain);
+            function.setInt(COSName.N, 1);
+            none.add(function);
+            image.getCOSObject().setItem(COSName.COLORSPACE, none);
+            draw(doc, image, 144);
+        });
+
+        COSStream image = onlyImage(optimize(in, AT_150_DPI));
+
+        assertEquals(1200, image.getInt(COSName.WIDTH));
+    }
+
+    @Test
+    void aLowerResolutionNeverMakesALosslessScanLarger() throws Exception {
+        Path in = pdf(doc -> draw(doc, LosslessFactory.createFromImage(doc, printedPage(1200, 1200)), 288));
+        PdfOptimizer.Options at72Dpi = PdfOptimizer.Options.defaults().images(new PdfOptimizer.Images(72, 0.3f));
+
+        long at150 = java.nio.file.Files.size(optimize(in, AT_150_DPI));
+        long at72 = java.nio.file.Files.size(optimize(in, at72Dpi));
+
+        assertTrue(at72 <= at150, at72 + " > " + at150);
+    }
+
+    @Test
     void imageSettingsAreValidated() {
         assertThrows(IllegalArgumentException.class, () -> new PdfOptimizer.Images(0, 0.7f));
         assertThrows(IllegalArgumentException.class, () -> new PdfOptimizer.Images(150, 0f));
@@ -253,6 +382,13 @@ class DownsampleTest {
         throw new AssertionError("no image on the first page");
     }
 
+    private static BufferedImage decodedOnlyImage(Path pdf) throws Exception {
+        try (PDDocument doc = Loader.loadPDF(pdf.toFile())) {
+            PDResources resources = doc.getPage(0).getResources();
+            return ((PDImageXObject) resources.getXObject(resources.getXObjectNames().iterator().next())).getImage();
+        }
+    }
+
     private static List<COSBase> filters(COSStream stream) {
         COSBase filter = stream.getDictionaryObject(COSName.FILTER);
         if (filter instanceof COSArray array) {
@@ -269,6 +405,90 @@ class DownsampleTest {
         try (PDPageContentStream content = new PDPageContentStream(doc, page)) {
             content.drawImage(image, 50, 50, sizePt, sizePt);
         }
+    }
+
+    private static PDImageXObject indexed(PDDocument doc, int width, int height, int[] palette) throws Exception {
+        COSStream stream = doc.getDocument().createCOSStream();
+        try (OutputStream out = stream.createOutputStream(COSName.FLATE_DECODE)) {
+            byte[] row = new byte[width];
+            for (int x = 0; x < width; x++) {
+                row[x] = (byte) (x * palette.length / width);
+            }
+            for (int y = 0; y < height; y++) {
+                out.write(row);
+            }
+        }
+        COSArray space = new COSArray();
+        space.add(COSName.INDEXED);
+        space.add(COSName.DEVICERGB);
+        space.add(org.apache.pdfbox.cos.COSInteger.get(palette.length - 1));
+        byte[] lookup = new byte[palette.length * 3];
+        for (int i = 0; i < palette.length; i++) {
+            lookup[i * 3] = (byte) (palette[i] >> 16);
+            lookup[i * 3 + 1] = (byte) (palette[i] >> 8);
+            lookup[i * 3 + 2] = (byte) palette[i];
+        }
+        space.add(new org.apache.pdfbox.cos.COSString(lookup));
+        stream.setItem(COSName.TYPE, COSName.XOBJECT);
+        stream.setItem(COSName.SUBTYPE, COSName.IMAGE);
+        stream.setInt(COSName.WIDTH, width);
+        stream.setInt(COSName.HEIGHT, height);
+        stream.setInt(COSName.BITS_PER_COMPONENT, 8);
+        stream.setItem(COSName.COLORSPACE, space);
+        return new PDImageXObject(new PDStream(stream), null);
+    }
+
+    private static PDImageXObject checkered(PDDocument doc, int width, int height, int[] palette) throws Exception {
+        PDImageXObject image = indexed(doc, width, height, palette);
+        COSStream stream = image.getCOSObject();
+        try (OutputStream out = stream.createOutputStream(COSName.FLATE_DECODE)) {
+            byte[] row = new byte[width];
+            for (int y = 0; y < height; y++) {
+                for (int x = 0; x < width; x++) {
+                    row[x] = (byte) ((x + y) & 1);
+                }
+                out.write(row);
+            }
+        }
+        return image;
+    }
+
+    private static BufferedImage gradientWithText(int width, int height) {
+        BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                image.setRGB(x, y, (x * 255 / width) << 16 | (y * 255 / height) << 8 | ((x + y) * 127 / (width + height)));
+            }
+        }
+        java.awt.Graphics2D g = image.createGraphics();
+        g.setColor(java.awt.Color.BLACK);
+        g.setFont(new java.awt.Font(java.awt.Font.SANS_SERIF, java.awt.Font.BOLD, 40));
+        for (int y = 60; y < height; y += 120) {
+            g.drawString("Crisp label text over a gradient", 30, y);
+        }
+        g.dispose();
+        return image;
+    }
+
+    private static BufferedImage printedPage(int width, int height) {
+        Random random = new Random(7);
+        BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+        java.awt.Graphics2D g = image.createGraphics();
+        g.setColor(java.awt.Color.WHITE);
+        g.fillRect(0, 0, width, height);
+        g.setRenderingHint(java.awt.RenderingHints.KEY_TEXT_ANTIALIASING,
+                java.awt.RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+        g.setColor(java.awt.Color.BLACK);
+        g.setFont(new java.awt.Font(java.awt.Font.SANS_SERIF, java.awt.Font.PLAIN, 22));
+        for (int y = 40; y < height; y += 34) {
+            StringBuilder line = new StringBuilder();
+            for (int i = 0; i < 70; i++) {
+                line.append((char) ('a' + random.nextInt(26)));
+            }
+            g.drawString(line.toString(), 20, y);
+        }
+        g.dispose();
+        return image;
     }
 
     private static BufferedImage noise(int width, int height) {

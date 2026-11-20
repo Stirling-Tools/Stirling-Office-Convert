@@ -7,6 +7,7 @@ import java.util.Objects;
 
 import org.apache.pdfbox.pdmodel.PDDocument;
 
+import stirling.software.officeconvert.memory.Admission;
 import stirling.software.officeconvert.pptx.PptxWriter;
 import stirling.software.officeconvert.slides.SlideConversion;
 
@@ -60,6 +61,13 @@ public final class PdfToPptx {
     private PdfToPptx() {}
 
     public static void convert(Path pdf, Path pptx, Options options) throws IOException {
+        Admission.readmitting(() -> {
+            convertOnce(pdf, pptx, options);
+            return null;
+        });
+    }
+
+    private static void convertOnce(Path pdf, Path pptx, Options options) throws IOException {
         SlideConversion.convert(pdf, pptx, options, PptxWriter::new);
     }
 
