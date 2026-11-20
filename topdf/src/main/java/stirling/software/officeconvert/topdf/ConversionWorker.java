@@ -83,12 +83,12 @@ final class ConversionWorker {
             return work.call();
         } catch (InterruptedIOException e) {
             if (outOfMemory(e)) {
-                throw new IOException(RenderJob.NEEDS_MEMORY, e);
+                throw Admission.NeedsMemory.causedBy(e);
             }
             throw e;
         } catch (IOException e) {
             if (outOfMemory(e)) {
-                throw new IOException(RenderJob.NEEDS_MEMORY, e);
+                throw Admission.NeedsMemory.causedBy(e);
             }
             if (scratchExceeded(e)) {
                 throw new OfficeToPdf.OutputTooLarge(e);
@@ -102,7 +102,7 @@ final class ConversionWorker {
                 });
             }
             if (outOfMemory(e)) {
-                throw new IOException(RenderJob.NEEDS_MEMORY, e);
+                throw Admission.NeedsMemory.causedBy(e);
             }
             if (scratchExceeded(e)) {
                 throw new OfficeToPdf.OutputTooLarge(e);
@@ -115,7 +115,7 @@ final class ConversionWorker {
         } catch (StackOverflowError e) {
             throw new IOException("The document nests too deeply to convert", e);
         } catch (OutOfMemoryError e) {
-            throw new IOException(RenderJob.NEEDS_MEMORY, e);
+            throw Admission.NeedsMemory.causedBy(e);
         }
     }
 
@@ -144,7 +144,7 @@ final class ConversionWorker {
     private static boolean outOfMemory(Throwable e) {
         int depth = 0;
         for (Throwable t = e; t != null && depth++ < 16; t = t.getCause()) {
-            if (t instanceof RenderJob.OutOfMemory || t instanceof Admission.Stopped) {
+            if (t instanceof Admission.Stopped) {
                 return true;
             }
         }

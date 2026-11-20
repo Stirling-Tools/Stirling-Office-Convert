@@ -117,6 +117,10 @@ public final class PdfOptimizer {
     }
 
     public static Result optimize(Path in, Path out, Options options) throws IOException {
+        return Admission.readmitting(() -> optimizeOnce(in, out, options));
+    }
+
+    private static Result optimizeOnce(Path in, Path out, Options options) throws IOException {
         Objects.requireNonNull(in, "in");
         Objects.requireNonNull(out, "out");
         Objects.requireNonNull(options, "options");

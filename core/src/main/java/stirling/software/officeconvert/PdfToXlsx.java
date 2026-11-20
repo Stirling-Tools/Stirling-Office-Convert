@@ -130,6 +130,13 @@ public final class PdfToXlsx {
     private PdfToXlsx() {}
 
     public static void convert(Path pdf, Path out, Options options) throws IOException {
+        Admission.readmitting(() -> {
+            convertOnce(pdf, out, options);
+            return null;
+        });
+    }
+
+    private static void convertOnce(Path pdf, Path out, Options options) throws IOException {
         Objects.requireNonNull(pdf, "pdf");
         Objects.requireNonNull(out, "out");
         Objects.requireNonNull(options, "options");
