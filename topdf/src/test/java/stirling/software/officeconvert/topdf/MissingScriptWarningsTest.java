@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.text.Normalizer;
 import java.util.List;
 import java.util.stream.Stream;
 
@@ -65,6 +66,36 @@ class MissingScriptWarningsTest {
                 assertTrue(extracted.indexOf(text.charAt(1)) >= 0, extracted);
             }
         }
+    }
+
+    static Stream<Arguments> marked() {
+        return Stream.of("docx", "pptx").flatMap(ext -> Stream.of(true, false).flatMap(
+                latin -> Stream.of(Arguments.of(ext, latin, "Hello नमस्ते xyz", "Devanagari"),
+                        Arguments.of(ext, latin, "Hello " + ARABIC + " xyz", "Arabic"),
+                        Arguments.of(ext, latin, "بِسْمِ اللَّهِ الرَّحْمَٰنِ", "Arabic"))));
+    }
+
+    @ParameterizedTest(name = "{0} latin font {1} {3} {2}")
+    @MethodSource("marked")
+    void textWithNoFontExtractsWithItsMarks(String ext, boolean latin, String line, String script) throws Exception {
+        Path fonts = Files.createDirectories(dir.resolve("fonts"));
+        if (latin) {
+            Files.write(fonts.resolve("Body.ttf"), TestFonts.renamed("Body Face"));
+        }
+        Path in = write(dir.resolve("in." + ext), ext, line);
+        Path pdf = dir.resolve("out.pdf");
+        OfficeToPdf.Result r = OfficeToPdf.convert(in, pdf,
+                OfficeToPdf.Options.defaults().fonts(FontSet.builder().directory(fonts).systemFonts(false).build()));
+        assertEquals(1, r.warnings().stream().filter(w -> w.contains(script + " script")).count(),
+                r.warnings().toString());
+        try (PDDocument doc = Loader.loadPDF(pdf.toFile())) {
+            String extracted = new PDFTextStripper().getText(doc).strip().replaceAll("\\s+", " ");
+            assertEquals(nfc(ext.equals("pptx") ? line : line + " " + line), nfc(extracted));
+        }
+    }
+
+    private static String nfc(String text) {
+        return Normalizer.normalize(text, Normalizer.Form.NFC);
     }
 
     private static Path write(Path file, String ext, String text) throws IOException {

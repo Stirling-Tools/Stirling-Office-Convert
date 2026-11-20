@@ -100,6 +100,11 @@ final class CanvasText {
     }
 
     float text(String text, float x, float baseline, TextStyle style) throws IOException {
+        return text(text, x, baseline, style, false, false);
+    }
+
+    private float text(String text, float x, float baseline, TextStyle style, boolean boxMarks, boolean visual)
+            throws IOException {
         if (text.isEmpty()) {
             return 0;
         }
@@ -114,7 +119,7 @@ final class CanvasText {
         ColorEmoji colour = output.fonts().colorEmoji();
         for (int i = 0; i < text.length(); ) {
             int cp = text.codePointAt(i);
-            int k = kind(face, cp);
+            int k = kind(face, cp, boxMarks);
             int emoji = k == MISSING && colour != null ? colour.run(text, i) : i;
             if (emoji > i) {
                 if (kind >= 0 && i > start) {
@@ -143,7 +148,7 @@ final class CanvasText {
             i += Character.charCount(cp);
         }
         at += segment(ops, text.substring(start), Math.max(kind, GLYPHS), embedded, cover, x + at, baseline, style);
-        queue(ops, x, x + at, baseline, style.size(), text, false);
+        queue(ops, x, x + at, baseline, style.size(), text, visual);
         return at;
     }
 
@@ -153,12 +158,13 @@ final class CanvasText {
     }
 
     // Missing characters and fitted symbols draw apart from the glyphs, in text order so that text extracts in order
-    private static int kind(FontFace face, int cp) {
+    private static int kind(FontFace face, int cp, boolean boxMarks) {
         if (TextStyle.skipped(cp) && !face.symbolCode(cp)) {
             return SKIPPED;
         }
         if (!face.covers(cp)) {
-            return visibleMissing(cp) ? MISSING : GLYPHS;
+            return visibleMissing(cp) || boxMarks && TextOrder.marks(new String(Character.toChars(cp))) ? MISSING
+                    : GLYPHS;
         }
         return face.symbolStandIn() && face.symbolFit(cp) != null ? FITTED : GLYPHS;
     }
@@ -833,7 +839,13 @@ final class CanvasText {
         int coverage = coverage(face, run.text());
         if (coverage == NONE_COVERED || run.size() == 0 && coverage == SOME_MISSING) {
             String visual = run.rightToLeft() ? new StringBuilder(run.text()).reverse().toString() : run.text();
-            return text(visual, x, baseline, style.face(face).charSpacing(0).wordSpacing(0).kerning(false));
+            TextStyle boxes = style.face(face).charSpacing(0).wordSpacing(0).kerning(false);
+            float measured = face.width(run.text(), size) * th;
+            float shaped = run.advance() * size / face.unitsPerEm() * th;
+            if (measured > 0 && shaped > 0) {
+                boxes = boxes.horizontalScale(style.horizontalScale() * shaped / measured);
+            }
+            return text(visual, x, baseline, boxes, true, run.rightToLeft() && upright());
         }
         if (run.size() == 0) {
             return 0;
