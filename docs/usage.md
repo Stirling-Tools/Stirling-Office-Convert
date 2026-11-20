@@ -916,6 +916,14 @@ further; the JDK default is 240 MB.
 
 ## Changes
 
+### Unreleased
+
+- Word 97-2003 `.doc` output is removed: `OfficeConvert.Format.of("x.doc")` throws `IllegalArgumentException`,
+  `OfficeConvert.convert` to a `.doc` name throws `UnsupportedFormatException`, and the CLI's `--format doc` exits
+  with status 2. Write `.docx` or `.rtf` instead.
+- Input of a kind the library does not read, by extension or content, throws `UnsupportedFormatException`, an
+  `IOException` subclass; a damaged or empty file of a kind it reads still throws a plain `IOException`.
+
 ### 0.2.0
 
 - Needs Java 25 or later; 0.1.0 also ran on Java 21.

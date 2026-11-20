@@ -257,9 +257,11 @@ public final class PdfFiles {
         }
     }
 
+    private static final int HEADER_SEARCH_BYTES = 1 << 20;
+
     private static IOException unopened(Path pdf, Exception e) {
         try (InputStream in = Files.newInputStream(pdf)) {
-            byte[] head = in.readNBytes(1024);
+            byte[] head = in.readNBytes(HEADER_SEARCH_BYTES);
             if (head.length == 0) {
                 return new IOException("The PDF could not be opened: the file is empty", e);
             }

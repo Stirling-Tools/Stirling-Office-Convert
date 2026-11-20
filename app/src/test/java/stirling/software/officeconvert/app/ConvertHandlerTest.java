@@ -141,6 +141,24 @@ class ConvertHandlerTest {
     }
 
     @Test
+    void thePageOffersOnlyFormatsTheServerConverts() throws Exception {
+        String page;
+        try (java.io.InputStream in = ConvertHandlerTest.class.getResourceAsStream("/app/index.html")) {
+            page = new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+        }
+        String block = page.substring(page.indexOf("const FORMATS = ["), page.indexOf("];", page.indexOf("const FORMATS = [")));
+        java.util.List<String> ids = java.util.regex.Pattern.compile("\\{ id: '([a-z0-9]+)'").matcher(block).results()
+                .map(m -> m.group(1)).toList();
+        assertTrue(ids.contains("docx") && ids.contains("csv"), ids::toString);
+        assertFalse(ids.contains("doc"), ids::toString);
+        String url = start(300);
+        for (String id : ids) {
+            HttpResponse<byte[]> r = post(url + "?format=" + id, Fixtures.pdf("Offered"));
+            assertEquals(200, r.statusCode(), () -> id + ": " + new String(r.body()));
+        }
+    }
+
+    @Test
     void refusesTheWrongDirection() throws Exception {
         String url = start(300);
         HttpResponse<byte[]> office = post(url + "?format=docx", Fixtures.docx("x", 1));

@@ -197,6 +197,16 @@ class OfficeConvertTest {
     }
 
     @Test
+    void aTruncatedPdfWithALongPreambleIsNotCalledUnsupported() throws IOException {
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        bytes.write("x".repeat(2000).getBytes(StandardCharsets.ISO_8859_1));
+        bytes.write("\n%PDF-1.7\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R".getBytes(StandardCharsets.ISO_8859_1));
+        Path damaged = Files.write(dir.resolve("damaged.pdf"), bytes.toByteArray());
+        IOException e = assertThrows(IOException.class, () -> OfficeConvert.convert(damaged, dir.resolve("out.docx")));
+        assertFalse(e instanceof UnsupportedFormatException, e.toString());
+    }
+
+    @Test
     void unknownExtensionsAndSecretsStayOut() {
         assertThrows(IllegalArgumentException.class, () -> OfficeConvert.Format.of(Path.of("out.pdfx")));
         assertFalse(OfficeConvert.Settings.defaults().password("hunter2").toString().contains("hunter2"));

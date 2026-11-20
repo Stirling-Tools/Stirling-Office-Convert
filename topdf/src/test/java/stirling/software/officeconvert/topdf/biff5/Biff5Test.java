@@ -23,6 +23,7 @@ import org.apache.poi.poifs.filesystem.POIFSFileSystem;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import stirling.software.officeconvert.UnsupportedFormatException;
 import stirling.software.officeconvert.topdf.OfficeToPdf;
 
 class Biff5Test {
@@ -194,10 +195,11 @@ class Biff5Test {
     void excel4WorkbooksAreRefusedPlainly() {
         byte[] biff4 = le(s(0x0409), s(6), s(0), s(0x0100), s(0));
         Path in = dir.resolve("old.xls");
-        IOException e = assertThrows(IOException.class, () -> {
+        UnsupportedFormatException e = assertThrows(UnsupportedFormatException.class, () -> {
             Files.write(in, biff4);
             OfficeToPdf.convert(in, dir.resolve("old.pdf"));
         });
         assertTrue(e.getMessage().contains("Excel 4.0 workbook"), e.getMessage());
+        assertThrows(UnsupportedFormatException.class, () -> Biff4Upgrade.upgrade(biff4));
     }
 }

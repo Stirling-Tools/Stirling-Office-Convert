@@ -41,7 +41,7 @@ public final class Biff4Upgrade {
         Biff4Upgrade u = new Biff4Upgrade(stream);
         int type = u.u16(6);
         if (u.version == 4 && type == 0x0100) {
-            throw new IOException("The file is an Excel 4.0 workbook (several sheets in one file), which is not"
+            throw new UnsupportedFormatException("The file is an Excel 4.0 workbook (several sheets in one file), which is not"
                     + " supported; save it as .xlsx");
         }
         if (type == 0x0020 || type == 0x0040) {

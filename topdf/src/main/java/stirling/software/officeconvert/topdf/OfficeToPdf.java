@@ -382,6 +382,7 @@ public final class OfficeToPdf {
         } catch (IllegalArgumentException e) {
             throw new UnsupportedFormatException(e.getMessage(), e);
         }
+        requireContent(in, format);
         if (LegacyOffice.powerPoint(in)) {
             return Footprint.legacy(Files.size(in));
         }
@@ -526,9 +527,17 @@ public final class OfficeToPdf {
         return zip || ole2;
     }
 
+    private static void requireContent(Path source, Format format) throws IOException {
+        boolean plainText = format == Format.TEXT || format == Format.CSV || format == Format.TSV;
+        if (!plainText && Files.size(source) == 0) {
+            throw new IOException("The file is empty");
+        }
+    }
+
     static Result render(Path source, Format requested, OutputStream sink, Options options, Renderer renderer)
             throws IOException {
         stopIfInterrupted();
+        requireContent(source, requested);
         if (BookPages.wanted(options)) {
             return BookPages.render(source, requested, sink, options, renderer);
         }

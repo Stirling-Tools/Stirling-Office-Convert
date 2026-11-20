@@ -1,5 +1,6 @@
 package stirling.software.officeconvert.topdf;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -70,6 +71,27 @@ class UnsupportedInputTest {
     void aPdfNamedDocxIsRefusedAsUnsupported() throws IOException {
         Path in = Files.writeString(dir.resolve("report.docx"), "%PDF-1.7\n%%EOF\n", StandardCharsets.ISO_8859_1);
         assertThrows(UnsupportedFormatException.class, () -> OfficeToPdf.convert(in, dir.resolve("report.pdf")));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"rtf", "xml", "dbf", "fb2", "mobi", "vsd", "pub", "wk1", "docx", "odt", "xls", "doc",
+            "pptx", "html"})
+    void anEmptyFileIsNotCalledUnsupported(String ext) throws IOException {
+        Path in = Files.write(dir.resolve("empty." + ext), new byte[0]);
+        IOException e = assertThrows(IOException.class, () -> OfficeToPdf.convert(in, dir.resolve(ext + ".pdf")), ext);
+        assertFalse(e instanceof UnsupportedFormatException, ext + ": " + e);
+        assertEquals("The file is empty", e.getMessage(), ext);
+        IOException estimate = assertThrows(IOException.class, () -> OfficeToPdf.memoryEstimate(in), ext);
+        assertFalse(estimate instanceof UnsupportedFormatException, ext + ": " + estimate);
+    }
+
+    @Test
+    void anEmptyStreamIsNotCalledUnsupported() {
+        IOException e = assertThrows(IOException.class,
+                () -> OfficeToPdf.convert(new ByteArrayInputStream(new byte[0]), OfficeToPdf.Format.DOCX,
+                        new ByteArrayOutputStream(), OfficeToPdf.Options.defaults()));
+        assertFalse(e instanceof UnsupportedFormatException, e.toString());
+        assertEquals("The file is empty", e.getMessage());
     }
 
     @Test
