@@ -82,8 +82,10 @@ final class InlineImage {
     }
 
     private static int dataEnd(ContentLexer lex, Map<String, Object> dict, int dataStart) {
-        if (number(dict, "L", "Length") instanceof Double length && length >= 0) {
-            return dataStart + length.intValue();
+        Object declared = value(dict, "L", "Length");
+        if (declared != null) {
+            long length = whole(declared);
+            return length < 0 || length > lex.input().length - dataStart ? -1 : (int) (dataStart + length);
         }
         Object filter = value(dict, "F", "Filter");
         String first = filter instanceof String name ? name
@@ -103,16 +105,20 @@ final class InlineImage {
         }
         boolean mask = "true".equals(value(dict, "IM", "ImageMask"));
         int components = mask ? 1 : components(value(dict, "CS", "ColorSpace"));
-        Double bits = mask ? Double.valueOf(1) : number(dict, "BPC", "BitsPerComponent");
-        Double width = number(dict, "W", "Width");
-        Double height = number(dict, "H", "Height");
-        if (components < 1 || bits == null || width == null || height == null || bits < 1 || width < 1
+        long bits = mask ? 1 : whole(value(dict, "BPC", "BitsPerComponent"));
+        long width = whole(value(dict, "W", "Width"));
+        long height = whole(value(dict, "H", "Height"));
+        if (components < 1 || bits != 1 && bits != 2 && bits != 4 && bits != 8 && bits != 16 || width < 1
                 || height < 1) {
             return -1;
         }
-        long rowBytes = ((long) width.intValue() * components * bits.intValue() + 7) / 8;
-        long length = rowBytes * height.intValue();
-        return length > Integer.MAX_VALUE - dataStart ? -1 : (int) (dataStart + length);
+        try {
+            long rowBytes = (Math.multiplyExact(Math.multiplyExact(width, (long) components), bits) + 7) / 8;
+            long length = Math.multiplyExact(rowBytes, height);
+            return length > lex.input().length - dataStart ? -1 : (int) (dataStart + length);
+        } catch (ArithmeticException e) {
+            return -1;
+        }
     }
 
     private static int components(Object space) {
@@ -136,7 +142,10 @@ final class InlineImage {
         return v != null ? v : dict.get(full);
     }
 
-    private static Double number(Map<String, Object> dict, String abbreviation, String full) {
-        return value(dict, abbreviation, full) instanceof Double d ? d : null;
+    private static long whole(Object value) {
+        if (!(value instanceof Double d) || d < 0 || d > Integer.MAX_VALUE || d != Math.floor(d)) {
+            return -1;
+        }
+        return d.longValue();
     }
 }
