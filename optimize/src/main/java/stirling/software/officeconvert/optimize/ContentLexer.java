@@ -236,6 +236,38 @@ final class ContentLexer {
         return b.toByteArray();
     }
 
+    boolean skipInlineData(int dataEnd) {
+        if (dataEnd < pos || dataEnd > in.length) {
+            return false;
+        }
+        int p = dataEnd;
+        while (p < in.length && Lexical.whitespace(in[p] & 0xFF)) {
+            p++;
+        }
+        if (p + 1 >= in.length || in[p] != 'E' || in[p + 1] != 'I'
+                || p + 2 < in.length && Lexical.regular(in[p + 2] & 0xFF)) {
+            return false;
+        }
+        start = p;
+        pos = p + 2;
+        end = pos;
+        kind = Kind.OPERATOR;
+        return true;
+    }
+
+    int indexOf(byte[] needle, int from) {
+        outer:
+        for (int i = Math.max(0, from); i + needle.length <= in.length; i++) {
+            for (int k = 0; k < needle.length; k++) {
+                if (in[i + k] != needle[k]) {
+                    continue outer;
+                }
+            }
+            return i;
+        }
+        return -1;
+    }
+
     boolean commentAtEnd() {
         return commentAtEnd;
     }
