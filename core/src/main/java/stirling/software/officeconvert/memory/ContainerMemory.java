@@ -95,11 +95,7 @@ final class ContainerMemory {
     }
 
     // The share of the limit in use, plus what the JVM may still add, such as heap it has yet to commit
-    double share(long growth) {
-        return share(growth, 0);
-    }
-
-    synchronized double share(long growth, long reusable) {
+    synchronized double share(long growth) {
         long now = System.nanoTime();
         if (now - readAt >= CACHE_NANOS) {
             readAt = now;
@@ -111,7 +107,7 @@ final class ContainerMemory {
                 limit = 0;
             }
         }
-        return fraction(limit, Math.max(0, pinned + Math.max(0, growth) - Math.max(0, reusable)));
+        return fraction(limit, pinned + Math.max(0, growth));
     }
 
     static double share(String limit, String current, List<String> stat, boolean v2) {

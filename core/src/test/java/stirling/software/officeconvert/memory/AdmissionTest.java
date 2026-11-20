@@ -43,28 +43,6 @@ class AdmissionTest {
     }
 
     @Test
-    void heapTheJvmHoldsButDoesNotUseDoesNotCountAsFull() throws Exception {
-        Admission a = new Admission(1024 * MB, new Admission.Limits(100, 8, Duration.ofMillis(200), false),
-                new Admission.Heap() {
-                    @Override
-                    public double used(boolean collect) {
-                        return 0.1;
-                    }
-
-                    @Override
-                    public double outside() {
-                        return 0.99;
-                    }
-
-                    @Override
-                    public double outsideBesidesFreeHeap() {
-                        return 0.5;
-                    }
-                });
-        a.enter(10 * MB).close();
-    }
-
-    @Test
     void aConversionStoppedWhileOthersRanIsReadmittedOnceTheyFinish() throws Exception {
         Admission a = new Admission(1024 * MB, new Admission.Limits(100, 8, Duration.ZERO, false, true), collect -> 0.1);
         Admission.Ticket other = apart(a, 10 * MB);

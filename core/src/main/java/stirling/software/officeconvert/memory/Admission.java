@@ -66,6 +66,8 @@ public final class Admission {
 
     private static final ThreadLocal<Ticket> CURRENT = new ThreadLocal<>();
 
+    private static final ThreadLocal<Boolean> RETRYING = new ThreadLocal<>();
+
     private static final Set<Thread> ABANDONED = ConcurrentHashMap.newKeySet();
 
     public record Limits(int memoryBudgetPercent, int maxConcurrent, Duration maxWait, boolean refuseOversize,
@@ -112,10 +114,6 @@ public final class Admission {
 
         default double outside() {
             return 0;
-        }
-
-        default double outsideBesidesFreeHeap() {
-            return outside();
         }
 
         default boolean crowded() {
@@ -276,6 +274,18 @@ public final class Admission {
     }
 
     <T> T retrying(Attempt<T> attempt) throws IOException {
+        if (RETRYING.get() != null) {
+            return attempt.run();
+        }
+        RETRYING.set(Boolean.TRUE);
+        try {
+            return retry(attempt);
+        } finally {
+            RETRYING.remove();
+        }
+    }
+
+    private <T> T retry(Attempt<T> attempt) throws IOException {
         for (int tries = 1;; tries++) {
             try {
                 return attempt.run();
@@ -473,7 +483,7 @@ public final class Admission {
 
     // With nothing converting, a container still at the edge after a collection and a trim has no room for one
     private boolean full() {
-        if (heap.outsideBesidesFreeHeap() <= CONTAINER_ALONE) {
+        if (heap.outside() <= CONTAINER_ALONE) {
             return false;
         }
         long now = System.nanoTime();
@@ -482,7 +492,7 @@ public final class Admission {
             lastGc = now;
         }
         heap.reclaim(collect);
-        return heap.outsideBesidesFreeHeap() > CONTAINER_ALONE;
+        return heap.outside() > CONTAINER_ALONE;
     }
 
     // One conversion at a time is stopped, the largest of several (a lone one only at the very edge), and only on a
@@ -549,15 +559,6 @@ public final class Admission {
             @Override
             public double outside() {
                 return container == null ? 0 : container.share(0);
-            }
-
-            @Override
-            public double outsideBesidesFreeHeap() {
-                if (container == null) {
-                    return 0;
-                }
-                long[] heap = heapUse(false);
-                return container.share(0, heap[1] - heap[0]);
             }
 
             @Override

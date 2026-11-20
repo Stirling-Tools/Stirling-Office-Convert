@@ -118,6 +118,13 @@ public final class PdfToDocx {
     }
 
     public static void convert(Path pdf, Path docx, Options options) throws IOException {
+        Admission.readmitting(() -> {
+            convertOnce(pdf, docx, options);
+            return null;
+        });
+    }
+
+    private static void convertOnce(Path pdf, Path docx, Options options) throws IOException {
         convertWithDocument(pdf, docx, options, doc -> out -> new DocxWriter(out, PdfWebFonts.of(doc, options.firstPage(),
                 options.lastPage())));
     }
