@@ -99,6 +99,10 @@ final class Roles {
 
     final Set<Integer> content = new HashSet<>();
 
+    private final Set<Integer> pageFirst = new HashSet<>();
+
+    private final Set<Integer> drawnElsewhere = new HashSet<>();
+
     final Set<Integer> trueType = new HashSet<>();
 
     boolean fontPrograms;
@@ -290,12 +294,22 @@ final class Roles {
     }
 
     private void appearance(int stream) {
+        drawnElsewhere.add(stream);
         if (!content.contains(stream)) {
             context(stream, streamResources.get(stream));
         }
     }
 
     private void context(int stream, Loc resources) {
+        drawnElsewhere.add(stream);
+        pageContext(stream, resources);
+    }
+
+    boolean startsInDefaultState(int stream) {
+        return pageFirst.contains(stream) && !drawnElsewhere.contains(stream);
+    }
+
+    private void pageContext(int stream, Loc resources) {
         if (index.kind(stream) != Index.STREAM) {
             return;
         }
@@ -336,7 +350,8 @@ final class Roles {
                 continue;
             }
             if (contents.loc().path.length == 0 && index.kind(contents.loc().holder) == Index.STREAM) {
-                context(contents.loc().holder, pageRes);
+                pageFirst.add(contents.loc().holder);
+                pageContext(contents.loc().holder, pageRes);
             } else if (contents.value() instanceof COSArray a) {
                 int[] streams = new int[a.size()];
                 boolean whole = true;
@@ -345,6 +360,7 @@ final class Roles {
                             && index.kind(index.id(o.getKey())) == Index.STREAM) {
                         streams[i] = index.id(o.getKey());
                         content.add(streams[i]);
+                        (i == 0 ? pageFirst : drawnElsewhere).add(streams[i]);
                     } else {
                         whole = false;
                     }
