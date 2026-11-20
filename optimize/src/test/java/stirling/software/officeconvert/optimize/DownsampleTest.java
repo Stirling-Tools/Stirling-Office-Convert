@@ -247,6 +247,51 @@ class DownsampleTest {
     }
 
     @Test
+    void aSoftMaskSharedWithAnImageKeptWholeIsLeftAtItsResolution() throws Exception {
+        Path in = pdf(doc -> {
+            PDImageXObject mask = LosslessFactory.createFromImage(doc, gradient(1200, 1200));
+            PDImageXObject small = LosslessFactory.createFromImage(doc, noise(1200, 1200));
+            PDImageXObject large = LosslessFactory.createFromImage(doc, noise(1200, 1200));
+            small.getCOSObject().setItem(COSName.SMASK, mask.getCOSObject());
+            large.getCOSObject().setItem(COSName.SMASK, mask.getCOSObject());
+            draw(doc, small, 144);
+            draw(doc, large, 576);
+        });
+
+        try (PDDocument doc = Loader.loadPDF(optimize(in, AT_150_DPI).toFile())) {
+            List<Integer> maskWidths = new ArrayList<>();
+            for (PDPage page : doc.getPages()) {
+                PDResources resources = page.getResources();
+                COSStream image = ((PDImageXObject) resources.getXObject(resources.getXObjectNames().iterator().next()))
+                        .getCOSObject();
+                COSStream mask = assertInstanceOf(COSStream.class, image.getDictionaryObject(COSName.SMASK));
+                maskWidths.add(mask.getInt(COSName.WIDTH));
+            }
+            assertTrue(maskWidths.get(0) < 1200, "resampled image's mask " + maskWidths);
+            assertEquals(1200, maskWidths.get(1));
+        }
+    }
+
+    @Test
+    void aTwoColourPatternIsNotFlattenedOntoItsOwnPalette() throws Exception {
+        int[] palette = {0x000000, 0xFFFFFF};
+        Path in = pdf(doc -> draw(doc, checkered(doc, 1200, 1200, palette), 144));
+
+        BufferedImage decoded = decodedOnlyImage(optimize(in, AT_150_DPI));
+
+        int min = 255;
+        int max = 0;
+        for (int y = 0; y < decoded.getHeight(); y++) {
+            for (int x = 0; x < decoded.getWidth(); x++) {
+                int v = decoded.getRGB(x, y) & 0xFF;
+                min = Math.min(min, v);
+                max = Math.max(max, v);
+            }
+        }
+        assertTrue(max - min < 64, "a fine checkerboard resamples to gray, not to " + min + ".." + max);
+    }
+
+    @Test
     void aLowerResolutionNeverMakesALosslessScanLarger() throws Exception {
         Path in = pdf(doc -> draw(doc, LosslessFactory.createFromImage(doc, printedPage(1200, 1200)), 288));
         PdfOptimizer.Options at72Dpi = PdfOptimizer.Options.defaults().images(new PdfOptimizer.Images(72, 0.3f));
@@ -353,6 +398,21 @@ class DownsampleTest {
         stream.setInt(COSName.BITS_PER_COMPONENT, 8);
         stream.setItem(COSName.COLORSPACE, space);
         return new PDImageXObject(new PDStream(stream), null);
+    }
+
+    private static PDImageXObject checkered(PDDocument doc, int width, int height, int[] palette) throws Exception {
+        PDImageXObject image = indexed(doc, width, height, palette);
+        COSStream stream = image.getCOSObject();
+        try (OutputStream out = stream.createOutputStream(COSName.FLATE_DECODE)) {
+            byte[] row = new byte[width];
+            for (int y = 0; y < height; y++) {
+                for (int x = 0; x < width; x++) {
+                    row[x] = (byte) ((x + y) & 1);
+                }
+                out.write(row);
+            }
+        }
+        return image;
     }
 
     private static BufferedImage printedPage(int width, int height) {

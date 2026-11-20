@@ -123,6 +123,20 @@ final class Palette {
         return out;
     }
 
+    static double meanError(BufferedImage image, int[] palette, byte[] indices) {
+        long total = 0;
+        int i = 0;
+        for (int y = 0; y < image.getHeight(); y++) {
+            for (int x = 0; x < image.getWidth(); x++) {
+                int rgb = image.getRGB(x, y);
+                int p = palette[indices[i++] & 0xFF];
+                total += Math.abs((rgb >> 16 & 0xFF) - (p >> 16 & 0xFF)) + Math.abs((rgb >> 8 & 0xFF) - (p >> 8 & 0xFF))
+                        + Math.abs((rgb & 0xFF) - (p & 0xFF));
+            }
+        }
+        return i == 0 ? 0 : total / (3.0 * i);
+    }
+
     static int bitsFor(int colours) {
         return colours <= 2 ? 1 : colours <= 4 ? 2 : colours <= 16 ? 4 : 8;
     }

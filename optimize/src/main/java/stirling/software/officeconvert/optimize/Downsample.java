@@ -87,6 +87,10 @@ final class Downsample {
 
     private static final float GRAY_QUALITY_STEP = 0.1f;
 
+    private static final int PARMS_BYTES = 48;
+
+    private static final double MAX_PALETTE_ERROR = 6;
+
     private static final COSName MATTE = COSName.getPDFName("Matte");
 
     private static final int SRGB_PROFILE_BYTES = deflated(ICC_Profile.getInstance(ColorSpace.CS_sRGB).getData()).length;
@@ -105,7 +109,7 @@ final class Downsample {
 
     private final Map<COSStream, Double> waitingForProfile = new LinkedHashMap<>();
 
-    private final Set<COSStream> resampledMasks = new HashSet<>();
+    private final Map<COSStream, Map<String, COSObject>> resampledMasks = new HashMap<>();
 
     private COSArray srgb;
 
@@ -328,7 +332,7 @@ final class Downsample {
 
         int width = Math.max(1, (int) Math.round(image.getWidth() * scale));
         int height = Math.max(1, (int) Math.round(image.getHeight() * scale));
-        boolean grayOut = gray || (special ? rendersGray(colorSpace) : components == 1);
+        boolean grayOut = gray || (special ? neutral(decoded) : components == 1);
         Resized resized = resize(decoded, width, height, grayOut);
         boolean photographic = lossySource
                 || manyColours && (survivesJpeg(resized.image) || resample && survivesJpeg(rawGrayToRgb(decoded)));
@@ -344,25 +348,32 @@ final class Downsample {
             }
             options.add(new Encoded(jpeg, COSName.DCT_DECODE, null, 8, width, height,
                     grayOut ? Output.GRAY : Output.RGB, null));
+            if (resample && !manyColours) {
+                lossless(resized.image, grayOut, false, options);
+            }
         } else {
             lossless(resized.image, grayOut, resample, options);
             if (resized.halved != null) {
                 lossless(resized.halved, grayOut, true, options);
             }
         }
-        if (indexed && !toGray && !stream.containsKey(COSName.DECODE)) {
-            options.add(sourcePalette((PDIndexed) colorSpace, image.getBitsPerComponent(), resized.image));
+        int sourceBits = image.getBitsPerComponent();
+        if (indexed && !toGray && !stream.containsKey(COSName.DECODE)
+                && (sourceBits == 1 || sourceBits == 2 || sourceBits == 4 || sourceBits == 8)) {
+            Encoded own = sourcePalette((PDIndexed) colorSpace, sourceBits, resized.image);
+            if (own != null) {
+                options.add(own);
+            }
         }
         Encoded best = options.getFirst();
         for (Encoded option : options) {
-            if (option.data.length < best.data.length) {
+            if (cost(option) < cost(best)) {
                 best = option;
             }
         }
-        boolean addsProfile = best.space == Output.RGB || best.space == Output.SRGB_PALETTE;
-        long profile = !addsProfile || srgb != null ? 0 : SRGB_PROFILE_BYTES;
-        if (!toGray && best.data.length + profile >= stream.getLength() * MIN_SAVING) {
-            if (profile > 0 && best.data.length < stream.getLength() * MIN_SAVING) {
+        long profile = profileCost(best);
+        if (!toGray && cost(best) >= stream.getLength() * MIN_SAVING) {
+            if (profile > 0 && cost(best) - profile < stream.getLength() * MIN_SAVING) {
                 waitingForProfile.put(stream, inchesPerPixel);
             }
             return false;
@@ -410,6 +421,32 @@ final class Downsample {
         }
     }
 
+    private long profileCost(Encoded option) {
+        boolean addsProfile = option.space == Output.RGB || option.space == Output.SRGB_PALETTE;
+        return !addsProfile || srgb != null ? 0 : SRGB_PROFILE_BYTES;
+    }
+
+    private long cost(Encoded option) {
+        return option.data.length + profileCost(option) + (option.palette == null ? 0 : option.palette.length * 3L)
+                + (option.parms == null ? 0 : PARMS_BYTES);
+    }
+
+    private static boolean neutral(BufferedImage image) {
+        if (image.getType() == BufferedImage.TYPE_BYTE_GRAY) {
+            return true;
+        }
+        for (int y = 0; y < image.getHeight(); y++) {
+            for (int x = 0; x < image.getWidth(); x++) {
+                int c = image.getRGB(x, y);
+                int r = c >> 16 & 0xFF;
+                if (r != (c >> 8 & 0xFF) || r != (c & 0xFF)) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
     private static Encoded sourcePalette(PDIndexed space, int bits, BufferedImage image) throws IOException {
         int count = space.getCOSObject() instanceof COSArray array && array.getObject(2) instanceof COSNumber hival
                 ? Math.min(hival.intValue() + 1, 1 << bits) : 1 << bits;
@@ -420,7 +457,12 @@ final class Downsample {
         }
         int width = image.getWidth();
         int height = image.getHeight();
-        byte[] packed = Palette.pack(Palette.indices(rawGrayToRgb(image), palette), width, height, bits);
+        BufferedImage rgb = rawGrayToRgb(image);
+        byte[] indices = Palette.indices(rgb, palette);
+        if (Palette.meanError(rgb, palette, indices) > MAX_PALETTE_ERROR) {
+            return null;
+        }
+        byte[] packed = Palette.pack(indices, width, height, bits);
         return flate(packed, 1, bits, width, height, Output.SOURCE, null);
     }
 
@@ -455,7 +497,14 @@ final class Downsample {
 
     private void resampleMask(COSStream stream, int width, int height) throws IOException {
         if (!(stream.getDictionaryObject(COSName.SMASK) instanceof COSStream mask) || mask.containsKey(MATTE)
-                || mask.containsKey(COSName.DECODE) || !resampledMasks.add(mask)) {
+                || mask.containsKey(COSName.DECODE)) {
+            return;
+        }
+        String size = width + "x" + height;
+        Map<String, COSObject> sized = resampledMasks.computeIfAbsent(mask, k -> new HashMap<>());
+        COSObject done = sized.get(size);
+        if (done != null) {
+            stream.setItem(COSName.SMASK, done);
             return;
         }
         PDImageXObject maskImage = new PDImageXObject(new PDStream(mask), null);
@@ -473,16 +522,25 @@ final class Downsample {
         if (encoded.data.length >= mask.getLength()) {
             return;
         }
-        try (OutputStream out = mask.createRawOutputStream()) {
+        COSStream copy = new COSStream();
+        for (Map.Entry<COSName, COSBase> entry : mask.entrySet()) {
+            if (!COSName.FILTER.equals(entry.getKey()) && !COSName.DECODE_PARMS.equals(entry.getKey())
+                    && !COSName.LENGTH.equals(entry.getKey())) {
+                copy.setItem(entry.getKey(), entry.getValue());
+            }
+        }
+        try (OutputStream out = copy.createRawOutputStream()) {
             out.write(encoded.data);
         }
-        mask.setItem(COSName.FILTER, COSName.FLATE_DECODE);
-        mask.setItem(COSName.DECODE_PARMS, encoded.parms);
-        mask.setInt(COSName.WIDTH, width);
-        mask.setInt(COSName.HEIGHT, height);
-        mask.setInt(COSName.BITS_PER_COMPONENT, 8);
-        mask.setItem(COSName.COLORSPACE, COSName.DEVICEGRAY);
-        masks.add(mask);
+        copy.setItem(COSName.FILTER, COSName.FLATE_DECODE);
+        copy.setItem(COSName.DECODE_PARMS, encoded.parms);
+        copy.setInt(COSName.WIDTH, width);
+        copy.setInt(COSName.HEIGHT, height);
+        copy.setInt(COSName.BITS_PER_COMPONENT, 8);
+        copy.setItem(COSName.COLORSPACE, COSName.DEVICEGRAY);
+        COSObject added = fresh.add(copy);
+        sized.put(size, added);
+        stream.setItem(COSName.SMASK, added);
     }
 
     private static byte[] noLargerThan(BufferedImage image, float quality, byte[] encoded, long limit)
