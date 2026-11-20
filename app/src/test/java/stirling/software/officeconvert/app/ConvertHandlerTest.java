@@ -82,6 +82,7 @@ class ConvertHandlerTest {
         assertEquals(503, ConvertHandler.refusal(new Admission.Busy()).status);
         assertEquals(413, ConvertHandler.refusal(new Admission.TooLarge()).status);
         assertEquals(503, ConvertHandler.refusal(new Admission.Stopped()).status);
+        assertEquals(503, ConvertHandler.refusal(Admission.NeedsMemory.causedBy(new OutOfMemoryError())).status);
     }
 
     @Test

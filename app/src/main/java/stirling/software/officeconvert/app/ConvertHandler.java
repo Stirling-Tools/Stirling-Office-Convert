@@ -669,7 +669,7 @@ final class ConvertHandler implements HttpHandler, AutoCloseable {
         if (e instanceof Admission.TooLarge) {
             return new Refusal(413, "memory", "This file needs more memory to convert than this server allows.");
         }
-        if (e instanceof Admission.Stopped) {
+        if (e instanceof Admission.NeedsMemory) {
             return new Refusal(503, "memory", "The server is short of memory right now. Please try again in a minute.");
         }
         if (e instanceof InvalidPasswordException) {

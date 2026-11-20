@@ -227,6 +227,13 @@ public final class OfficeConvert {
         Objects.requireNonNull(out, "out");
         Objects.requireNonNull(format, "format");
         Objects.requireNonNull(settings, "settings");
+        Admission.readmitting(() -> {
+            convertOnce(pdf, out, format, settings);
+            return null;
+        });
+    }
+
+    private static void convertOnce(Path pdf, Path out, Format format, Settings settings) throws IOException {
         run(settings.timeout(), () -> {
             switch (format) {
                 case DOCX -> PdfToDocx.convert(pdf, out, settings.document());
@@ -347,16 +354,16 @@ public final class OfficeConvert {
             return work.call();
         } catch (IOException e) {
             if (stoppedForMemory(e)) {
-                throw new IOException(Admission.NEEDS_MEMORY, e);
+                throw Admission.NeedsMemory.causedBy(e);
             }
             throw e;
         } catch (RuntimeException e) {
             if (stoppedForMemory(e)) {
-                throw new IOException(Admission.NEEDS_MEMORY, e);
+                throw Admission.NeedsMemory.causedBy(e);
             }
             throw e;
         } catch (OutOfMemoryError e) {
-            throw new IOException(Admission.NEEDS_MEMORY, e);
+            throw Admission.NeedsMemory.causedBy(e);
         } catch (StackOverflowError e) {
             throw new IOException(TOO_DEEP, e);
         }
