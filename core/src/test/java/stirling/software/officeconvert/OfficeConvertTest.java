@@ -56,13 +56,13 @@ class OfficeConvertTest {
     @Test
     void everyFormatByExtension() throws IOException {
         Path pdf = sample();
-        for (String ext : new String[] {"docx", "odt", "fodt", "xml", "rtf", "doc", "txt", "pptx", "odp", "xlsx", "ods"}) {
+        for (String ext : new String[] {"docx", "odt", "fodt", "xml", "rtf", "txt", "pptx", "odp", "xlsx", "ods"}) {
             Path out = dir.resolve("out." + ext);
             OfficeConvert.convert(pdf, out);
             assertTrue(Files.size(out) > 0, ext);
         }
         assertTrue(Files.readString(dir.resolve("out.txt")).contains("Quarterly figures"));
-        assertTrue(Files.readString(dir.resolve("out.doc"), StandardCharsets.ISO_8859_1).startsWith("{\\rtf"));
+        assertTrue(Files.readString(dir.resolve("out.rtf"), StandardCharsets.ISO_8859_1).startsWith("{\\rtf"));
         assertTrue(Files.readString(dir.resolve("out.xml")).contains("<office:document "));
     }
 
@@ -158,6 +158,52 @@ class OfficeConvertTest {
         try (Stream<Path> left = Files.list(dir)) {
             assertTrue(left.noneMatch(p -> p.getFileName().toString().endsWith(".part")), "a partial file was left");
         }
+    }
+
+    @Test
+    void wordDocOutputIsRefusedAsUnsupported() throws IOException {
+        Path pdf = sample();
+        Path out = dir.resolve("out.doc");
+        assertFalse(OfficeConvert.Format.supports(out));
+        assertTrue(OfficeConvert.Format.supports(dir.resolve("out.rtf")));
+        UnsupportedFormatException e = assertThrows(UnsupportedFormatException.class, () -> OfficeConvert.convert(pdf, out));
+        assertTrue(e.getMessage().contains(".doc output is not supported"), e.getMessage());
+        assertFalse(Files.exists(out));
+        assertThrows(IllegalArgumentException.class, () -> OfficeConvert.Format.of(out));
+    }
+
+    @Test
+    void anUnknownOutputExtensionIsRefusedAsUnsupported() throws IOException {
+        Path pdf = sample();
+        Path out = dir.resolve("out.pdfx");
+        assertFalse(OfficeConvert.Format.supports(out));
+        assertThrows(UnsupportedFormatException.class, () -> OfficeConvert.convert(pdf, out));
+        assertFalse(Files.exists(out));
+    }
+
+    @Test
+    void inputThatIsNotAPdfIsRefusedAsUnsupported() throws IOException {
+        Path notPdf = Files.writeString(dir.resolve("in.pdf"), "Just some plain text.\n");
+        UnsupportedFormatException e = assertThrows(UnsupportedFormatException.class,
+                () -> OfficeConvert.convert(notPdf, dir.resolve("out.docx")));
+        assertEquals("The PDF could not be opened: the file is not a PDF", e.getMessage());
+    }
+
+    @Test
+    void anEmptyPdfIsNotCalledUnsupported() throws IOException {
+        Path empty = Files.write(dir.resolve("empty.pdf"), new byte[0]);
+        IOException e = assertThrows(IOException.class, () -> OfficeConvert.convert(empty, dir.resolve("out.docx")));
+        assertFalse(e instanceof UnsupportedFormatException, e.toString());
+    }
+
+    @Test
+    void aTruncatedPdfWithALongPreambleIsNotCalledUnsupported() throws IOException {
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        bytes.write("x".repeat(2000).getBytes(StandardCharsets.ISO_8859_1));
+        bytes.write("\n%PDF-1.7\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R".getBytes(StandardCharsets.ISO_8859_1));
+        Path damaged = Files.write(dir.resolve("damaged.pdf"), bytes.toByteArray());
+        IOException e = assertThrows(IOException.class, () -> OfficeConvert.convert(damaged, dir.resolve("out.docx")));
+        assertFalse(e instanceof UnsupportedFormatException, e.toString());
     }
 
     @Test

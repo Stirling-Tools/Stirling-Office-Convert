@@ -25,7 +25,6 @@ enum OutputFormat {
     FODT((pdf, target, s) -> PdfToOdt.convertFlat(pdf, target, s.document())),
     XML((pdf, target, s) -> PdfToOdt.convertFlat(pdf, target, s.document())),
     RTF((pdf, target, s) -> PdfToRtf.convert(pdf, target, s.document())),
-    DOC((pdf, target, s) -> PdfToRtf.convert(pdf, target, s.document())),
     TXT((pdf, target, s) -> PdfToText.convert(pdf, target, s.document())),
     HTML((pdf, target, s) -> PdfToHtml.convert(pdf, target, s.document())),
     JSON((pdf, target, s) -> PdfToJson.convert(pdf, target, s.document())),
@@ -72,6 +71,9 @@ enum OutputFormat {
     }
 
     static String known(String format) throws Usage {
+        if ("doc".equals(format)) {
+            throw new Usage("Word 97-2003 .doc output is not supported: use docx, or rtf for a file Word 97 opens");
+        }
         if (!PDF.equals(format) && of(format) == null) {
             throw new Usage("unknown output format '" + format + "': use " + choices() + " (pdf for Office input)");
         }

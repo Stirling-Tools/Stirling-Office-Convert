@@ -20,6 +20,7 @@ import javax.xml.stream.XMLStreamReader;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 
+import stirling.software.officeconvert.UnsupportedFormatException;
 import stirling.software.officeconvert.topdf.crypt.Passwords;
 import stirling.software.officeconvert.topdf.io.BoundedZip;
 import stirling.software.officeconvert.topdf.io.Dom;
@@ -188,7 +189,7 @@ public final class OdfDocument implements Closeable {
         }
         Kind kind = flatKind(file);
         if (kind == null) {
-            throw new IOException("The file is not an OpenDocument text, spreadsheet or presentation");
+            throw new UnsupportedFormatException("The file is not an OpenDocument text, spreadsheet or presentation");
         }
         byte[] data = SourceFile.read(file, MAX_FLAT_BYTES);
         Document doc;
@@ -223,7 +224,7 @@ public final class OdfDocument implements Closeable {
             }
             Kind kind = kindOf(mimetype(z));
             if (kind == null) {
-                throw new IOException("The file is not an OpenDocument text, spreadsheet or presentation");
+                throw new UnsupportedFormatException("The file is not an OpenDocument text, spreadsheet or presentation");
             }
             Map<String, ZipEntry> map = new HashMap<>();
             for (ZipEntry e : z.entries()) {

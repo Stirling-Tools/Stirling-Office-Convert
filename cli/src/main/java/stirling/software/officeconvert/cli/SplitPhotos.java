@@ -44,6 +44,7 @@ final class SplitPhotos {
                     case "--border-size" -> options = options.borderSize(integer(value(args, ++i, a), a));
                     case "--dpi" -> options = options.dpi(number(value(args, ++i, a), a));
                     case "--method" -> options = options.method(method(value(args, ++i, a)));
+                    case "--max-pixels" -> options = options.maxPixels(count(value(args, ++i, a), a));
                     case "--overwrite" -> options = options.overwrite(true);
                     case "-q", "--quiet" -> quiet = true;
                     case "-h", "--help" -> {
@@ -199,6 +200,14 @@ final class SplitPhotos {
         }
     }
 
+    private static long count(String s, String option) throws Usage {
+        try {
+            return Long.parseLong(s.strip());
+        } catch (NumberFormatException e) {
+            throw new Usage(option + " needs a whole number, not '" + s + "'");
+        }
+    }
+
     private static PhotoSplitter.Method method(String s) throws Usage {
         try {
             return PhotoSplitter.Method.valueOf(s.strip().toUpperCase(Locale.ROOT));
@@ -211,7 +220,7 @@ final class SplitPhotos {
         System.out.println(
                 "Usage: office-convert " + COMMAND + " <scan.png|scan.jpg|scan.pdf>... [-o dir] [--angle-threshold n]"
                         + " [--tolerance n] [--min-area n] [--min-contour-area n] [--border-size n] [--dpi n]"
-                        + " [--method straighten|script] [--overwrite] [-q]"
+                        + " [--method straighten|script] [--max-pixels n] [--overwrite] [-q]"
                         + System.lineSeparator()
                         + "Finds the photos on a flatbed scan and writes each as name_1.png, name_2.png and so on, in the scan's"
                         + " folder unless -o names another. Every page of a PDF is drawn at --dpi (default 300) and searched, as is"
@@ -226,6 +235,9 @@ final class SplitPhotos {
                         + " a region smaller than --min-area pixels (default 10000) in its box or --min-contour-area (default"
                         + " 500) in its outline is ignored; --border-size (default 0) trims that many pixels from each side of"
                         + " every photo. The underscore spellings split_photos.py takes (--min_area) work too."
+                        + System.lineSeparator()
+                        + "--max-pixels (default " + PhotoSplitter.MAX_PIXELS + ") refuses an image or TIFF page with more"
+                        + " pixels than that; a PDF page is drawn below --dpi when it would exceed it."
                         + System.lineSeparator()
                         + "Existing photos are left alone unless --overwrite is given; crops completed before a later failure remain."
                         + System.lineSeparator()

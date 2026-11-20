@@ -43,7 +43,7 @@ writes is converted again by it. An output that exists already is left alone and
 when everything converted, 1 when something failed or was skipped or a folder held nothing to convert, and 2 for a
 mistake in the arguments. Warnings (substituted fonts, skipped active content, pictures that could not be
 drawn) print to stderr as `warning: <file>: <message>` unless `-q`.
-The output file's extension picks the format: `.docx`, `.odt`, `.fodt`, `.xml` (flat ODT), `.rtf`, `.doc`, `.txt`,
+The output file's extension picks the format: `.docx`, `.odt`, `.fodt`, `.xml` (flat ODT), `.rtf`, `.txt`,
 `.html`, `.json`, `.md`, `.epub`, `.azw3`, `.pptx`, `.odp`, `.ppt`, `.xlsx` or `.ods` (see Other formats). For a folder of PDFs, `--format ext` names it; `--sheets
 page|table|single` sets a spreadsheet's layout. Each file prints its time and the heap in use when it finished.
 `--pdfa 1a|1b|2a|2b|2u|3a|3b|3u|4` makes an archival PDF/A copy of each PDF instead (see PDF to PDF/A): `in.pdfa.pdf` beside the
@@ -196,8 +196,10 @@ implementation 'com.stirling:stirling-office-convert:<version>'             // G
 ```
 
 Then one class does it all, `stirling.software.officeconvert.OfficeConvert`. The output file's extension picks the
-format: `.docx`, `.odt`, `.fodt`, `.xml` (flat ODT, what LibreOffice writes for PDF to XML), `.rtf`, `.doc` (RTF
-content), `.txt`, `.html`, `.json`, `.md`, `.epub`, `.azw3`, `.pptx`, `.odp`, `.xlsx` or `.ods`.
+format: `.docx`, `.odt`, `.fodt`, `.xml` (flat ODT, what LibreOffice writes for PDF to XML), `.rtf`, `.txt`, `.html`,
+`.json`, `.md`, `.epub`, `.azw3`, `.pptx`, `.odp`, `.xlsx` or `.ods`. Word 97-2003 `.doc` output is not supported:
+`OfficeConvert.Format.supports(path)` answers whether a name has a format, and `convert` refuses any other with an
+`UnsupportedFormatException`.
 
 ```java
 import java.nio.file.Path;
@@ -237,6 +239,8 @@ try {
     OfficeConvert.convert(upload, target, Settings.defaults().timeout(Duration.ofMinutes(3)));
 } catch (OfficeConvert.TimedOut e) {
     // too slow: stopped mid-page, and no partial file is left behind
+} catch (UnsupportedFormatException e) {
+    // not a PDF, or an output name with no format
 } catch (IOException e) {
     // damaged, password protected (InvalidPasswordException) or not convertible; the message says why
 }
@@ -391,8 +395,8 @@ part, unreadable relationships, tables nested too deeply); the warnings say what
 incomplete PDF checks it, and `pageLimitReached()` tells the page limit apart.
 
 Unlike `OfficeConvert`, whose default is no time limit, `OfficeToPdf` stops after 5 minutes by default and throws
-`OfficeToPdf.TimedOut` (an `IOException`). Bad input gives an `IOException` with a plain reason, legacy and unknown
-file extensions included. Nothing a document links to is ever fetched, and no macro, field, formula or script is run:
+`OfficeToPdf.TimedOut` (an `IOException`). Bad input gives an `IOException` with a plain reason; a file of a kind it
+does not read, by extension or content, gives an `UnsupportedFormatException`, an `IOException` subclass. Nothing a document links to is ever fetched, and no macro, field, formula or script is run:
 fields and formulas show their cached results, charts their cached values, embedded objects their stored preview.
 A Word field saved without a result (DATE, TIME, CREATEDATE, SAVEDATE, PRINTDATE, AUTHOR, TITLE, SUBJECT, KEYWORDS,
 COMMENTS, LASTSAVEDBY, REVNUM, TEMPLATE, NUMWORDS, NUMCHARS, EDITTIME, FILENAME, DOCPROPERTY) shows the document's
@@ -621,7 +625,6 @@ The same document model also goes out as OpenDocument, RTF, plain text, HTML, JS
 PdfToOdt.convert(pdf, Path.of("out.odt"), options);        // OpenDocument Text
 PdfToOdt.convertFlat(pdf, Path.of("out.fodt"), options);   // flat XML OpenDocument, one file, pictures inline
 PdfToRtf.convert(pdf, Path.of("out.rtf"), options);        // Rich Text Format
-PdfToRtf.convert(pdf, Path.of("out.doc"), options);        // the same RTF under a Word 97-2003 name
 PdfToText.convert(pdf, Path.of("out.txt"), options);       // UTF-8 text in reading order
 PdfToMarkdown.convert(pdf, Path.of("out.md"), options);    // GitHub Flavored Markdown, pictures as data: URIs
 PdfToMarkdown.convertPackage(pdDocument, zipStream, options); // document.md plus images/ in a ZIP
@@ -636,7 +639,7 @@ PdfToAzw3.convert(pdf, Path.of("out.azw3"), options);      // the same book for 
 - ODT and flat ODT carry what the DOCX carries: styles, lists, tables with merged cells, pictures (cropped and turned
   in their pixels), text boxes and turned text boxes as frames, shapes, sections with columns, page setup per section,
   headers and footers with page fields, footnotes, links and bookmarks. Word and LibreOffice both open them.
-- RTF likewise, as Word writes it; `.doc` is that RTF, which Word and LibreOffice open by its content without a prompt.
+- RTF likewise, as Word writes it.
   Word lays RTF out in its 2007 compatibility mode, so it is a little further from the source than the DOCX.
 - Markdown (GitHub Flavored) has headings, paragraphs with bold, italic, strikethrough, code spans for monospaced runs
   and links, nested bulleted and numbered lists (other labels such as `a)` or `IV.` stay in the text), pipe tables
@@ -921,6 +924,14 @@ compiled yet keeps running in the interpreter or at a lower tier, and flushing a
 further; the JDK default is 240 MB.
 
 ## Changes
+
+### Unreleased
+
+- Word 97-2003 `.doc` output is removed: `OfficeConvert.Format.of("x.doc")` throws `IllegalArgumentException`,
+  `OfficeConvert.convert` to a `.doc` name throws `UnsupportedFormatException`, and the CLI's `--format doc` exits
+  with status 2. Write `.docx` or `.rtf` instead.
+- Input of a kind the library does not read, by extension or content, throws `UnsupportedFormatException`, an
+  `IOException` subclass; a damaged or empty file of a kind it reads still throws a plain `IOException`.
 
 ### 0.2.0
 

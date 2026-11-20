@@ -215,6 +215,15 @@ class MainTest {
     }
 
     @Test
+    void wordDocOutputIsRefusedWithAClearError() throws Exception {
+        Path pdf = helloPdf(dir.resolve("in.pdf"));
+        assertUsage(run(pdf.toString(), "--format", "doc"), ".doc output is not supported");
+        Path doc = dir.resolve("in.doc");
+        assertUsage(run(pdf.toString(), "-o", doc.toString()), ".doc output is not supported");
+        assertFalse(Files.exists(doc));
+    }
+
+    @Test
     void pdfInputStillConvertsToOfficeFormats() throws Exception {
         Path pdf = helloPdf(dir.resolve("in.pdf"));
         Path txt = dir.resolve("in.txt");

@@ -26,6 +26,7 @@ import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
 
+import stirling.software.officeconvert.UnsupportedFormatException;
 import stirling.software.officeconvert.topdf.io.Dom;
 import stirling.software.officeconvert.topdf.io.SecureXml;
 
@@ -154,7 +155,7 @@ final class Fb2Book {
         Document doc = xml.reader() == null ? SecureXml.parse(xml.stream()) : SecureXml.parse(xml.reader());
         Element root = doc.getDocumentElement();
         if (root == null || !ROOT.equals(Dom.local(root))) {
-            throw new IOException("The file is not a FictionBook (FB2) book: its root element is not FictionBook");
+            throw new UnsupportedFormatException("The file is not a FictionBook (FB2) book: its root element is not FictionBook");
         }
         return new Fb2Book().convert(root);
     }

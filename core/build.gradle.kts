@@ -12,6 +12,7 @@ dependencies {
 
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)
+    testImplementation(libs.jai.imageio.core)
     testRuntimeOnly(libs.junit.platform.launcher)
 
     testFixturesImplementation(platform(libs.junit.bom))

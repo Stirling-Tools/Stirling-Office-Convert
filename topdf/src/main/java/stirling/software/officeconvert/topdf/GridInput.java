@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
+import stirling.software.officeconvert.UnsupportedFormatException;
 import stirling.software.officeconvert.memory.Admission;
 import stirling.software.officeconvert.topdf.OfficeToPdf.Options;
 import stirling.software.officeconvert.topdf.OfficeToPdf.Result;
@@ -49,7 +50,7 @@ final class GridInput {
         }
         if (ext.equals("wk1") || ext.equals("wks") || ext.equals("wk3") || ext.equals("wk4") || ext.equals("123")) {
             String reason = UnsupportedFormats.byContent(source);
-            throw new IOException(reason != null ? reason : UnsupportedFormats.byExtension("wk!"));
+            throw new UnsupportedFormatException(reason != null ? reason : UnsupportedFormats.byExtension("wk!"));
         }
         if (ext.equals("slk") || ext.equals("sylk") || !text && Sylk.is(source)) {
             return Kind.SYLK;
@@ -61,7 +62,7 @@ final class GridInput {
             return Kind.DBF;
         }
         if (ext.equals("dbf")) {
-            throw new IOException("The file is not a dBASE table that can be read");
+            throw new UnsupportedFormatException("The file is not a dBASE table that can be read");
         }
         return null;
     }
