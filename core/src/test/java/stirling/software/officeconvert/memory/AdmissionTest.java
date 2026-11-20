@@ -1,6 +1,7 @@
 package stirling.software.officeconvert.memory;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -39,6 +40,57 @@ class AdmissionTest {
             assertTrue(System.nanoTime() < deadline, "never stopped");
             LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(1));
         }
+    }
+
+    @Test
+    void aConversionStoppedWhileOthersRanIsReadmittedOnceTheyFinish() throws Exception {
+        Admission a = new Admission(1024 * MB, new Admission.Limits(100, 8, Duration.ZERO, false, true), collect -> 0.1);
+        Admission.Ticket other = apart(a, 10 * MB);
+        int[] attempts = {0};
+        Thread[] closer = new Thread[1];
+        String result = assertTimeoutPreemptively(Duration.ofSeconds(10), () -> a.retrying(() -> {
+            if (++attempts[0] == 1) {
+                closer[0] = Thread.ofVirtual().start(other::close);
+                throw Admission.NeedsMemory.causedBy(new Admission.Stopped(true));
+            }
+            return "done";
+        }));
+        closer[0].join();
+        assertEquals("done", result);
+        assertEquals(2, attempts[0]);
+    }
+
+    @Test
+    void aConversionStoppedAloneOrWithoutTheOptionStillFails() {
+        Admission readmitting = new Admission(1024 * MB, new Admission.Limits(100, 8, Duration.ZERO, false, true),
+                collect -> 0.1);
+        assertThrows(Admission.Stopped.class, () -> readmitting.retrying(() -> {
+            throw new Admission.Stopped(false);
+        }));
+        Admission plain = new Admission(1024 * MB, new Admission.Limits(100, 8, Duration.ZERO, false), collect -> 0.1);
+        assertThrows(Admission.Stopped.class, () -> plain.retrying(() -> {
+            throw new Admission.Stopped(true);
+        }));
+    }
+
+    @Test
+    void aCallerHoldingATicketIsNotReadmitted() throws Exception {
+        Admission a = new Admission(1024 * MB, new Admission.Limits(100, 8, Duration.ZERO, false, true), collect -> 0.1);
+        int[] attempts = {0};
+        try (Admission.Ticket _ = a.enter(10 * MB)) {
+            assertThrows(Admission.Stopped.class, () -> a.retrying(() -> {
+                attempts[0]++;
+                throw new Admission.Stopped(true);
+            }));
+        }
+        assertEquals(1, attempts[0]);
+    }
+
+    @Test
+    void everyMemoryRefusalIsOneType() {
+        assertInstanceOf(Admission.NeedsMemory.class, new Admission.Stopped());
+        assertInstanceOf(Admission.NeedsMemory.class, new Admission.TooLarge());
+        assertInstanceOf(Admission.NeedsMemory.class, Admission.NeedsMemory.causedBy(new OutOfMemoryError()));
     }
 
     private static Admission.Ticket apart(Admission a, long bytes) throws Exception {
@@ -232,7 +284,7 @@ class AdmissionTest {
         List<String> saved = names.stream().map(System::getProperty).toList();
         try {
             names.forEach(System::clearProperty);
-            assertEquals(new Admission.Limits(60, 0, Duration.ofSeconds(600), false), Admission.Limits.defaults());
+            assertEquals(new Admission.Limits(60, 0, Duration.ZERO, false), Admission.Limits.defaults());
             System.setProperty(Admission.BUDGET_PROPERTY, "40");
             System.setProperty(Admission.CONCURRENT_PROPERTY, "3");
             System.setProperty(Admission.WAIT_PROPERTY, "0");
@@ -408,7 +460,7 @@ class AdmissionTest {
     }
 
     @Test
-    void aFullContainerTurnsANewConversionAwayOnlyWhenNothingElseRuns() throws Exception {
+    void aFullContainerMakesANewConversionWaitWhenNothingElseRuns() throws Exception {
         double[] outside = {0.99};
         int[] reclaimed = {0};
         Admission a = new Admission(1024 * MB, 100, 8, new Admission.Heap() {
@@ -424,12 +476,19 @@ class AdmissionTest {
 
             @Override
             public void reclaim(boolean collect) {
-                reclaimed[0]++;
+                if (++reclaimed[0] == 3) {
+                    outside[0] = 0.5;
+                }
             }
         });
+        assertTimeoutPreemptively(Duration.ofSeconds(10), () -> a.enter(10 * MB).close());
+        assertTrue(reclaimed[0] >= 3, String.valueOf(reclaimed[0]));
+        assertEquals(0, a.running());
+
+        outside[0] = 0.99;
+        a.apply(new Admission.Limits(100, 8, Duration.ofMillis(200), false));
         Admission.Stopped refused = assertThrows(Admission.Stopped.class, () -> a.enter(10 * MB));
         assertEquals(Admission.NEEDS_MEMORY, refused.getMessage());
-        assertEquals(1, reclaimed[0]);
         assertEquals(0, a.running());
         outside[0] = 0.5;
         try (Admission.Ticket first = a.enter(10 * MB)) {

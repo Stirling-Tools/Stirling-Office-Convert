@@ -28,13 +28,6 @@ public final class RenderJob {
         }
     }
 
-    /** Thrown by {@link #checkpoint()} when the heap is nearly full and this conversion was chosen to stop. */
-    public static final class OutOfMemory extends InterruptedIOException {
-        OutOfMemory() {
-            super(NEEDS_MEMORY);
-        }
-    }
-
     static final String NEEDS_MEMORY = Admission.NEEDS_MEMORY;
 
     public static final int MAX_WARNINGS = 200;
@@ -178,7 +171,7 @@ public final class RenderJob {
             throw new InterruptedIOException("Conversion interrupted");
         }
         if (ticket != null && ticket.exhausted()) {
-            throw new OutOfMemory();
+            throw new Admission.Stopped(ticket.stoppedWhileShared());
         }
     }
 

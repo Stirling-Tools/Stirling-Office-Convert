@@ -429,6 +429,7 @@ final class Rewrite {
 
     private Recoder.Kind kind(int i, Roles roles) {
         return index.has(i, Index.METADATA) && (storedMetadata == -2 || storedMetadata == i) ? Recoder.Kind.KEEP
+                : roles.startsInDefaultState(i) ? Recoder.Kind.PAGE_CONTENT
                 : roles.content.contains(i) ? Recoder.Kind.CONTENT
                 : index.has(i, Index.IMAGE) ? Recoder.Kind.IMAGE
                 : roles.trueType.contains(i) ? Recoder.Kind.TRUETYPE : Recoder.Kind.OTHER;

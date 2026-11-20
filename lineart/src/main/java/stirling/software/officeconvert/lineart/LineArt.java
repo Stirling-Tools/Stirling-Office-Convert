@@ -167,6 +167,10 @@ public final class LineArt {
     }
 
     public static Result convert(Path in, Path out, Options options) throws IOException {
+        return Admission.readmitting(() -> convertOnce(in, out, options));
+    }
+
+    private static Result convertOnce(Path in, Path out, Options options) throws IOException {
         Objects.requireNonNull(in, "in");
         Objects.requireNonNull(out, "out");
         Objects.requireNonNull(options, "options");

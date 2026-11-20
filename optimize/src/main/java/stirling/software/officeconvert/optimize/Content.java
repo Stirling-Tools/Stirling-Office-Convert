@@ -137,10 +137,13 @@ final class Content {
                     }
                     continue;
                 }
-                if (lex.operator("BI") || lex.operator("ID") || lex.operator("EI")) {
+                if (lex.operator("BI")) {
+                    if (!InlineImage.skip(lex, null)) {
+                        return false;
+                    }
+                } else if (lex.operator("ID") || lex.operator("EI")) {
                     return false;
-                }
-                if (lex.operator("q")) {
+                } else if (lex.operator("q")) {
                     if (saved.size() >= MAX_SAVED_STATES) {
                         return false;
                     }
@@ -199,12 +202,16 @@ final class Content {
                     operandNames.add(kind == ContentLexer.Kind.NAME ? COSName.getPDFName(lex.nameBytes()) : null);
                     continue;
                 }
-                if (lex.operator("BI") || lex.operator("ID") || lex.operator("EI")) {
+                if (lex.operator("ID") || lex.operator("EI")) {
                     return new Usage(names, false);
                 }
                 Category category = null;
                 int operand = -1;
-                if (lex.operator("Tf")) {
+                if (lex.operator("BI")) {
+                    if (!InlineImage.skip(lex, names.get(Category.COLOR_SPACE))) {
+                        return new Usage(names, false);
+                    }
+                } else if (lex.operator("Tf")) {
                     category = Category.FONT;
                     operand = operandNames.size() - 2;
                 } else if (lex.operator("Do")) {

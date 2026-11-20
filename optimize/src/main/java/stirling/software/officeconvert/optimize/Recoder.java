@@ -30,7 +30,7 @@ final class Recoder {
     private static final COSName DCT_ABBREVIATION = COSName.getPDFName("DCT");
 
     enum Kind {
-        CONTENT, IMAGE, KEEP, TRUETYPE, OTHER
+        CONTENT, PAGE_CONTENT, IMAGE, KEEP, TRUETYPE, OTHER
     }
 
     record Plan(byte[] data, Map<COSName, COSBase> replace, boolean recoded) {}
@@ -116,7 +116,11 @@ final class Recoder {
                 tidied = true;
             }
         }
-        if (kind == Kind.CONTENT && rest.isEmpty()) {
+        if ((kind == Kind.CONTENT || kind == Kind.PAGE_CONTENT) && rest.isEmpty()) {
+            byte[] rewritten = ContentRewrite.rewrite(data, kind == Kind.PAGE_CONTENT);
+            if (rewritten != null) {
+                data = rewritten;
+            }
             byte[] minified = Content.minify(data);
             if (minified != null && minified.length <= data.length) {
                 data = minified;

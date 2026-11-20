@@ -56,7 +56,7 @@ public class GuardedRenderer extends PDFRenderer {
         } catch (StackOverflowError e) {
             throw new IOException("The page is nested too deeply to draw", e);
         } catch (OutOfMemoryError e) {
-            throw new IOException(Admission.NEEDS_MEMORY, e);
+            throw Admission.NeedsMemory.causedBy(e);
         }
     }
 
