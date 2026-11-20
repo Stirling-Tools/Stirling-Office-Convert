@@ -91,6 +91,8 @@ final class Downsample {
 
     private static final double MAX_PALETTE_ERROR = 6;
 
+    private static final double MAX_QUANTISED_ERROR = 2;
+
     private static final COSName MATTE = COSName.getPDFName("Matte");
 
     private static final int SRGB_PROFILE_BYTES = deflated(ICC_Profile.getInstance(ColorSpace.CS_sRGB).getData()).length;
@@ -305,7 +307,7 @@ final class Downsample {
         if (!resample) {
             scale = 1.0;
         }
-        if (special && !resample && !toGray) {
+        if (special && (!resample && !toGray || invisible(colorSpace))) {
             return false;
         }
         int subsampling = Math.max(1, (int) Math.floor(1.0 / scale / 1.5));
@@ -411,12 +413,17 @@ final class Downsample {
             return;
         }
         int[] palette = Palette.exact(image);
+        boolean exact = palette != null;
         if (palette == null && quantise) {
             palette = Palette.medianCut(image, Palette.MAX_COLOURS);
         }
         if (palette != null) {
             int bits = Palette.bitsFor(palette.length);
-            byte[] packed = Palette.pack(Palette.indices(image, palette), width, height, bits);
+            byte[] indices = Palette.indices(image, palette);
+            if (!exact && Palette.meanError(image, palette, indices) > MAX_QUANTISED_ERROR) {
+                return;
+            }
+            byte[] packed = Palette.pack(indices, width, height, bits);
             options.add(flate(packed, 1, bits, width, height, Output.SRGB_PALETTE, palette));
         }
     }
@@ -585,6 +592,19 @@ final class Downsample {
             srgb.add(fresh.add(profile));
         }
         return srgb;
+    }
+
+    private static boolean invisible(PDColorSpace space) throws IOException {
+        if (space instanceof PDIndexed indexed) {
+            return invisible(indexed.getBaseColorSpace());
+        }
+        if (space instanceof PDSeparation separation) {
+            return "None".equals(separation.getColorantName());
+        }
+        if (space instanceof PDDeviceN deviceN) {
+            return deviceN.getColorantNames().stream().allMatch("None"::equals);
+        }
+        return false;
     }
 
     private static boolean rendersGray(PDColorSpace space) throws IOException {

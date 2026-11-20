@@ -1,6 +1,7 @@
 package stirling.software.officeconvert.optimize;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -17,6 +18,7 @@ import java.util.Random;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSBase;
+import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSStream;
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -292,6 +294,42 @@ class DownsampleTest {
     }
 
     @Test
+    void aSmoothGradientIsNotPosterisedOntoAPalette() throws Exception {
+        Path in = pdf(doc -> draw(doc, LosslessFactory.createFromImage(doc, gradientWithText(1200, 1200)), 144));
+
+        try (PDDocument doc = Loader.loadPDF(optimize(in, AT_150_DPI).toFile())) {
+            PDResources resources = doc.getPage(0).getResources();
+            PDImageXObject image = (PDImageXObject) resources.getXObject(resources.getXObjectNames().iterator().next());
+            assertFalse(image.getColorSpace() instanceof org.apache.pdfbox.pdmodel.graphics.color.PDIndexed,
+                    image.getColorSpace().getName());
+        }
+    }
+
+    @Test
+    void aSeparationThatMarksNothingIsLeftAlone() throws Exception {
+        Path in = pdf(doc -> {
+            PDImageXObject image = indexed(doc, 1200, 1200, new int[] {0, 0xFFFFFF});
+            COSArray none = new COSArray();
+            none.add(COSName.SEPARATION);
+            none.add(COSName.getPDFName("None"));
+            none.add(COSName.DEVICEGRAY);
+            COSDictionary function = new COSDictionary();
+            function.setInt(COSName.FUNCTION_TYPE, 2);
+            COSArray domain = new COSArray();
+            domain.setFloatArray(new float[] {0, 1});
+            function.setItem(COSName.DOMAIN, domain);
+            function.setInt(COSName.N, 1);
+            none.add(function);
+            image.getCOSObject().setItem(COSName.COLORSPACE, none);
+            draw(doc, image, 144);
+        });
+
+        COSStream image = onlyImage(optimize(in, AT_150_DPI));
+
+        assertEquals(1200, image.getInt(COSName.WIDTH));
+    }
+
+    @Test
     void aLowerResolutionNeverMakesALosslessScanLarger() throws Exception {
         Path in = pdf(doc -> draw(doc, LosslessFactory.createFromImage(doc, printedPage(1200, 1200)), 288));
         PdfOptimizer.Options at72Dpi = PdfOptimizer.Options.defaults().images(new PdfOptimizer.Images(72, 0.3f));
@@ -412,6 +450,23 @@ class DownsampleTest {
                 out.write(row);
             }
         }
+        return image;
+    }
+
+    private static BufferedImage gradientWithText(int width, int height) {
+        BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                image.setRGB(x, y, (x * 255 / width) << 16 | (y * 255 / height) << 8 | ((x + y) * 127 / (width + height)));
+            }
+        }
+        java.awt.Graphics2D g = image.createGraphics();
+        g.setColor(java.awt.Color.BLACK);
+        g.setFont(new java.awt.Font(java.awt.Font.SANS_SERIF, java.awt.Font.BOLD, 40));
+        for (int y = 60; y < height; y += 120) {
+            g.drawString("Crisp label text over a gradient", 30, y);
+        }
+        g.dispose();
         return image;
     }
 
