@@ -74,6 +74,19 @@ class AdmissionTest {
     }
 
     @Test
+    void aCallerHoldingATicketIsNotReadmitted() throws Exception {
+        Admission a = new Admission(1024 * MB, new Admission.Limits(100, 8, Duration.ZERO, false, true), collect -> 0.1);
+        int[] attempts = {0};
+        try (Admission.Ticket _ = a.enter(10 * MB)) {
+            assertThrows(Admission.Stopped.class, () -> a.retrying(() -> {
+                attempts[0]++;
+                throw new Admission.Stopped(true);
+            }));
+        }
+        assertEquals(1, attempts[0]);
+    }
+
+    @Test
     void everyMemoryRefusalIsOneType() {
         assertInstanceOf(Admission.NeedsMemory.class, new Admission.Stopped());
         assertInstanceOf(Admission.NeedsMemory.class, new Admission.TooLarge());

@@ -35,7 +35,7 @@ final class ConversionWorker {
         if (limit > 0 && wait <= 0) {
             throw new OfficeToPdf.TimedOut(timeout);
         }
-        FutureTask<T> task = new FutureTask<>(() -> Admission.readmitting(() -> guarded(work)));
+        FutureTask<T> task = new FutureTask<>(() -> guarded(work));
         Thread worker = Thread.ofPlatform().name("office-to-pdf").daemon().stackSize(STACK_BYTES).unstarted(task);
         boolean finished = false;
         try {

@@ -60,6 +60,8 @@ public final class Admission {
 
     private static final int MAX_READMISSIONS = 3;
 
+    private static final long READMIT_WAIT_NANOS = 300_000_000_000L;
+
     private static final Heap JVM_HEAP = memory(ContainerMemory.find());
 
     private static final Admission JVM = new Admission(Runtime.getRuntime().maxMemory(), Limits.defaults(), JVM_HEAP);
@@ -286,15 +288,17 @@ public final class Admission {
     }
 
     private <T> T retry(Attempt<T> attempt) throws IOException {
+        boolean callerHolds = open(CURRENT.get()) != null;
         for (int tries = 1;; tries++) {
             try {
                 return attempt.run();
             } catch (IOException e) {
-                if (!limits.readmitStopped() || tries >= MAX_READMISSIONS || open(CURRENT.get()) != null
-                        || !stoppedWhileShared(e)) {
+                if (callerHolds || !limits.readmitStopped() || tries >= MAX_READMISSIONS || !stoppedWhileShared(e)) {
                     throw e;
                 }
-                awaitIdle();
+                if (!awaitRoom()) {
+                    throw e;
+                }
             }
         }
     }
@@ -309,17 +313,20 @@ public final class Admission {
         return false;
     }
 
-    private void awaitIdle() throws InterruptedIOException {
+    private boolean awaitRoom() throws InterruptedIOException {
         try {
             lock.lockInterruptibly();
             try {
+                int before = running.size();
                 long start = System.nanoTime();
-                while (!running.isEmpty()) {
-                    if (waitNanos > 0 && System.nanoTime() - start >= waitNanos) {
-                        throw new Busy();
+                long limit = waitNanos > 0 ? Math.min(waitNanos, READMIT_WAIT_NANOS) : READMIT_WAIT_NANOS;
+                while (!running.isEmpty() && running.size() >= before) {
+                    if (System.nanoTime() - start >= limit) {
+                        return false;
                     }
                     freed.await(WAIT_MILLIS, TimeUnit.MILLISECONDS);
                 }
+                return true;
             } finally {
                 lock.unlock();
             }
@@ -487,11 +494,10 @@ public final class Admission {
             return false;
         }
         long now = System.nanoTime();
-        boolean collect = now - lastGc >= GC_NANOS;
-        if (collect) {
+        if (now - lastGc >= GC_NANOS) {
             lastGc = now;
+            heap.reclaim(true);
         }
-        heap.reclaim(collect);
         return heap.outside() > CONTAINER_ALONE;
     }
 

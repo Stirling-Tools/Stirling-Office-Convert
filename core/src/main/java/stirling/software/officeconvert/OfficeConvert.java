@@ -198,6 +198,13 @@ public final class OfficeConvert {
         Objects.requireNonNull(out, "out");
         Objects.requireNonNull(format, "format");
         Objects.requireNonNull(settings, "settings");
+        Admission.readmitting(() -> {
+            convertOnce(pdf, out, format, settings);
+            return null;
+        });
+    }
+
+    private static void convertOnce(Path pdf, Path out, Format format, Settings settings) throws IOException {
         run(settings.timeout(), () -> {
             switch (format) {
                 case DOCX -> PdfToDocx.convert(pdf, out, settings.document());
@@ -284,7 +291,7 @@ public final class OfficeConvert {
         } catch (ArithmeticException e) {
             nanos = Long.MAX_VALUE;
         }
-        FutureTask<T> task = new FutureTask<>(() -> Admission.readmitting(() -> guarded(work)));
+        FutureTask<T> task = new FutureTask<>(() -> guarded(work));
         Thread worker = Thread.ofPlatform().name("office-convert").daemon().stackSize(STACK_BYTES).start(task);
         try {
             return nanos == 0 ? task.get() : task.get(nanos, TimeUnit.NANOSECONDS);
