@@ -370,6 +370,12 @@ fonts.problems();                                     // files that were skipped
   font's widths and line metrics when the converter has a table for it (Aptos, Calibri, Verdana and about 140
   others), so pages break where Word breaks them; `widthScale` replaces that with one fixed scale for the family. A
   family that is installed is never scaled.
+- Missing scripts. Text that no font in the set (nor the bundled Liberation Sans) can draw is never dropped: each
+  character is drawn as a missing-glyph box (in documents and slides it still extracts as its text), and the result
+  carries one warning per script, such as `Text in the Ethiopic script has no installed font: 24 characters are drawn
+  as boxes; install a font that covers it`. The warning names the language too when the script has only one (Thai,
+  Korean) or when the document's declared language is written in it (`Arabic script (Persian, fa-IR)`). Every
+  Office-to-PDF input reports it, whichever path draws the text; a separate warning lists the first code points.
 - Untrusted fonts. Fonts from a set are treated as untrusted input: at most 64 MB per file, 10,000 files and 1,000
   fonts given as bytes; a symbolic link, an unreadable, truncated or malformed file, or a font with PostScript (CFF)
   outlines, which cannot be embedded, is skipped with a problem line and never fails a conversion. A face that fails
@@ -797,7 +803,10 @@ that instance. Prefer the file-based overload for documents that need a strict t
   written without their optional type and with a lone kid in place of a one-item array.
 
 Level a (1a, 2a, 3a) is for PDFs that are already tagged: the module does not build a structure tree, so an untagged
-file fails with an `IOException` that says to use b or u. For a tagged file it marks the document as tagged, maps
+file fails with an `IOException` that says to use b or u. With `Options.levelFallback(true)` (the CLI's behaviour) a
+file that cannot meet level a is converted to level b of the same part instead, with a warning giving the reason;
+`Result.level()` is the requested level and `achievedLevel()`, `achievedPart()` and `achievedConformance()` the level
+written, with `levelReduced()` true when they differ. For a tagged file it marks the document as tagged, maps
 structure types without a standard meaning to `NonStruct`, drops standard types from the role map and invalid language
 tags, gives every glyph real Unicode (Symbol and Wingdings private-use codes become their Unicode look-alikes, unknown
 ones U+FFFD) and marks flattened pictures as artifacts. It then checks what veraPDF does not: every piece of text and

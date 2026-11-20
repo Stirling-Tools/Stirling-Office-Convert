@@ -54,7 +54,7 @@ final class Tagging {
         COSDictionary cat = doc.getDocumentCatalog().getCOSObject();
         COSDictionary root = ContentGraph.dict(cat.getDictionaryObject(COSName.STRUCT_TREE_ROOT));
         if (root == null) {
-            throw new IOException("The PDF has no tagged structure, which PDF/A level a needs; use level b or u");
+            throw new LevelANotMet("The PDF has no tagged structure, which PDF/A level a needs; use level b or u");
         }
         COSDictionary mark = ContentGraph.dict(cat.getDictionaryObject(COSName.MARK_INFO));
         if (mark == null) {

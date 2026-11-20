@@ -497,6 +497,18 @@ class MainTest {
     }
 
     @Test
+    void pdfaLevelAOnAnUntaggedFileSaysWhichLevelItMade() throws Exception {
+        Path pdf = helloPdf(dir.resolve("plain.pdf"));
+        Result r = run(pdf.toString(), "--pdfa", "2a");
+        assertEquals(0, r.code(), r.err());
+        assertTrue(r.err().contains("warning: plain.pdf: made PDF/A-2b, not the requested PDF/A-2a"), r.err());
+        try (PDDocument d = org.apache.pdfbox.Loader.loadPDF(dir.resolve("plain.pdfa.pdf").toFile())) {
+            String xmp = new String(d.getDocumentCatalog().getMetadata().toByteArray(), StandardCharsets.UTF_8);
+            assertTrue(xmp.contains("<pdfaid:conformance>B</pdfaid:conformance>"), xmp);
+        }
+    }
+
+    @Test
     void lineArtMakesEachPictureOneBit() throws Exception {
         Path pdf = dir.resolve("scan.pdf");
         java.awt.image.BufferedImage picture = new java.awt.image.BufferedImage(64, 48, java.awt.image.BufferedImage.TYPE_INT_RGB);

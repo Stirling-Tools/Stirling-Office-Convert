@@ -43,7 +43,11 @@ final class Conversion {
         pageLimit(pages, options);
         FontProgramBounds.run(doc);
         if (level.tagged()) {
-            Tagging.run(doc, level, report);
+            try {
+                Tagging.run(doc, level, report);
+            } catch (LevelANotMet e) {
+                level = reduced(level, options, report, e);
+            }
         }
         Census census = Census.of(doc);
         var attachments = EmbeddedFiles.run(doc, level, report);
@@ -85,7 +89,11 @@ final class Conversion {
             Transparency.run(doc, options.flattenDpi(), report);
         }
         if (level.tagged()) {
-            StructureCheck.run(doc, level, report);
+            try {
+                StructureCheck.run(doc, level, report);
+            } catch (LevelANotMet e) {
+                level = reduced(level, options, report, e);
+            }
         }
         graph = ContentGraph.of(doc);
         BigDictionaries.run(doc, census, graph, level, report);
@@ -98,7 +106,19 @@ final class Conversion {
         Metadata.run(doc, level);
         PdfFiles.stopIfInterrupted();
         save(doc, out, level);
-        return new PdfToPdfA.Result(level, pages, report.warnings(), report.flattenedPages(), report.substitutedFonts());
+        return new PdfToPdfA.Result(options.level(), pages, report.warnings(), report.flattenedPages(),
+                report.substitutedFonts(), level);
+    }
+
+    private static PdfALevel reduced(PdfALevel level, PdfToPdfA.Options options, Report report, LevelANotMet e)
+            throws LevelANotMet {
+        if (!options.levelFallback()) {
+            throw e;
+        }
+        PdfALevel to = level.untagged();
+        String reason = e.getMessage().replaceFirst("; use level b or u$", "");
+        report.warn("Converted to " + to.label() + " instead of the requested " + level.label() + ": " + reason);
+        return to;
     }
 
     private static void pageLimit(int pages, PdfToPdfA.Options options) throws IOException {

@@ -17,7 +17,8 @@ HTML converts without a browser: scripts never run and nothing is fetched; pictu
 file itself (`data:` URIs) unless the caller opts in: a `.zip` of the page (or an EPUB not named
 `.epub`) only with `allowPackages` (`--allow-packages`), files beside the page only with `HtmlAssets` (`--allow-local-files`).
 iWork files use their embedded PDF or picture preview, and Visio 2003-2010 drawings their first page's preview. PDF/A level a requires an already tagged PDF;
-the converter does not create a structure tree for an untagged document.
+the converter does not create a structure tree for an untagged document. The library refuses level a for such a file
+unless `levelFallback(true)` is set; the CLI falls back to level b and prints the level it made.
 
 See [limits](docs/limits.md) for every memory, time and size limit, which ones a host can set, and suggested
 settings for a public server.
@@ -27,8 +28,26 @@ JPEG 2000 reader registration, timeout behavior and the LibreOffice comparison t
 
 ## Requirements
 
-Java 25 or later. The 0.2.0 changes are unreleased; the checkout's default version remains
-`0.1.0-SNAPSHOT`. Build from source to use the new modules.
+Java 25 or later. A runtime trimmed with `jlink` needs these modules beyond `java.base`:
+
+| Module | Without it |
+|---|---|
+| `java.desktop` | Conversions fail: pictures, fonts and text shaping use Java 2D and ImageIO |
+| `java.xml` | Conversions fail: Office files are XML |
+| `java.management` | Conversions fail: memory admission reads the heap pools |
+| `jdk.charsets` | Legacy encodings (Big5, Shift_JIS, EUC) cannot be read; POI fails on a Big5 Word 97 file |
+| `jdk.localedata` | Month and day names and Thai line breaking fall back to English rules |
+
+```bash
+jlink --add-modules java.desktop,java.xml,java.management,jdk.charsets,jdk.localedata --output runtime
+```
+
+`OfficeConvert`, `OfficeToPdf` and `PdfToPdfA` check this on each call (`RuntimeModules`): a missing required module
+throws `IllegalStateException` naming it; a missing `jdk.charsets` or `jdk.localedata` is logged once and added to
+every Office-to-PDF result's warnings.
+
+The 0.2.0 changes are unreleased; the checkout's default version remains `0.1.0-SNAPSHOT`. Build from source to use
+the new modules.
 
 ## Build
 

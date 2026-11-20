@@ -39,7 +39,7 @@ final class StructureCheck {
         COSDictionary cat = doc.getDocumentCatalog().getCOSObject();
         COSDictionary root = ContentGraph.dict(cat.getDictionaryObject(COSName.STRUCT_TREE_ROOT));
         if (root == null) {
-            throw new IOException("The PDF has no tagged structure, which PDF/A level a needs; use level b or u");
+            throw new LevelANotMet("The PDF has no tagged structure, which PDF/A level a needs; use level b or u");
         }
         StructTree tree = StructTree.read(root);
         StructureCheck c = new StructureCheck();
@@ -83,7 +83,7 @@ final class StructureCheck {
             }
         }
         if (!problems.isEmpty()) {
-            throw new IOException(level.label() + " needs every piece of content tagged or marked as an artifact, "
+            throw new LevelANotMet(level.label() + " needs every piece of content tagged or marked as an artifact, "
                     + "figures with alternative text and a document language, but the PDF has "
                     + String.join("; ", problems) + "; use level b or u");
         }

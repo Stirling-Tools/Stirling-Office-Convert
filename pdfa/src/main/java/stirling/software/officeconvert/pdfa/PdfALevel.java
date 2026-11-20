@@ -38,6 +38,15 @@ public enum PdfALevel {
         return "A".equals(conformance);
     }
 
+    public PdfALevel untagged() {
+        return switch (this) {
+            case A1A -> A1B;
+            case A2A -> A2B;
+            case A3A -> A3B;
+            default -> this;
+        };
+    }
+
     public float pdfVersion() {
         return part == 1 ? 1.4f : part == 4 ? 2.0f : 1.7f;
     }

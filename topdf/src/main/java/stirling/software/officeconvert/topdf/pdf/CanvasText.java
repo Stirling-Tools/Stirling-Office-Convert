@@ -32,6 +32,12 @@ final class CanvasText {
     private int[] glyphBuffer;
     private int[] codeBuffer;
 
+    private static final int ALL_COVERED = 0;
+
+    private static final int SOME_MISSING = 1;
+
+    private static final int NONE_COVERED = 2;
+
     private static final int SKIPPED = -1;
 
     private static final int GLYPHS = 0;
@@ -786,9 +792,37 @@ final class CanvasText {
                 && !(cp >= 0xE0100 && cp <= 0xE01EF) && cp != 0xFFFE && cp != 0xFFFF;
     }
 
+    private static int coverage(FontFace face, String text) {
+        boolean drawn = false;
+        boolean missing = false;
+        for (int i = 0; i < text.length(); ) {
+            int cp = text.codePointAt(i);
+            i += Character.charCount(cp);
+            if (!visibleMissing(cp)) {
+                continue;
+            }
+            if (face.covers(cp)) {
+                drawn |= !common(cp);
+            } else {
+                missing = true;
+            }
+        }
+        return !missing ? ALL_COVERED : drawn ? SOME_MISSING : NONE_COVERED;
+    }
+
+    private void reportUncovered(FontFace face, String text) {
+        for (int i = 0; i < text.length(); ) {
+            int cp = text.codePointAt(i);
+            i += Character.charCount(cp);
+            if (visibleMissing(cp) && !face.covers(cp) && output.fonts().fallback(cp, face) == null) {
+                output.fonts().uncovered(cp);
+            }
+        }
+    }
+
     float drawGlyphs(GlyphRun run, float x, float baseline, TextStyle style, boolean actualText)
             throws IOException {
-        if (run.size() == 0) {
+        if (run.text().isEmpty()) {
             return 0;
         }
         skippedSince = false;
@@ -796,6 +830,17 @@ final class CanvasText {
         FontFace face = embedded.face();
         float size = style.size();
         float th = style.horizontalScale() / 100f;
+        int coverage = coverage(face, run.text());
+        if (coverage == NONE_COVERED || run.size() == 0 && coverage == SOME_MISSING) {
+            String visual = run.rightToLeft() ? new StringBuilder(run.text()).reverse().toString() : run.text();
+            return text(visual, x, baseline, style.face(face).charSpacing(0).wordSpacing(0).kerning(false));
+        }
+        if (run.size() == 0) {
+            return 0;
+        }
+        if (coverage == SOME_MISSING && !hiddenText) {
+            reportUncovered(face, run.text());
+        }
         if (!face.sameProgram(run.face())) {
             String visual = run.rightToLeft() ? new StringBuilder(run.text()).reverse().toString() : run.text();
             return text(visual, x, baseline, style.face(face).charSpacing(0).wordSpacing(0).kerning(false));
