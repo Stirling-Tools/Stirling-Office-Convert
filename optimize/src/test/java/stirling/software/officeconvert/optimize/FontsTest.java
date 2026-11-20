@@ -131,6 +131,37 @@ class FontsTest {
     }
 
     @Test
+    void aPageWithAnInlineImageStillHasItsFontsSubset() throws Exception {
+        Path in = dir.resolve("inline.pdf");
+        try (PDDocument d = new PDDocument()) {
+            PDPage page = page(d);
+            PDType0Font font = PDType0Font.load(d, new ByteArrayInputStream(liberation()), false);
+            page.setResources(new PDResources());
+            COSName name = page.getResources().add(font);
+            COSStream content = d.getDocument().createCOSStream();
+            try (OutputStream out = content.createOutputStream(COSName.FLATE_DECODE)) {
+                out.write(("q 10 0 0 10 50 50 cm BI /W 2 /H 2 /CS /G /BPC 8 ID ").getBytes(StandardCharsets.US_ASCII));
+                out.write(new byte[] {' ', 'E', 'I', ' '});
+                out.write(("\nEI Q BT /" + name.getName() + " 12 Tf 20 200 Td <")
+                        .getBytes(StandardCharsets.US_ASCII));
+                for (byte b : font.encode("Hello")) {
+                    out.write(String.format("%02X", b & 0xFF).getBytes(StandardCharsets.US_ASCII));
+                }
+                out.write("> Tj ET".getBytes(StandardCharsets.US_ASCII));
+            }
+            page.getCOSObject().setItem(COSName.CONTENTS, content);
+            d.save(in.toFile());
+        }
+
+        Path out = optimized(in);
+
+        assertTrue(Files.size(out) * 2 < Files.size(in), Files.size(out) + " vs " + Files.size(in));
+        try (PDDocument d = Loader.loadPDF(out.toFile())) {
+            assertEquals("Hello", new PDFTextStripper().getText(d).strip());
+        }
+    }
+
+    @Test
     void aFontProgramLargerThanTheWindowBudgetIsStillSubset() throws Exception {
         Path in = dir.resolve("big.pdf");
         byte[] font = liberation();
