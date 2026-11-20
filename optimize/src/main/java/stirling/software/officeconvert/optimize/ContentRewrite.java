@@ -59,7 +59,7 @@ final class ContentRewrite {
             return null;
         }
         collapseNestedSaves(ops);
-        mergeSiblingGroups(ops);
+        mergeSiblingGroups(ops, clippingShows(ops, pageStart));
         dropRedundantState(ops, pageStart);
         joinTextObjects(ops, pageStart);
         relativeMoves(ops, pageStart);
@@ -202,7 +202,29 @@ final class ContentRewrite {
         return -1;
     }
 
-    private static void mergeSiblingGroups(List<Op> ops) {
+    private static boolean[] clippingShows(List<Op> ops, boolean pageStart) {
+        boolean[] clipping = new boolean[ops.size()];
+        String mode = pageStart ? "0" : null;
+        Deque<String> saved = new ArrayDeque<>();
+        for (int i = 0; i < ops.size(); i++) {
+            Op op = ops.get(i);
+            if (op.removed) {
+                continue;
+            }
+            switch (op.name) {
+                case "q" -> saved.push(mode == null ? "" : mode);
+                case "Q" -> {
+                    String m = saved.isEmpty() ? "" : saved.pop();
+                    mode = m.isEmpty() ? null : m;
+                }
+                case "Tr" -> mode = op.operands.size() == 1 ? canonical(op.operands.get(0)) : null;
+                default -> clipping[i] = SHOWING.contains(op.name) && !unclipped(mode);
+            }
+        }
+        return clipping;
+    }
+
+    private static void mergeSiblingGroups(List<Op> ops, boolean[] clipping) {
         int[] match = matches(ops);
         List<Integer> live = live(ops);
         Map<Integer, Integer> position = new HashMap<>();
@@ -214,7 +236,7 @@ final class ContentRewrite {
             if (!ops.get(first).is("q") || match[first] < 0) {
                 continue;
             }
-            Set<String> left = footprint(ops, live, k, position.get(match[first]), match);
+            Set<String> left = footprint(ops, live, k, position.get(match[first]), match, clipping);
             if (left == null) {
                 continue;
             }
@@ -230,7 +252,7 @@ final class ContentRewrite {
                 }
                 int nextEnd = match[next];
                 Set<String> covered = new HashSet<>();
-                Set<String> set = footprint(ops, live, nextPos, position.get(nextEnd), match, covered);
+                Set<String> set = footprint(ops, live, nextPos, position.get(nextEnd), match, covered, clipping);
                 if (set == null || !covered.containsAll(left)) {
                     break;
                 }
@@ -244,18 +266,22 @@ final class ContentRewrite {
         }
     }
 
-    private static Set<String> footprint(List<Op> ops, List<Integer> live, int from, int to, int[] match) {
-        return footprint(ops, live, from, to, match, new HashSet<>());
+    private static Set<String> footprint(List<Op> ops, List<Integer> live, int from, int to, int[] match,
+            boolean[] clipping) {
+        return footprint(ops, live, from, to, match, new HashSet<>(), clipping);
     }
 
     private static Set<String> footprint(List<Op> ops, List<Integer> live, int from, int to, int[] match,
-            Set<String> coveredBeforeUse) {
+            Set<String> coveredBeforeUse, boolean[] clipping) {
         Set<String> set = new HashSet<>();
         boolean used = false;
         for (int k = from + 1; k < to; k++) {
             Op op = ops.get(live.get(k));
             if (op.removed) {
                 continue;
+            }
+            if (clipping[live.get(k)]) {
+                return null;
             }
             String key = stateKey(op.name);
             if (key != null) {
@@ -353,29 +379,27 @@ final class ContentRewrite {
     }
 
     private static void joinTextObjects(List<Op> ops, boolean pageStart) {
-        String mode = pageStart ? "0" : null;
-        Deque<String> saved = new ArrayDeque<>();
+        if (!pageStart) {
+            return;
+        }
+        boolean[] clipping = clippingShows(ops, true);
+        boolean clipped = false;
         Op lastEnd = null;
         for (int i = 0; i < ops.size(); i++) {
             Op op = ops.get(i);
             if (op.removed) {
                 continue;
             }
-            switch (op.name) {
-                case "q" -> saved.push(mode == null ? "" : mode);
-                case "Q" -> {
-                    String m = saved.isEmpty() ? "" : saved.pop();
-                    mode = m.isEmpty() ? null : m;
-                }
-                case "Tr" -> mode = op.operands.size() == 1 ? canonical(op.operands.get(0)) : null;
-                default -> {
-                }
+            if ("gs".equals(op.name)) {
+                return;
             }
+            clipped |= clipping[i];
             if (op.is("ET")) {
-                lastEnd = op;
+                lastEnd = clipped ? null : op;
+                clipped = false;
                 continue;
             }
-            if (op.is("BT") && lastEnd != null && unclipped(mode) && placedBeforeUse(ops, i)) {
+            if (op.is("BT") && lastEnd != null && placedBeforeUse(ops, i)) {
                 lastEnd.removed = true;
                 op.removed = true;
             }

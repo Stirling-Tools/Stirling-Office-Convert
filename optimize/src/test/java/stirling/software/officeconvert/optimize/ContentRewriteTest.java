@@ -2,6 +2,7 @@ package stirling.software.officeconvert.optimize;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.charset.StandardCharsets;
 
@@ -43,6 +44,29 @@ class ContentRewriteTest {
         assertEquals("BT /F1 1 Tf 9 0 0 9 0 0 Tm (a)Tj 0 10 Td (b)Tj ET", rewrite(in, true));
         assertNull(rewrite(in, false));
         assertNull(rewrite("7 Tr " + in, true));
+    }
+
+    @Test
+    void aGroupWhoseTextClipsIsNotJoinedToTheNext() {
+        String in = "q 7 Tr BT /F1 48 Tf 1 0 0 1 20 40 Tm (OOOO) Tj ET Q q 0 Tr BT /F1 48 Tf 1 0 0 1 20 40 Tm (XXXX) Tj ET Q";
+
+        String out = rewrite(in, true);
+
+        assertTrue(out == null || out.contains("Q q"), out);
+    }
+
+    @Test
+    void aTextObjectThatClipsKeepsItsEnd() {
+        String in = "BT /F1 48 Tf 7 Tr 1 0 0 1 20 40 Tm (OOOO) Tj 0 Tr ET BT 1 0 0 1 20 40 Tm (XXXX) Tj ET";
+
+        String out = rewrite(in, true);
+
+        assertTrue(out == null || out.contains("ET BT"), out);
+    }
+
+    @Test
+    void textObjectsAreNotJoinedOnceTransparencyMayApply() {
+        assertNull(rewrite("/GS1 gs BT /F1 1 Tf 9 0 0 9 0 0 Tm (a)Tj ET BT 9 0 0 9 0 90 Tm (b)Tj ET", true));
     }
 
     @Test
