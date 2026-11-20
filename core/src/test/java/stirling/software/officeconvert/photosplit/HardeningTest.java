@@ -332,6 +332,32 @@ class HardeningTest {
     }
 
     @Test
+    void aPageIsDrawnWithinEveryLimitItCanFitRatherThanRefused() {
+        PDRectangle letter = PDRectangle.LETTER;
+        for (long limit = 10_000; limit <= 4_000_000; limit += 10_000) {
+            float dpi = PhotoSplitter.pageDpi(letter, 300, limit);
+            long pixels = (long) Math.ceil(letter.getWidth() / 72.0 * dpi)
+                    * (long) Math.ceil(letter.getHeight() / 72.0 * dpi);
+            assertTrue(pixels <= limit, limit + ": " + pixels);
+        }
+    }
+
+    @Test
+    void anImageOnAnotherFileSystemIsRead() throws Exception {
+        Path zip = dir.resolve("scans.zip");
+        try (java.nio.file.FileSystem fs = java.nio.file.FileSystems.newFileSystem(zip,
+                java.util.Map.of("create", "true"))) {
+            Path png = fs.getPath("/scan.png");
+            try (java.io.OutputStream out = Files.newOutputStream(png)) {
+                javax.imageio.ImageIO.write(scan(), "png", out);
+            }
+            List<Path> written = PhotoSplitter.split(png, dir.resolve("zipped"), "scan",
+                    PhotoSplitter.Options.defaults());
+            assertEquals(2, written.size());
+        }
+    }
+
+    @Test
     void maxPixelsRefusesAPdfPageThatCannotBeDrawnWithinItAndAcceptsOneThatCan() throws Exception {
         Path sliver = dir.resolve("sliver.pdf");
         try (PDDocument doc = new PDDocument()) {

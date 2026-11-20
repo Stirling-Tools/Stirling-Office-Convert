@@ -13,6 +13,7 @@ import java.io.OutputStream;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileAlreadyExistsException;
+import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -245,7 +246,16 @@ public final class PhotoSplitter {
         if (w * h <= maxPixels) {
             return dpi;
         }
-        return (float) (dpi * Math.sqrt(maxPixels / (w * h)) * 0.999);
+        float fitted = (float) (dpi * Math.sqrt(maxPixels / (w * h)) * 0.999);
+        float floor = fitted * 0.9f;
+        while (fitted > floor && pixels(box, fitted) > maxPixels) {
+            fitted *= 0.999f;
+        }
+        return fitted;
+    }
+
+    private static double pixels(PDRectangle box, float dpi) {
+        return Math.ceil(box.getWidth() / 72.0 * dpi) * Math.ceil(box.getHeight() / 72.0 * dpi);
     }
 
     private static Source source(BufferedImage scan, Options options) {
@@ -426,7 +436,9 @@ public final class PhotoSplitter {
 
     private static BufferedImage decode(Path input, int index, Options options, Page page, ImageReader reader)
             throws IOException {
-        try (ImageInputStream stream = new FileImageInputStream(input.toFile())) {
+        try (ImageInputStream stream = input.getFileSystem() == FileSystems.getDefault()
+                ? new FileImageInputStream(input.toFile())
+                : ImageIO.createImageInputStream(Files.newInputStream(input))) {
             reader.setInput(stream, true, true);
             String format = reader.getFormatName();
             page.paged = "tif".equalsIgnoreCase(format) || "tiff".equalsIgnoreCase(format);
