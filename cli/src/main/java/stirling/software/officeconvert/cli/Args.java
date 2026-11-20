@@ -174,6 +174,14 @@ record Args(
                 case "--allow-packages" -> office = office.allowPackages(true);
                 case "--toc" -> office = office.tableOfContents(true);
                 case "--page-numbers" -> office = office.pageNumbers(true);
+                case "--zoom" -> {
+                    float zoom = number(value(args, ++i, a), a);
+                    if (!(zoom >= OfficeToPdf.Options.MIN_ZOOM && zoom <= OfficeToPdf.Options.MAX_ZOOM)) {
+                        throw new Usage("--zoom is from " + OfficeToPdf.Options.MIN_ZOOM + " to "
+                                + OfficeToPdf.Options.MAX_ZOOM + ", not '" + args[i] + "'");
+                    }
+                    office = office.zoom(zoom);
+                }
                 case "--allow-local-files" -> localFiles = true;
                 case "--allow-network" -> web = web.network(true);
                 case "--follow-redirects" -> web = web.redirects(true);

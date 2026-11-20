@@ -122,7 +122,11 @@ public final class OfficeToPdf {
      * {@link #toString()}. */
     public record Options(Duration timeout, List<Path> fontDirs, int maxPages, long maxScratchBytes, FontSet fonts,
             String displayName, String password, HtmlAssets htmlAssets, boolean allowPackages, boolean tableOfContents,
-            boolean pageNumbers) {
+            boolean pageNumbers, float zoom) {
+
+        public static final float MIN_ZOOM = 0.1f;
+
+        public static final float MAX_ZOOM = 8f;
 
         public static final int DEFAULT_MAX_PAGES = 10_000;
 
@@ -150,6 +154,16 @@ public final class OfficeToPdf {
                 throw new IllegalArgumentException("The password is longer than " + MAX_PASSWORD_CHARS + " characters");
             }
             htmlAssets = htmlAssets == null ? HtmlAssets.NONE : htmlAssets;
+            if (!(zoom >= MIN_ZOOM && zoom <= MAX_ZOOM)) {
+                throw new IllegalArgumentException("The zoom must be " + MIN_ZOOM + " to " + MAX_ZOOM + ", was " + zoom);
+            }
+        }
+
+        public Options(Duration timeout, List<Path> fontDirs, int maxPages, long maxScratchBytes, FontSet fonts,
+                String displayName, String password, HtmlAssets htmlAssets, boolean allowPackages,
+                boolean tableOfContents, boolean pageNumbers) {
+            this(timeout, fontDirs, maxPages, maxScratchBytes, fonts, displayName, password, htmlAssets, allowPackages,
+                    tableOfContents, pageNumbers, 1f);
         }
 
         public Options(Duration timeout, List<Path> fontDirs, int maxPages, long maxScratchBytes, FontSet fonts,
@@ -187,57 +201,62 @@ public final class OfficeToPdf {
 
         public Options timeout(Duration limit) {
             return new Options(limit, fontDirs, maxPages, maxScratchBytes, fonts, displayName, password, htmlAssets,
-                    allowPackages, tableOfContents, pageNumbers);
+                    allowPackages, tableOfContents, pageNumbers, zoom);
         }
 
         public Options fontDirs(List<Path> dirs) {
             return new Options(timeout, dirs, maxPages, maxScratchBytes, fonts, displayName, password, htmlAssets,
-                    allowPackages, tableOfContents, pageNumbers);
+                    allowPackages, tableOfContents, pageNumbers, zoom);
         }
 
         public Options fonts(FontSet set) {
             return new Options(timeout, fontDirs, maxPages, maxScratchBytes, set, displayName, password, htmlAssets,
-                    allowPackages, tableOfContents, pageNumbers);
+                    allowPackages, tableOfContents, pageNumbers, zoom);
         }
 
         public Options maxPages(int pages) {
             return new Options(timeout, fontDirs, pages, maxScratchBytes, fonts, displayName, password, htmlAssets,
-                    allowPackages, tableOfContents, pageNumbers);
+                    allowPackages, tableOfContents, pageNumbers, zoom);
         }
 
         public Options maxScratchBytes(long bytes) {
             return new Options(timeout, fontDirs, maxPages, bytes, fonts, displayName, password, htmlAssets,
-                    allowPackages, tableOfContents, pageNumbers);
+                    allowPackages, tableOfContents, pageNumbers, zoom);
         }
 
         public Options displayName(String name) {
             return new Options(timeout, fontDirs, maxPages, maxScratchBytes, fonts, name, password, htmlAssets,
-                    allowPackages, tableOfContents, pageNumbers);
+                    allowPackages, tableOfContents, pageNumbers, zoom);
         }
 
         public Options password(String secret) {
             return new Options(timeout, fontDirs, maxPages, maxScratchBytes, fonts, displayName, secret, htmlAssets,
-                    allowPackages, tableOfContents, pageNumbers);
+                    allowPackages, tableOfContents, pageNumbers, zoom);
         }
 
         public Options htmlAssets(HtmlAssets assets) {
             return new Options(timeout, fontDirs, maxPages, maxScratchBytes, fonts, displayName, password, assets,
-                    allowPackages, tableOfContents, pageNumbers);
+                    allowPackages, tableOfContents, pageNumbers, zoom);
         }
 
         public Options allowPackages(boolean allow) {
             return new Options(timeout, fontDirs, maxPages, maxScratchBytes, fonts, displayName, password, htmlAssets,
-                    allow, tableOfContents, pageNumbers);
+                    allow, tableOfContents, pageNumbers, zoom);
         }
 
         public Options tableOfContents(boolean add) {
             return new Options(timeout, fontDirs, maxPages, maxScratchBytes, fonts, displayName, password, htmlAssets,
-                    allowPackages, add, pageNumbers);
+                    allowPackages, add, pageNumbers, zoom);
         }
 
         public Options pageNumbers(boolean add) {
             return new Options(timeout, fontDirs, maxPages, maxScratchBytes, fonts, displayName, password, htmlAssets,
-                    allowPackages, tableOfContents, add);
+                    allowPackages, tableOfContents, add, zoom);
+        }
+
+        public Options zoom(float scale) {
+            return new Options(timeout, fontDirs, maxPages, maxScratchBytes, fonts, displayName, password, htmlAssets,
+                    allowPackages, tableOfContents, pageNumbers, scale);
         }
 
         public FontLibrary fontLibrary() {
@@ -250,7 +269,7 @@ public final class OfficeToPdf {
                     + ", maxScratchBytes=" + maxScratchBytes + ", fonts=" + fonts + ", displayName=" + displayName
                     + ", password=" + (password == null ? "none" : "given") + ", htmlAssets="
                     + (htmlAssets == HtmlAssets.NONE ? "none" : "given") + ", allowPackages=" + allowPackages
-                    + ", tableOfContents=" + tableOfContents + ", pageNumbers=" + pageNumbers + "]";
+                    + ", tableOfContents=" + tableOfContents + ", pageNumbers=" + pageNumbers + ", zoom=" + zoom + "]";
         }
     }
 
@@ -295,6 +314,10 @@ public final class OfficeToPdf {
     }
 
     public static Result convert(Path in, Path out, Options options) throws IOException {
+        return Admission.readmitting(() -> convertOnce(in, out, options));
+    }
+
+    private static Result convertOnce(Path in, Path out, Options options) throws IOException {
         Objects.requireNonNull(in, "in");
         Objects.requireNonNull(out, "out");
         Objects.requireNonNull(options, "options");

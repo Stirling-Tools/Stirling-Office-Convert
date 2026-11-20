@@ -290,16 +290,28 @@ class PdfOptimizerTest {
     }
 
     @Test
-    void resourcesStayWhenTheContentHoldsAnInlineImage() throws Exception {
+    void unusedResourcesGoPastAnInlineImageOfKnownSize() throws Exception {
         Path in = RawPdf.page("/Font<<" + RawPdf.helvetica("F1") + RawPdf.helvetica("F2") + ">>",
                 "q 10 0 0 10 50 50 cm BI /W 2 /H 2 /CS /G /BPC 8 ID \u0000ÿÿ\u0000 EI Q").write(dir,
                         "inline");
         Path out = dir.resolve("out.pdf");
         PdfOptimizer.optimize(in, out, REWRITE);
         try (PDDocument d = Loader.loadPDF(out.toFile())) {
-            assertTrue(d.getPage(0).getResources().getCOSObject().getCOSDictionary(COSName.FONT).containsKey("F2"));
+            assertFalse(d.getPage(0).getResources().getCOSObject().getCOSDictionary(COSName.FONT).containsKey("F2"));
         }
         Pages.assertSameRendering(in, out);
+    }
+
+    @Test
+    void resourcesStayWhenAnInlineImageHasNoKnownEnd() throws Exception {
+        Path in = RawPdf.page("/Font<<" + RawPdf.helvetica("F1") + RawPdf.helvetica("F2") + ">>",
+                "q 10 0 0 10 50 50 cm BI /W 2 /H 2 /CS /G /BPC 8 /F /RL ID \u0000ÿÿ\u0000 EI Q").write(dir,
+                        "inline");
+        Path out = dir.resolve("out.pdf");
+        PdfOptimizer.optimize(in, out, REWRITE);
+        try (PDDocument d = Loader.loadPDF(out.toFile())) {
+            assertTrue(d.getPage(0).getResources().getCOSObject().getCOSDictionary(COSName.FONT).containsKey("F2"));
+        }
     }
 
     @Test

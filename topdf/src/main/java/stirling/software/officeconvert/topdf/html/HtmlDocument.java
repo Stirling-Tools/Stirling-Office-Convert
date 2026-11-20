@@ -47,7 +47,17 @@ public final class HtmlDocument {
 
     /** A page laid out, and the scale it should be printed at: below 1 when content was wider than the page. */
     public record Laid(Converted converted, float fit, List<byte[]> fonts, Map<String, String> targets,
-            Map<String, String[]> runningStrings) {}
+            Map<String, String[]> runningStrings, float scale) {
+
+        public Laid(Converted converted, float fit, List<byte[]> fonts, Map<String, String> targets,
+                Map<String, String[]> runningStrings) {
+            this(converted, fit, fonts, targets, runningStrings, 1f);
+        }
+    }
+
+    static final float MAX_PAPER = 14_400f;
+
+    static final float MAX_ZOOMED_MARGIN = 0.25f;
 
     // Chrome shrinks a page whose content is too wide by at most a third, and clips what is wider still
     static final float LEAST_FIT = 2f / 3f;
@@ -94,8 +104,13 @@ public final class HtmlDocument {
 
     public static Laid lay(Path source, OutputStream out, FontLibrary fonts, float zoom, HtmlAssets assets,
             Map<String, Integer> targetPages) throws IOException {
+        return lay(source, out, fonts, zoom, 1f, assets, targetPages);
+    }
+
+    public static Laid lay(Path source, OutputStream out, FontLibrary fonts, float zoom, float scale,
+            HtmlAssets assets, Map<String, Integer> targetPages) throws IOException {
         try (DocxWriter writer = new DocxWriter(out)) {
-            return lay(source, writer, fonts, zoom, assets, targetPages);
+            return lay(source, writer, fonts, zoom, scale, assets, targetPages);
         }
     }
 
@@ -105,15 +120,15 @@ public final class HtmlDocument {
     }
 
     public static Converted write(Path source, DocSink sink, FontLibrary fonts) throws IOException {
-        return lay(source, sink, fonts, 1f, HtmlAssets.NONE, Map.of()).converted();
+        return lay(source, sink, fonts, 1f, 1f, HtmlAssets.NONE, Map.of()).converted();
     }
 
     public static Converted write(Path source, DocSink sink, FontLibrary fonts, HtmlAssets assets) throws IOException {
-        return lay(source, sink, fonts, 1f, assets, Map.of()).converted();
+        return lay(source, sink, fonts, 1f, 1f, assets, Map.of()).converted();
     }
 
-    private static Laid lay(Path source, DocSink sink, FontLibrary fonts, float zoom, HtmlAssets assets,
-            Map<String, Integer> targetPages) throws IOException {
+    private static Laid lay(Path source, DocSink sink, FontLibrary fonts, float zoom, float scale,
+            HtmlAssets assets, Map<String, Integer> targetPages) throws IOException {
         try {
             if (fonts != null) {
                 Map<String, Boolean> known = new HashMap<>();
@@ -121,7 +136,7 @@ public final class HtmlDocument {
                 Look.generics(generics(fonts));
                 Glyphs.fonts(fonts);
             }
-            return convert(source, sink, Math.max(LEAST_FIT, Math.min(1f, zoom)), (Linked) readOnce(assets),
+            return convert(source, sink, Math.max(LEAST_FIT, Math.min(1f, zoom)), scale, (Linked) readOnce(assets),
                     targetPages);
         } finally {
             Css.clearRootSize();
@@ -170,7 +185,7 @@ public final class HtmlDocument {
         return (page.pageWidth - page.marginLeft - page.marginRight) / 0.75f;
     }
 
-    private static Laid convert(Path source, DocSink writer, float zoom, Linked linked,
+    private static Laid convert(Path source, DocSink writer, float zoom, float scale, Linked linked,
             Map<String, Integer> targetPages) throws IOException {
         // One bulk read: the parser's small reads are slow on network and container file systems
         byte[] bytes = Files.readAllBytes(source);
@@ -187,8 +202,20 @@ public final class HtmlDocument {
             widened = new float[] {page.marginTop - plain.marginTop, page.marginBottom - plain.marginBottom,
                     page.marginLeft - plain.marginLeft, page.marginRight - plain.marginRight};
         }
+        scale = Math.max(scale, Math.max(page.pageWidth, page.pageHeight) / (MAX_PAPER * LEAST_FIT));
+        if (scale != 1f) {
+            enlarge(page, scale);
+            if (widened != null) {
+                for (int i = 0; i < widened.length; i++) {
+                    widened[i] /= scale;
+                }
+            }
+        }
         // media queries see the printed page, however wide the layout grows
         Cascade cascade = new Cascade(doc, viewportPx(page), linked);
+        if (scale > 1f && hasMarginBoxes(cascade)) {
+            zoomMargins(page, scale);
+        }
         Generated.Result generated = Generated.apply(doc, cascade, targetPages);
         float[] inset = inset(page, cascade, doc);
         List<String> warnings = new ArrayList<>();
@@ -297,7 +324,7 @@ public final class HtmlDocument {
         // a second layout on larger paper is printed at the zoom it was laid out for
         float printAt = zoom < 1 ? (ownPaper ? 1f : zoom) : fit;
         return new Laid(new Converted(warnings, ctx.truncated()), printAt, web.fonts(), ctx.targetBookmarks(),
-                ctx.runningStrings());
+                ctx.runningStrings(), scale);
     }
 
     private static int canvasColor(Map<String, String> htmlStyle, Map<String, String> bodyStyle) {
@@ -379,6 +406,20 @@ public final class HtmlDocument {
         }
         Float pt = Css.length(v, Look.ROOT_SIZE, room);
         return pt == null ? 0 : Math.max(0, pt);
+    }
+
+    private static boolean hasMarginBoxes(Cascade cascade) {
+        return MarginBoxes.any(cascade.margins("right")) || MarginBoxes.any(cascade.margins("left"))
+                || MarginBoxes.any(cascade.margins("right", "first"));
+    }
+
+    private static void zoomMargins(Section page, float scale) {
+        float across = page.pageWidth * MAX_ZOOMED_MARGIN;
+        float down = page.pageHeight * MAX_ZOOMED_MARGIN;
+        page.marginLeft = Math.min(page.marginLeft * scale, across);
+        page.marginRight = Math.min(page.marginRight * scale, across);
+        page.marginTop = Math.min(page.marginTop * scale, down);
+        page.marginBottom = Math.min(page.marginBottom * scale, down);
     }
 
     private static void enlarge(Section page, float zoom) {

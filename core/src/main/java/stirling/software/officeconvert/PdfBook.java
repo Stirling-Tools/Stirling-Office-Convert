@@ -51,9 +51,6 @@ final class PdfBook {
         } catch (InterruptedIOException e) {
             throw e;
         } catch (IOException e) {
-            if (Admission.NEEDS_MEMORY.equals(e.getMessage())) {
-                throw e;
-            }
             LOG.debug("No cover picture for the book", e);
             return null;
         } catch (RuntimeException e) {

@@ -196,7 +196,7 @@ class AdmissionTest {
                         (source, job) -> {
                             job.newPage(PageSize.A4).close();
                             job.newPage(PageSize.A4).close();
-                            throw new RenderJob.OutOfMemory();
+                            throw new Admission.Stopped();
                         })));
         assertEquals(RenderJob.NEEDS_MEMORY, e.getMessage());
         assertEquals(0, Admission.jvm().running());
