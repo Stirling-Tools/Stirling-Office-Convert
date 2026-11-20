@@ -94,8 +94,13 @@ public final class HtmlDocument {
 
     public static Laid lay(Path source, OutputStream out, FontLibrary fonts, float zoom, HtmlAssets assets,
             Map<String, Integer> targetPages) throws IOException {
+        return lay(source, out, fonts, zoom, 1f, assets, targetPages);
+    }
+
+    public static Laid lay(Path source, OutputStream out, FontLibrary fonts, float zoom, float scale,
+            HtmlAssets assets, Map<String, Integer> targetPages) throws IOException {
         try (DocxWriter writer = new DocxWriter(out)) {
-            return lay(source, writer, fonts, zoom, assets, targetPages);
+            return lay(source, writer, fonts, zoom, scale, assets, targetPages);
         }
     }
 
@@ -105,15 +110,15 @@ public final class HtmlDocument {
     }
 
     public static Converted write(Path source, DocSink sink, FontLibrary fonts) throws IOException {
-        return lay(source, sink, fonts, 1f, HtmlAssets.NONE, Map.of()).converted();
+        return lay(source, sink, fonts, 1f, 1f, HtmlAssets.NONE, Map.of()).converted();
     }
 
     public static Converted write(Path source, DocSink sink, FontLibrary fonts, HtmlAssets assets) throws IOException {
-        return lay(source, sink, fonts, 1f, assets, Map.of()).converted();
+        return lay(source, sink, fonts, 1f, 1f, assets, Map.of()).converted();
     }
 
-    private static Laid lay(Path source, DocSink sink, FontLibrary fonts, float zoom, HtmlAssets assets,
-            Map<String, Integer> targetPages) throws IOException {
+    private static Laid lay(Path source, DocSink sink, FontLibrary fonts, float zoom, float scale,
+            HtmlAssets assets, Map<String, Integer> targetPages) throws IOException {
         try {
             if (fonts != null) {
                 Map<String, Boolean> known = new HashMap<>();
@@ -121,7 +126,7 @@ public final class HtmlDocument {
                 Look.generics(generics(fonts));
                 Glyphs.fonts(fonts);
             }
-            return convert(source, sink, Math.max(LEAST_FIT, Math.min(1f, zoom)), (Linked) readOnce(assets),
+            return convert(source, sink, Math.max(LEAST_FIT, Math.min(1f, zoom)), scale, (Linked) readOnce(assets),
                     targetPages);
         } finally {
             Css.clearRootSize();
@@ -170,7 +175,7 @@ public final class HtmlDocument {
         return (page.pageWidth - page.marginLeft - page.marginRight) / 0.75f;
     }
 
-    private static Laid convert(Path source, DocSink writer, float zoom, Linked linked,
+    private static Laid convert(Path source, DocSink writer, float zoom, float scale, Linked linked,
             Map<String, Integer> targetPages) throws IOException {
         // One bulk read: the parser's small reads are slow on network and container file systems
         byte[] bytes = Files.readAllBytes(source);
@@ -186,6 +191,14 @@ public final class HtmlDocument {
             Section plain = page(own, COVER_MARGIN);
             widened = new float[] {page.marginTop - plain.marginTop, page.marginBottom - plain.marginBottom,
                     page.marginLeft - plain.marginLeft, page.marginRight - plain.marginRight};
+        }
+        if (scale != 1f) {
+            enlarge(page, scale);
+            if (widened != null) {
+                for (int i = 0; i < widened.length; i++) {
+                    widened[i] /= scale;
+                }
+            }
         }
         // media queries see the printed page, however wide the layout grows
         Cascade cascade = new Cascade(doc, viewportPx(page), linked);

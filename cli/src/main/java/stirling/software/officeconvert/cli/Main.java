@@ -509,7 +509,7 @@ public final class Main {
                         + " [-o out.pdf|dir] [--format pdf] [--password p]"
                         + " [--max-pages n (default 10000, 0 = all)] [--timeout s (default 300, 0 = none)]"
                         + " [--fonts dir]... [--font-map Family=Installed]... [--font-width Family=scale]..."
-                        + " [--no-system-fonts] [--allow-packages] [--allow-local-files] [--toc] [--page-numbers] [--overwrite] [-q]"
+                        + " [--no-system-fonts] [--allow-packages] [--allow-local-files] [--toc] [--page-numbers] [--zoom n] [--overwrite] [-q]"
                         + System.lineSeparator()
                         + "       office-convert <http(s)://url> -o out.pdf --allow-network [--follow-redirects] [--allow-cookies]"
                         + " [--allow-private-addresses] [--timeout s] [--overwrite] [-q]; an HTML file with"
@@ -544,7 +544,7 @@ public final class Main {
                         + " in its own folder (never outside it). eBooks use only what they hold; an EPUB inside another .zip, or"
                         + " a FictionBook inside a .zip not named .fbz or .fb2.zip, needs --allow-packages. --toc adds a table of"
                         + " contents with page numbers and links after the document and --page-numbers numbers the pages at"
-                        + " their foot; every font the PDF uses is embedded."
+                        + " their foot; --zoom (0.1 to 8) scales an HTML page as a browser's zoom does; every font the PDF uses is embedded."
                         + System.lineSeparator()
                         + "A URL is fetched, with the pictures, style sheets and fonts it links, only with --allow-network:"
                         + " http and https only, never a loopback, private, link-local or reserved address unless"
