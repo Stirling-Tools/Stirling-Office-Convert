@@ -24,6 +24,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
 
+import stirling.software.officeconvert.RuntimeModules;
 import stirling.software.officeconvert.UnsupportedFormatException;
 import stirling.software.officeconvert.extract.PdfFiles;
 import stirling.software.officeconvert.jpx.JpxImageIO;
@@ -322,6 +323,7 @@ public final class OfficeToPdf {
         Objects.requireNonNull(in, "in");
         Objects.requireNonNull(out, "out");
         Objects.requireNonNull(options, "options");
+        RuntimeModules.check();
         JpxImageIO.install();
         Format format;
         try {
@@ -343,6 +345,7 @@ public final class OfficeToPdf {
         Objects.requireNonNull(options, "options");
         Objects.requireNonNull(url, "url");
         Objects.requireNonNull(access, "access");
+        RuntimeModules.check();
         JpxImageIO.install();
         AtomicReference<Result> result = new AtomicReference<>();
         writeAtomically(out.toAbsolutePath(), options.timeout(), STOP_MILLIS, os -> {
@@ -365,6 +368,7 @@ public final class OfficeToPdf {
         Objects.requireNonNull(format, "format");
         Objects.requireNonNull(out, "out");
         Objects.requireNonNull(options, "options");
+        RuntimeModules.check();
         JpxImageIO.install();
         long started = System.nanoTime();
         AtomicBoolean abandoned = new AtomicBoolean();

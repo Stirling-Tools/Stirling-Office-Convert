@@ -10,6 +10,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.Collections;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
@@ -59,6 +60,8 @@ public final class PdfFonts implements Closeable {
     private final Set<Integer> uncovered = new LinkedHashSet<>();
 
     private long uncoveredCount;
+
+    private final Map<Character.UnicodeScript, Long> uncoveredScripts = new EnumMap<>(Character.UnicodeScript.class);
 
     static final int MAX_MISSING = 0xFFFE;
 
@@ -254,9 +257,14 @@ public final class PdfFonts implements Closeable {
 
     public void uncovered(int codePoint) {
         uncoveredCount++;
+        uncoveredScripts.merge(Character.UnicodeScript.of(codePoint), 1L, Long::sum);
         if (uncovered.size() < MAX_UNCOVERED) {
             uncovered.add(codePoint);
         }
+    }
+
+    public Map<Character.UnicodeScript, Long> uncoveredScripts() {
+        return Collections.unmodifiableMap(uncoveredScripts);
     }
 
     public List<String> substitutions() {

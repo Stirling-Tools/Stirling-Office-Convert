@@ -22,6 +22,7 @@ import stirling.software.officeconvert.OfficeConvert;
 import stirling.software.officeconvert.PdfToDocx;
 import stirling.software.officeconvert.PdfToPptx;
 import stirling.software.officeconvert.PdfToXlsx;
+import stirling.software.officeconvert.RuntimeModules;
 import stirling.software.officeconvert.UnsupportedFormatException;
 import stirling.software.officeconvert.lineart.LineArt;
 import stirling.software.officeconvert.optimize.PdfOptimizer;
@@ -56,6 +57,12 @@ public final class Main {
     static int run(String[] argv) {
         if (argv.length > 0 && SplitPhotos.COMMAND.equals(argv[0])) {
             return SplitPhotos.run(Arrays.copyOfRange(argv, 1, argv.length));
+        }
+        try {
+            RuntimeModules.check();
+        } catch (IllegalStateException e) {
+            System.err.println("office-convert: " + e.getMessage());
+            return 1;
         }
         Batch batch;
         try {
@@ -253,8 +260,8 @@ public final class Main {
         return switch (batch.mode()) {
             case PDFA -> {
                 PdfToPdfA.Options archival = PdfToPdfA.Options.defaults().level(a.pdfaLevel()).password(a.password())
-                        .timeout(office.timeout()).maxPages(office.maxPages()).fonts(a.fonts());
-                yield (in, target) -> notes(PdfToPdfA.convert(in, target, archival).warnings());
+                        .timeout(office.timeout()).maxPages(office.maxPages()).fonts(a.fonts()).levelFallback(true);
+                yield (in, target) -> archivalNotes(PdfToPdfA.convert(in, target, archival));
             }
             case LINE_ART -> {
                 LineArt.Options bilevel = a.lineArt().password(a.password());
@@ -282,6 +289,16 @@ public final class Main {
 
     private static Outcome notes(List<String> notes) {
         return new Outcome(List.of(), notes);
+    }
+
+    private static Outcome archivalNotes(PdfToPdfA.Result r) {
+        if (!r.levelReduced()) {
+            return notes(r.warnings());
+        }
+        List<String> warnings = new ArrayList<>();
+        warnings.add("made PDF/A-" + r.achievedPart() + r.achievedConformance().toLowerCase(Locale.ROOT)
+                + ", not the requested " + r.level().label());
+        return new Outcome(warnings, r.warnings());
     }
 
     private static Outcome lineArtNotes(LineArt.Result art) {

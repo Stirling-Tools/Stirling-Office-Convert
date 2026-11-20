@@ -110,6 +110,62 @@ class PdfToPdfATest {
     }
 
     @Test
+    void levelAOnAnUntaggedFileFallsBackToLevelBWhenAllowedAndSaysSo() throws Exception {
+        Path plain = Samples.write(dir, "s01_std14_unembedded");
+        Path out = dir.resolve("fallback.pdf");
+        PdfToPdfA.Result r = PdfToPdfA.convert(plain, out,
+                PdfToPdfA.Options.defaults().level(PdfALevel.A2A).levelFallback(true));
+        assertEquals(PdfALevel.A2A, r.level());
+        assertEquals(PdfALevel.A2B, r.achievedLevel());
+        assertEquals(2, r.achievedPart());
+        assertEquals("B", r.achievedConformance());
+        assertTrue(r.levelReduced());
+        assertTrue(r.warnings().stream().anyMatch(w -> w.startsWith(
+                "Converted to PDF/A-2b instead of the requested PDF/A-2a: The PDF has no tagged structure")),
+                r.warnings().toString());
+        VeraPdf.assertCompliant(out, PdfALevel.A2B);
+    }
+
+    @Test
+    void levelAWithContentOutsideTheStructureFallsBackWithTheReason() throws Exception {
+        Path tagged = Samples.write(dir, "s21_tagged");
+        Path loose = dir.resolve("loose.pdf");
+        try (PDDocument d = Loader.loadPDF(tagged.toFile())) {
+            try (var cs = new org.apache.pdfbox.pdmodel.PDPageContentStream(d, d.getPage(0),
+                    org.apache.pdfbox.pdmodel.PDPageContentStream.AppendMode.APPEND, false)) {
+                cs.addRect(10, 10, 20, 20);
+                cs.fill();
+                cs.beginText();
+                cs.setFont(new org.apache.pdfbox.pdmodel.font.PDType1Font(
+                        org.apache.pdfbox.pdmodel.font.Standard14Fonts.FontName.HELVETICA), 12);
+                cs.showText("loose");
+                cs.endText();
+            }
+            d.save(loose.toFile());
+        }
+        assertThrows(IOException.class, () -> PdfToPdfA.convert(loose, dir.resolve("refused.pdf"),
+                PdfToPdfA.Options.defaults().level(PdfALevel.A1A)));
+        Path out = dir.resolve("loose-b.pdf");
+        PdfToPdfA.Result r = PdfToPdfA.convert(loose, out,
+                PdfToPdfA.Options.defaults().level(PdfALevel.A1A).levelFallback(true));
+        assertEquals(PdfALevel.A1B, r.achievedLevel());
+        assertTrue(r.warnings().stream().anyMatch(w -> w.startsWith("Converted to PDF/A-1b instead of the requested "
+                + "PDF/A-1a: PDF/A-1a needs every piece of content tagged") && w.contains("text outside")),
+                r.warnings().toString());
+        VeraPdf.assertCompliant(out, PdfALevel.A1B);
+    }
+
+    @Test
+    void aMetLevelIsTheAchievedLevel() throws Exception {
+        Path tagged = Samples.write(dir, "s21_tagged");
+        PdfToPdfA.Result r = PdfToPdfA.convert(tagged, dir.resolve("met.pdf"),
+                PdfToPdfA.Options.defaults().level(PdfALevel.A2A).levelFallback(true));
+        assertEquals(PdfALevel.A2A, r.achievedLevel());
+        assertEquals("A", r.achievedConformance());
+        assertFalse(r.levelReduced());
+    }
+
+    @Test
     void aBrokenStructureTreeEntryIsSkipped() throws Exception {
         Path tagged = Samples.write(dir, "s21_tagged");
         Path broken = dir.resolve("broken-tags.pdf");

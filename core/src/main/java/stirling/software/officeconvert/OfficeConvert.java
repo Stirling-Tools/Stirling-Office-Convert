@@ -314,6 +314,7 @@ public final class OfficeConvert {
     public static <T> T run(Duration timeout, Work<T> work) throws IOException {
         Objects.requireNonNull(timeout, "timeout");
         Objects.requireNonNull(work, "work");
+        RuntimeModules.check();
         long nanos;
         try {
             nanos = timeout.toNanos();

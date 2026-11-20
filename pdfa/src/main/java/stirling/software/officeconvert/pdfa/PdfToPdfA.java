@@ -11,6 +11,7 @@ import java.util.Objects;
 
 import org.apache.pdfbox.pdmodel.PDDocument;
 
+import stirling.software.officeconvert.RuntimeModules;
 import stirling.software.officeconvert.extract.PdfFiles;
 import stirling.software.officeconvert.jpx.JpxImageIO;
 import stirling.software.officeconvert.memory.Admission;
@@ -22,7 +23,7 @@ public final class PdfToPdfA {
     public static final long MAX_INPUT_BYTES = PdfFiles.MAX_INPUT_BYTES;
 
     public record Options(PdfALevel level, String password, Duration timeout, List<Path> fontDirs, int maxPages,
-            float flattenDpi, FontSet fonts) {
+            float flattenDpi, FontSet fonts, boolean levelFallback) {
 
         public static final int DEFAULT_MAX_PAGES = 10_000;
 
@@ -46,6 +47,11 @@ public final class PdfToPdfA {
         }
 
         public Options(PdfALevel level, String password, Duration timeout, List<Path> fontDirs, int maxPages,
+                float flattenDpi, FontSet fonts) {
+            this(level, password, timeout, fontDirs, maxPages, flattenDpi, fonts, false);
+        }
+
+        public Options(PdfALevel level, String password, Duration timeout, List<Path> fontDirs, int maxPages,
                 float flattenDpi) {
             this(level, password, timeout, fontDirs, maxPages, flattenDpi, FontSet.system());
         }
@@ -56,23 +62,27 @@ public final class PdfToPdfA {
         }
 
         public Options level(PdfALevel to) {
-            return new Options(to, password, timeout, fontDirs, maxPages, flattenDpi, fonts);
+            return new Options(to, password, timeout, fontDirs, maxPages, flattenDpi, fonts, levelFallback);
         }
 
         public Options password(String secret) {
-            return new Options(level, secret, timeout, fontDirs, maxPages, flattenDpi, fonts);
+            return new Options(level, secret, timeout, fontDirs, maxPages, flattenDpi, fonts, levelFallback);
         }
 
         public Options timeout(Duration limit) {
-            return new Options(level, password, limit, fontDirs, maxPages, flattenDpi, fonts);
+            return new Options(level, password, limit, fontDirs, maxPages, flattenDpi, fonts, levelFallback);
         }
 
         public Options fontDirs(List<Path> dirs) {
-            return new Options(level, password, timeout, dirs, maxPages, flattenDpi, fonts);
+            return new Options(level, password, timeout, dirs, maxPages, flattenDpi, fonts, levelFallback);
         }
 
         public Options fonts(FontSet set) {
-            return new Options(level, password, timeout, fontDirs, maxPages, flattenDpi, set);
+            return new Options(level, password, timeout, fontDirs, maxPages, flattenDpi, set, levelFallback);
+        }
+
+        public Options levelFallback(boolean allowed) {
+            return new Options(level, password, timeout, fontDirs, maxPages, flattenDpi, fonts, allowed);
         }
 
         public FontLibrary fontLibrary() {
@@ -80,28 +90,47 @@ public final class PdfToPdfA {
         }
 
         public Options maxPages(int pages) {
-            return new Options(level, password, timeout, fontDirs, pages, flattenDpi, fonts);
+            return new Options(level, password, timeout, fontDirs, pages, flattenDpi, fonts, levelFallback);
         }
 
         public Options flattenDpi(float dpi) {
-            return new Options(level, password, timeout, fontDirs, maxPages, dpi, fonts);
+            return new Options(level, password, timeout, fontDirs, maxPages, dpi, fonts, levelFallback);
         }
 
         @Override
         public String toString() {
             return "Options[level=" + level + ", password=" + (password == null ? "none" : "given") + ", timeout="
-                    + timeout + ", fontDirs=" + fontDirs + ", maxPages=" + maxPages + ", flattenDpi=" + flattenDpi + ", fonts=" + fonts + "]";
+                    + timeout + ", fontDirs=" + fontDirs + ", maxPages=" + maxPages + ", flattenDpi=" + flattenDpi
+                    + ", fonts=" + fonts + ", levelFallback=" + levelFallback + "]";
         }
     }
 
     public record Result(PdfALevel level, int pages, List<String> warnings, List<Integer> flattenedPages,
-            List<String> substitutedFonts) {
+            List<String> substitutedFonts, PdfALevel achievedLevel) {
 
         public Result {
             Objects.requireNonNull(level, "level");
+            Objects.requireNonNull(achievedLevel, "achievedLevel");
             warnings = List.copyOf(warnings);
             flattenedPages = List.copyOf(flattenedPages);
             substitutedFonts = List.copyOf(substitutedFonts);
+        }
+
+        public Result(PdfALevel level, int pages, List<String> warnings, List<Integer> flattenedPages,
+                List<String> substitutedFonts) {
+            this(level, pages, warnings, flattenedPages, substitutedFonts, level);
+        }
+
+        public int achievedPart() {
+            return achievedLevel.part();
+        }
+
+        public String achievedConformance() {
+            return achievedLevel.conformance();
+        }
+
+        public boolean levelReduced() {
+            return achievedLevel != level;
         }
     }
 
@@ -125,6 +154,7 @@ public final class PdfToPdfA {
         Objects.requireNonNull(in, "in");
         Objects.requireNonNull(out, "out");
         Objects.requireNonNull(options, "options");
+        RuntimeModules.check();
         PdfFiles.stopIfInterrupted();
         PdfFiles.checkSize(in);
         return PdfFiles.writeThenMove(out, ".pdfa-", part ->
@@ -149,6 +179,7 @@ public final class PdfToPdfA {
         Objects.requireNonNull(out, "out");
         Objects.requireNonNull(options, "options");
         PdfFiles.checkOpen(document);
+        RuntimeModules.check();
         JpxImageIO.install();
         return Deadline.run(options.timeout(), () -> ContentCache.run(() -> Conversion.run(document, out, options)));
     }

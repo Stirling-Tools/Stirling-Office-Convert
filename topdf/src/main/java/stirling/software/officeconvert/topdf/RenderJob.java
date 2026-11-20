@@ -12,8 +12,10 @@ import java.util.Objects;
 
 import org.apache.pdfbox.pdmodel.PDDocument;
 
+import stirling.software.officeconvert.RuntimeModules;
 import stirling.software.officeconvert.memory.Admission;
 import stirling.software.officeconvert.topdf.font.FontLibrary;
+import stirling.software.officeconvert.topdf.font.MissingScripts;
 import stirling.software.officeconvert.topdf.io.OfficeZip;
 import stirling.software.officeconvert.topdf.io.PoiXml;
 import stirling.software.officeconvert.topdf.pdf.PageSize;
@@ -203,8 +205,13 @@ public final class RenderJob {
 
     /** The warnings so far, at most {@link #MAX_WARNINGS} plus a closing note, each one line of plain text. */
     public List<String> warnings() {
-        List<String> all = new ArrayList<>(warnings);
-        boolean more = dropped;
+        List<String> all = new ArrayList<>(RuntimeModules.warnings());
+        for (String s : MissingScripts.warnings(output.fonts().uncoveredScripts(), output.info().language())) {
+            all.add(clean(s));
+        }
+        int kept = Math.min(warnings.size(), Math.max(0, MAX_WARNINGS - all.size()));
+        all.addAll(warnings.subList(0, kept));
+        boolean more = dropped || kept < warnings.size();
         for (String s : output.fonts().substitutions()) {
             String m = clean(s);
             if (m == null || all.contains(m)) {
