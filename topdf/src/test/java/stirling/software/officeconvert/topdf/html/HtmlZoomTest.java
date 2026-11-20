@@ -91,6 +91,49 @@ class HtmlZoomTest {
     }
 
     @Test
+    void largePaperKeepsItsSizeAtTheSmallestZoom() throws Exception {
+        String html = "<style>@page{size:841mm 1189mm}</style>" + BODY;
+        try (PDDocument small = convert(html, 0.1f)) {
+            assertEquals(2383.9f, small.getPage(0).getMediaBox().getWidth(), 2f);
+            assertEquals(3370.4f, small.getPage(0).getMediaBox().getHeight(), 2f);
+        }
+    }
+
+    @Test
+    void marginBoxesKeepClearOfTheBodyWhenZoomedIn() throws Exception {
+        String html = "<style>@page{size:A5;margin:2cm;@top-center{content:'Running header'}"
+                + "@bottom-right{content:'Page ' counter(page)}}</style>" + BODY;
+        try (PDDocument zoomed = convert(html, 3f)) {
+            PDFTextStripper text = new PDFTextStripper();
+            text.setSortByPosition(true);
+            text.setEndPage(1);
+            String page = text.getText(zoomed).replaceAll("\\s+", " ").strip();
+            assertTrue(page.startsWith("Running header"), page);
+            assertTrue(page.matches(".*Page 1$"), page);
+        }
+    }
+
+    @Test
+    void formFieldFontsScaleWithTheZoom() throws Exception {
+        String html = "<form><input name=a value=text style='font-size:10pt'></form>";
+        try (PDDocument normal = convert(html, 1f); PDDocument doubled = convert(html, 2f)) {
+            assertEquals(2 * fieldFontSize(normal), fieldFontSize(doubled), 0.01f);
+        }
+    }
+
+    private static float fieldFontSize(PDDocument document) throws Exception {
+        var form = document.getDocumentCatalog().getAcroForm();
+        String da = form.getFields().getFirst().getCOSObject().getString(org.apache.pdfbox.cos.COSName.DA);
+        if (da == null) {
+            da = document.getPage(0).getAnnotations().getFirst().getCOSObject()
+                    .getString(org.apache.pdfbox.cos.COSName.DA);
+        }
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("([\\d.]+)\\s+Tf").matcher(da);
+        assertTrue(m.find(), da);
+        return Float.parseFloat(m.group(1));
+    }
+
+    @Test
     void zoomOutsideTheRangeIsRefused() {
         assertThrows(IllegalArgumentException.class, () -> OfficeToPdf.Options.defaults().zoom(0.05f));
         assertThrows(IllegalArgumentException.class, () -> OfficeToPdf.Options.defaults().zoom(9f));

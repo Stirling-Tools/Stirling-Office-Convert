@@ -256,8 +256,8 @@ final class HtmlInput {
                 OfficeToPdf.stopIfInterrupted();
                 laid = lay(source, pkg, options, bytes, zoom, scale, once, pages);
             }
-            float printed = laid.fit() * scale;
-            if (laid.fit() >= 0.99f && scale == 1f) {
+            float printed = laid.fit() * laid.scale();
+            if (laid.fit() >= 0.99f && laid.scale() == 1f) {
                 return Rewritten.render(pkg, source, laid.converted(), sink, options, renderer, strings(laid),
                         job -> { });
             }
@@ -268,7 +268,7 @@ final class HtmlInput {
                     r = Rewritten.render(pkg, source, laid.converted(), os, options, renderer, strings(laid),
                             job -> { });
                 }
-                PageScale.shrink(wide, laid.fit() >= 0.99f ? scale : printed, sink);
+                PageScale.shrink(wide, laid.fit() >= 0.99f ? laid.scale() : printed, sink);
                 return r;
             } finally {
                 OfficeToPdf.deleteQuietly(wide);

@@ -47,7 +47,17 @@ public final class HtmlDocument {
 
     /** A page laid out, and the scale it should be printed at: below 1 when content was wider than the page. */
     public record Laid(Converted converted, float fit, List<byte[]> fonts, Map<String, String> targets,
-            Map<String, String[]> runningStrings) {}
+            Map<String, String[]> runningStrings, float scale) {
+
+        public Laid(Converted converted, float fit, List<byte[]> fonts, Map<String, String> targets,
+                Map<String, String[]> runningStrings) {
+            this(converted, fit, fonts, targets, runningStrings, 1f);
+        }
+    }
+
+    static final float MAX_PAPER = 14_400f;
+
+    static final float MAX_ZOOMED_MARGIN = 0.25f;
 
     // Chrome shrinks a page whose content is too wide by at most a third, and clips what is wider still
     static final float LEAST_FIT = 2f / 3f;
@@ -192,6 +202,7 @@ public final class HtmlDocument {
             widened = new float[] {page.marginTop - plain.marginTop, page.marginBottom - plain.marginBottom,
                     page.marginLeft - plain.marginLeft, page.marginRight - plain.marginRight};
         }
+        scale = Math.max(scale, Math.max(page.pageWidth, page.pageHeight) / (MAX_PAPER * LEAST_FIT));
         if (scale != 1f) {
             enlarge(page, scale);
             if (widened != null) {
@@ -202,6 +213,9 @@ public final class HtmlDocument {
         }
         // media queries see the printed page, however wide the layout grows
         Cascade cascade = new Cascade(doc, viewportPx(page), linked);
+        if (scale > 1f && hasMarginBoxes(cascade)) {
+            zoomMargins(page, scale);
+        }
         Generated.Result generated = Generated.apply(doc, cascade, targetPages);
         float[] inset = inset(page, cascade, doc);
         List<String> warnings = new ArrayList<>();
@@ -310,7 +324,7 @@ public final class HtmlDocument {
         // a second layout on larger paper is printed at the zoom it was laid out for
         float printAt = zoom < 1 ? (ownPaper ? 1f : zoom) : fit;
         return new Laid(new Converted(warnings, ctx.truncated()), printAt, web.fonts(), ctx.targetBookmarks(),
-                ctx.runningStrings());
+                ctx.runningStrings(), scale);
     }
 
     private static int canvasColor(Map<String, String> htmlStyle, Map<String, String> bodyStyle) {
@@ -392,6 +406,20 @@ public final class HtmlDocument {
         }
         Float pt = Css.length(v, Look.ROOT_SIZE, room);
         return pt == null ? 0 : Math.max(0, pt);
+    }
+
+    private static boolean hasMarginBoxes(Cascade cascade) {
+        return MarginBoxes.any(cascade.margins("right")) || MarginBoxes.any(cascade.margins("left"))
+                || MarginBoxes.any(cascade.margins("right", "first"));
+    }
+
+    private static void zoomMargins(Section page, float scale) {
+        float across = page.pageWidth * MAX_ZOOMED_MARGIN;
+        float down = page.pageHeight * MAX_ZOOMED_MARGIN;
+        page.marginLeft = Math.min(page.marginLeft * scale, across);
+        page.marginRight = Math.min(page.marginRight * scale, across);
+        page.marginTop = Math.min(page.marginTop * scale, down);
+        page.marginBottom = Math.min(page.marginBottom * scale, down);
     }
 
     private static void enlarge(Section page, float zoom) {
