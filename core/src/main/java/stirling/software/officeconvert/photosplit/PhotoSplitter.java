@@ -16,6 +16,7 @@ import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Objects;
@@ -24,6 +25,7 @@ import java.util.concurrent.CancellationException;
 import javax.imageio.ImageIO;
 import javax.imageio.ImageReader;
 import javax.imageio.ImageTypeSpecifier;
+import javax.imageio.stream.FileImageInputStream;
 import javax.imageio.stream.ImageInputStream;
 
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -41,6 +43,10 @@ public final class PhotoSplitter {
 
     static volatile int maxPages = 1000;
 
+    private static final String JDK_READERS = "com.sun.imageio.plugins.";
+
+    private static final List<String> JAI_READERS = List.of("com.github.jaiimageio.", "com.sun.media.imageioimpl.");
+
     private static final long ANALYSIS_PIXELS = 4_500_000L;
     private static final long ANALYSIS_BYTES_PER_PIXEL = 24;
 
@@ -50,7 +56,7 @@ public final class PhotoSplitter {
     }
 
     public record Options(int angleThreshold, int tolerance, int minArea, int minContourArea, int borderSize, float dpi,
-            boolean overwrite, Method method) {
+            boolean overwrite, Method method, long maxPixels) {
 
         public Options {
             Objects.requireNonNull(method, "method");
@@ -69,42 +75,63 @@ public final class PhotoSplitter {
             if (!(dpi > 0) || dpi > 2400) {
                 throw new IllegalArgumentException("dpi must be above 0 and at most 2400, was " + dpi);
             }
+            if (maxPixels <= 0) {
+                throw new IllegalArgumentException("maxPixels must be above 0, was " + maxPixels);
+            }
+        }
+
+        public Options(int angleThreshold, int tolerance, int minArea, int minContourArea, int borderSize, float dpi,
+                boolean overwrite, Method method) {
+            this(angleThreshold, tolerance, minArea, minContourArea, borderSize, dpi, overwrite, method, MAX_PIXELS);
         }
 
         public static Options defaults() {
-            return new Options(10, 30, 10000, 500, 0, 300f, false, Method.STRAIGHTEN);
+            return new Options(10, 30, 10000, 500, 0, 300f, false, Method.STRAIGHTEN, MAX_PIXELS);
         }
 
         public Options angleThreshold(int degrees) {
-            return new Options(degrees, tolerance, minArea, minContourArea, borderSize, dpi, overwrite, method);
+            return new Options(degrees, tolerance, minArea, minContourArea, borderSize, dpi,
+                    overwrite, method, maxPixels);
         }
 
         public Options tolerance(int levels) {
-            return new Options(angleThreshold, levels, minArea, minContourArea, borderSize, dpi, overwrite, method);
+            return new Options(angleThreshold, levels, minArea, minContourArea, borderSize, dpi,
+                    overwrite, method, maxPixels);
         }
 
         public Options minArea(int pixels) {
-            return new Options(angleThreshold, tolerance, pixels, minContourArea, borderSize, dpi, overwrite, method);
+            return new Options(angleThreshold, tolerance, pixels, minContourArea, borderSize, dpi,
+                    overwrite, method, maxPixels);
         }
 
         public Options minContourArea(int pixels) {
-            return new Options(angleThreshold, tolerance, minArea, pixels, borderSize, dpi, overwrite, method);
+            return new Options(angleThreshold, tolerance, minArea, pixels, borderSize, dpi,
+                    overwrite, method, maxPixels);
         }
 
         public Options borderSize(int pixels) {
-            return new Options(angleThreshold, tolerance, minArea, minContourArea, pixels, dpi, overwrite, method);
+            return new Options(angleThreshold, tolerance, minArea, minContourArea, pixels, dpi,
+                    overwrite, method, maxPixels);
         }
 
         public Options dpi(float pdfRenderDpi) {
-            return new Options(angleThreshold, tolerance, minArea, minContourArea, borderSize, pdfRenderDpi, overwrite, method);
+            return new Options(angleThreshold, tolerance, minArea, minContourArea, borderSize, pdfRenderDpi,
+                    overwrite, method, maxPixels);
         }
 
         public Options overwrite(boolean replaceExisting) {
-            return new Options(angleThreshold, tolerance, minArea, minContourArea, borderSize, dpi, replaceExisting, method);
+            return new Options(angleThreshold, tolerance, minArea, minContourArea, borderSize, dpi,
+                    replaceExisting, method, maxPixels);
         }
 
         public Options method(Method how) {
-            return new Options(angleThreshold, tolerance, minArea, minContourArea, borderSize, dpi, overwrite, how);
+            return new Options(angleThreshold, tolerance, minArea, minContourArea, borderSize, dpi,
+                    overwrite, how, maxPixels);
+        }
+
+        public Options maxPixels(long pixels) {
+            return new Options(angleThreshold, tolerance, minArea, minContourArea, borderSize, dpi,
+                    overwrite, method, pixels);
         }
     }
 
@@ -126,16 +153,16 @@ public final class PhotoSplitter {
     public static List<Photo> split(BufferedImage scan, Options options) {
         Objects.requireNonNull(options, "options");
         checkpoint();
-        check(scan);
+        check(scan, options.maxPixels());
         return options.method() == Method.SCRIPT ? ScriptMethod.split(Source.of(scan), options)
                 : StraightenMethod.split(Source.of(scan), options);
     }
 
-    private static void check(BufferedImage scan) {
+    private static void check(BufferedImage scan, long maxPixels) {
         Objects.requireNonNull(scan, "scan");
-        if ((long) scan.getWidth() * scan.getHeight() > MAX_PIXELS) {
+        if ((long) scan.getWidth() * scan.getHeight() > maxPixels) {
             throw new IllegalArgumentException("scan has " + (long) scan.getWidth() * scan.getHeight()
-                    + " pixels; the limit is " + MAX_PIXELS);
+                    + " pixels; the limit is " + maxPixels);
         }
     }
 
@@ -187,18 +214,19 @@ public final class PhotoSplitter {
                     checkpoint();
                     PDPage pdPage = document.getPage(page);
                     PDRectangle box = pdPage.getCropBox();
-                    float dpi = pageDpi(box, options.dpi());
+                    float dpi = pageDpi(box, options.dpi(), options.maxPixels());
                     long pixels = (long) Math.ceil(box.getWidth() / 72.0 * dpi) * (long) Math.ceil(box.getHeight() / 72.0 * dpi);
                     String name = input.getFileName() + " page " + (page + 1);
-                    if (pixels > MAX_PIXELS) {
-                        throw new IOException(name + " would be drawn with " + pixels + " pixels; the limit is " + MAX_PIXELS);
+                    if (pixels > options.maxPixels()) {
+                        throw new IOException(name + " would be drawn with " + pixels + " pixels; the limit is "
+                                + options.maxPixels());
                     }
                     long bytes = peakBytes(pixels, 4 * pixels, false, options.method());
                     budget(name, bytes);
                     Admission.Ticket ticket = Admission.jvm().enter(bytes);
                     try {
-                        write(source(renderer.draw(page, dpi / 72f, ImageType.RGB)), options, outputDirectory, base,
-                                written);
+                        write(source(renderer.draw(page, dpi / 72f, ImageType.RGB), options), options, outputDirectory,
+                                base, written);
                     } finally {
                         ticket.close();
                     }
@@ -211,18 +239,18 @@ public final class PhotoSplitter {
         return written;
     }
 
-    static float pageDpi(PDRectangle box, float dpi) {
+    static float pageDpi(PDRectangle box, float dpi, long maxPixels) {
         double w = Math.ceil(box.getWidth() / 72.0 * dpi);
         double h = Math.ceil(box.getHeight() / 72.0 * dpi);
-        if (w * h <= MAX_PIXELS) {
+        if (w * h <= maxPixels) {
             return dpi;
         }
-        return (float) (dpi * Math.sqrt(MAX_PIXELS / (w * h)) * 0.999);
+        return (float) (dpi * Math.sqrt(maxPixels / (w * h)) * 0.999);
     }
 
-    private static Source source(BufferedImage scan) {
+    private static Source source(BufferedImage scan, Options options) {
         checkpoint();
-        check(scan);
+        check(scan, options.maxPixels());
         return Source.of(scan);
     }
 
@@ -315,7 +343,7 @@ public final class PhotoSplitter {
     static void budget(String name, long bytes) throws IOException {
         long limit = Runtime.getRuntime().maxMemory();
         if (limit != Long.MAX_VALUE && bytes > limit) {
-            throw new IOException(name + " needs about " + (bytes >> 20) + " MB of memory to split; the limit is "
+            throw new Refused(name + " needs about " + (bytes >> 20) + " MB of memory to split; the limit is "
                     + (limit >> 20) + " MB");
         }
     }
@@ -323,6 +351,19 @@ public final class PhotoSplitter {
     private static final class Page {
         Admission.Ticket ticket;
         boolean paged;
+
+        void release() {
+            if (ticket != null) {
+                ticket.close();
+                ticket = null;
+            }
+        }
+    }
+
+    private static final class Refused extends IOException {
+        Refused(String message) {
+            super(message);
+        }
     }
 
     private static void splitImage(Path input, Options options, Path dir, String base, List<Path> written)
@@ -331,15 +372,13 @@ public final class PhotoSplitter {
             checkpoint();
             Page page = new Page();
             try {
-                Source source = readPage(input, index, options.method(), page);
+                Source source = readPage(input, index, options, page);
                 if (source == null) {
                     return;
                 }
                 write(source, options, dir, base, written);
             } finally {
-                if (page.ticket != null) {
-                    page.ticket.close();
-                }
+                page.release();
             }
             if (!page.paged) {
                 return;
@@ -347,47 +386,103 @@ public final class PhotoSplitter {
         }
     }
 
-    private static Source readPage(Path input, int index, Method method, Page page) throws IOException {
-        BufferedImage image;
+    private static Source readPage(Path input, int index, Options options, Page page) throws IOException {
+        List<ImageReader> readers;
         try (InputStream in = Files.newInputStream(input); ImageInputStream stream = ImageIO.createImageInputStream(in)) {
             if (stream == null) {
                 throw new IOException("cannot read " + input);
             }
-            Iterator<ImageReader> readers = ImageIO.getImageReaders(stream);
-            if (!readers.hasNext()) {
-                throw new IOException(input.getFileName() + " is not a PDF or an image this reader knows");
+            readers = readerOrder(ImageIO.getImageReaders(stream));
+        }
+        if (readers.isEmpty()) {
+            throw new IOException(input.getFileName() + " is not a PDF or an image this reader knows");
+        }
+        BufferedImage image = null;
+        boolean read = false;
+        List<Throwable> failures = new ArrayList<>();
+        try {
+            for (ImageReader reader : readers) {
+                try {
+                    image = decode(input, index, options, page, reader);
+                    read = true;
+                    break;
+                } catch (InterruptedIOException | Refused | CancellationException e) {
+                    throw e;
+                } catch (IOException | RuntimeException | StackOverflowError e) {
+                    page.release();
+                    failures.add(e);
+                }
             }
-            ImageReader reader = readers.next();
-            try {
-                reader.setInput(stream, true, true);
-                String format = reader.getFormatName();
-                page.paged = "tif".equalsIgnoreCase(format) || "tiff".equalsIgnoreCase(format);
-                if (index > 0 && !hasImage(reader, index)) {
-                    return null;
-                }
-                if (index == maxPages) {
-                    throw new IOException(input.getFileName() + " has more than " + maxPages + " pages; the limit is "
-                            + maxPages);
-                }
-                String name = index == 0 ? input.getFileName().toString() : input.getFileName() + " page " + (index + 1);
-                long pixels = (long) reader.getWidth(index) * reader.getHeight(index);
-                if (pixels > MAX_PIXELS) {
-                    throw new IOException(name + " has " + pixels + " pixels; the limit is " + MAX_PIXELS);
-                }
-                long bytes = peakBytes(pixels, 4 * pixels, true, method);
-                Iterator<ImageTypeSpecifier> types = reader.getImageTypes(index);
-                if (types != null && types.hasNext()) {
-                    ImageTypeSpecifier type = types.next();
-                    bytes = peakBytes(pixels, decodedBytes(type, pixels), converted(type), method);
-                    budget(name, bytes);
-                }
-                page.ticket = Admission.jvm().enter(bytes);
-                image = reader.read(index);
-            } finally {
+        } finally {
+            for (ImageReader reader : readers) {
                 reader.dispose();
             }
         }
-        return source(image);
+        if (!read) {
+            throw unreadable(input, failures);
+        }
+        return image == null ? null : source(image, options);
+    }
+
+    private static BufferedImage decode(Path input, int index, Options options, Page page, ImageReader reader)
+            throws IOException {
+        try (ImageInputStream stream = new FileImageInputStream(input.toFile())) {
+            reader.setInput(stream, true, true);
+            String format = reader.getFormatName();
+            page.paged = "tif".equalsIgnoreCase(format) || "tiff".equalsIgnoreCase(format);
+            if (index > 0 && !hasImage(reader, index)) {
+                return null;
+            }
+            if (index == maxPages) {
+                throw new Refused(input.getFileName() + " has more than " + maxPages + " pages; the limit is " + maxPages);
+            }
+            String name = index == 0 ? input.getFileName().toString() : input.getFileName() + " page " + (index + 1);
+            long pixels = (long) reader.getWidth(index) * reader.getHeight(index);
+            if (pixels > options.maxPixels()) {
+                throw new Refused(name + " has " + pixels + " pixels; the limit is " + options.maxPixels());
+            }
+            long bytes = peakBytes(pixels, 4 * pixels, true, options.method());
+            Iterator<ImageTypeSpecifier> types = reader.getImageTypes(index);
+            if (types != null && types.hasNext()) {
+                ImageTypeSpecifier type = types.next();
+                bytes = peakBytes(pixels, decodedBytes(type, pixels), converted(type), options.method());
+                budget(name, bytes);
+            }
+            page.ticket = Admission.jvm().enter(bytes);
+            return reader.read(index);
+        } finally {
+            reader.setInput(null);
+        }
+    }
+
+    static List<ImageReader> readerOrder(Iterator<ImageReader> readers) {
+        List<ImageReader> ordered = new ArrayList<>();
+        readers.forEachRemaining(ordered::add);
+        ordered.sort(Comparator.comparingInt(PhotoSplitter::readerRank));
+        return ordered;
+    }
+
+    private static int readerRank(ImageReader reader) {
+        String name = reader.getClass().getName();
+        if (name.startsWith(JDK_READERS)) {
+            return 0;
+        }
+        for (String prefix : JAI_READERS) {
+            if (name.startsWith(prefix)) {
+                return 2;
+            }
+        }
+        return 1;
+    }
+
+    private static IOException unreadable(Path input, List<Throwable> failures) {
+        Throwable first = failures.get(0);
+        IOException error = first instanceof IOException io ? io
+                : new IOException(input.getFileName() + " could not be read: " + first, first);
+        for (Throwable other : failures.subList(1, failures.size())) {
+            error.addSuppressed(other);
+        }
+        return error;
     }
 
     private static boolean hasImage(ImageReader reader, int index) throws IOException {

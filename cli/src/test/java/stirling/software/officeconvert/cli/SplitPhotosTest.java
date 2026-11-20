@@ -110,10 +110,23 @@ class SplitPhotosTest {
         assertEquals(2, run("split-photos", "a.png", "--tolerance", "lots").code());
         assertEquals(2, run("split-photos", "a.png", "--method", "magic").code());
         assertEquals(2, run("split-photos", "a.png", "--border-size", "-1").code());
+        assertEquals(2, run("split-photos", "a.png", "--max-pixels", "0").code());
+        assertEquals(2, run("split-photos", "a.png", "--max-pixels", "lots").code());
         Result missing = run("split-photos", dir.resolve("none.png").toString());
         assertEquals(1, missing.code());
         assertTrue(missing.err().contains("no such file"), missing.err());
         assertEquals(0, run("split-photos", "--help").code());
+    }
+
+    @Test
+    void maxPixelsRefusesALargerScan() throws Exception {
+        Path scan = dir.resolve("scan.png");
+        ImageIO.write(scan(), "png", scan.toFile());
+        Result refused = run("split-photos", scan.toString(), "--max-pixels", "100000", "-o", dir.resolve("a").toString());
+        assertEquals(1, refused.code());
+        assertTrue(refused.err().contains("has 648000 pixels; the limit is 100000"), refused.err());
+        Result accepted = run("split-photos", scan.toString(), "--max-pixels", "648000", "-o", dir.resolve("b").toString());
+        assertEquals(0, accepted.code(), accepted.err());
     }
 
     private static BufferedImage scan() {

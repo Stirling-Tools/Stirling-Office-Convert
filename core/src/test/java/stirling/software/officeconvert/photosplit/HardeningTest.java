@@ -15,13 +15,24 @@ import java.lang.management.ManagementFactory;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.zip.CRC32;
 
 import javax.imageio.IIOImage;
 import javax.imageio.ImageIO;
+import javax.imageio.ImageReadParam;
+import javax.imageio.ImageReader;
+import javax.imageio.ImageTypeSpecifier;
 import javax.imageio.ImageWriter;
+import javax.imageio.metadata.IIOMetadata;
+import javax.imageio.spi.IIORegistry;
+import javax.imageio.spi.ImageReaderSpi;
+import javax.imageio.stream.ImageInputStream;
 import javax.imageio.stream.ImageOutputStream;
 
 import org.apache.pdfbox.cos.COSArray;
@@ -29,7 +40,10 @@ import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
+import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory;
+import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.api.function.Executable;
@@ -69,7 +83,10 @@ class HardeningTest {
         assertThrows(IllegalArgumentException.class, () -> defaults.tolerance(256));
         assertThrows(IllegalArgumentException.class, () -> defaults.minArea(-1));
         assertThrows(IllegalArgumentException.class, () -> defaults.minContourArea(-1));
-        assertDoesNotThrow(() -> defaults.tolerance(0).tolerance(255).minArea(0).minContourArea(0));
+        assertThrows(IllegalArgumentException.class, () -> defaults.maxPixels(0));
+        assertThrows(IllegalArgumentException.class, () -> defaults.maxPixels(-1));
+        assertDoesNotThrow(() -> defaults.tolerance(0).tolerance(255).minArea(0).minContourArea(0).maxPixels(1));
+        assertEquals(PhotoSplitter.MAX_PIXELS, defaults.maxPixels());
     }
 
     @Test
@@ -278,6 +295,241 @@ class HardeningTest {
             assertThrows(CancellationException.class, work, what);
         } finally {
             Thread.interrupted();
+        }
+    }
+
+    @Test
+    void maxPixelsRefusesAnImageOverTheCallersLimitAndAcceptsOneAtIt() throws Exception {
+        Path input = dir.resolve("scan.png");
+        ImageIO.write(scan(), "png", input.toFile());
+        PhotoSplitter.Options defaults = PhotoSplitter.Options.defaults();
+        IOException refused = assertThrows(IOException.class,
+                () -> PhotoSplitter.split(input, dir.resolve("out"), defaults.maxPixels(629_999)));
+        assertTrue(refused.getMessage().contains("has 630000 pixels; the limit is 629999"), refused.getMessage());
+        assertEquals(2, PhotoSplitter.split(input, dir.resolve("out"), defaults.maxPixels(630_000)).size());
+        assertThrows(IllegalArgumentException.class, () -> PhotoSplitter.split(scan(), defaults.maxPixels(629_999)));
+        assertEquals(2, PhotoSplitter.split(scan(), defaults.maxPixels(630_000)).size());
+    }
+
+    @Test
+    void maxPixelsAppliesToEveryPageOfAMultiPageTiff() throws Exception {
+        Path input = dir.resolve("album.tif");
+        BufferedImage small = new BufferedImage(8, 8, BufferedImage.TYPE_BYTE_GRAY);
+        ImageWriter writer = ImageIO.getImageWritersByFormatName("tiff").next();
+        try (ImageOutputStream out = ImageIO.createImageOutputStream(input.toFile())) {
+            writer.setOutput(out);
+            writer.prepareWriteSequence(null);
+            writer.writeToSequence(new IIOImage(small, null, null), null);
+            writer.writeToSequence(new IIOImage(scan(), null, null), null);
+            writer.endWriteSequence();
+        } finally {
+            writer.dispose();
+        }
+        IOException refused = assertThrows(IOException.class, () -> PhotoSplitter.split(input, dir.resolve("out"),
+                PhotoSplitter.Options.defaults().maxPixels(1000)));
+        assertTrue(refused.getMessage().contains("album.tif page 2 has 630000 pixels; the limit is 1000"),
+                refused.getMessage());
+    }
+
+    @Test
+    void maxPixelsRefusesAPdfPageThatCannotBeDrawnWithinItAndAcceptsOneThatCan() throws Exception {
+        Path sliver = dir.resolve("sliver.pdf");
+        try (PDDocument doc = new PDDocument()) {
+            doc.addPage(new PDPage(new PDRectangle(200, 0.01f)));
+            doc.save(sliver.toFile());
+        }
+        IOException refused = assertThrows(IOException.class, () -> PhotoSplitter.split(sliver, dir.resolve("out"),
+                PhotoSplitter.Options.defaults().maxPixels(500)));
+        assertTrue(refused.getMessage().contains("sliver.pdf page 1 would be drawn with"), refused.getMessage());
+        assertTrue(refused.getMessage().endsWith("the limit is 500"), refused.getMessage());
+
+        Path scans = dir.resolve("scans.pdf");
+        try (PDDocument doc = new PDDocument()) {
+            PDPage page = new PDPage(new PDRectangle(450, 350));
+            doc.addPage(page);
+            PDImageXObject image = LosslessFactory.createFromImage(doc, scan());
+            try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+                cs.drawImage(image, 0, 0, 450, 350);
+            }
+            doc.save(scans.toFile());
+        }
+        List<Path> written = PhotoSplitter.split(scans, dir.resolve("pdf"),
+                PhotoSplitter.Options.defaults().dpi(144).maxPixels(630_000));
+        assertEquals(2, written.size());
+    }
+
+    @Test
+    void pdfPagesAreDrawnSmallEnoughForTheCallersLimit() {
+        PDRectangle letter = PDRectangle.LETTER;
+        float dpi = PhotoSplitter.pageDpi(letter, 300, 1_000_000);
+        long pixels = (long) Math.ceil(letter.getWidth() / 72.0 * dpi) * (long) Math.ceil(letter.getHeight() / 72.0 * dpi);
+        assertTrue(pixels <= 1_000_000, pixels + " pixels at " + dpi + " dpi");
+        assertTrue(pixels > 990_000, pixels + " pixels at " + dpi + " dpi");
+        assertEquals(300f, PhotoSplitter.pageDpi(letter, 300, PhotoSplitter.MAX_PIXELS));
+    }
+
+    @Test
+    void ppmScanSplitsWithJaiImageIoOnTheClasspath() throws Exception {
+        assertTrue(readerClasses("ppm").stream().anyMatch(name -> name.startsWith("com.github.jaiimageio.")),
+                readerClasses("ppm").toString());
+        Path input = dir.resolve("scan.ppm");
+        Files.write(input, ppm(scan(), ""));
+        List<Path> written = PhotoSplitter.split(input, dir.resolve("out"), PhotoSplitter.Options.defaults());
+        assertEquals(2, written.size());
+        IOException refused = assertThrows(IOException.class, () -> PhotoSplitter.split(input, dir.resolve("small"),
+                PhotoSplitter.Options.defaults().maxPixels(1000)));
+        assertTrue(refused.getMessage().contains("the limit is 1000"), refused.getMessage());
+    }
+
+    @Test
+    void ppmHeaderThatOverflowsJaiImageIoIsReportedAsAnIOException() throws Exception {
+        Path input = dir.resolve("blank.ppm");
+        Files.write(input, ppm(scan(), "\n".repeat(1_000_000)));
+        IOException refused = assertThrows(IOException.class,
+                () -> PhotoSplitter.split(input, dir.resolve("out"), PhotoSplitter.Options.defaults()));
+        assertTrue(refused.getMessage().contains("StackOverflowError"), refused.getMessage());
+    }
+
+    @Test
+    void readersAreTriedJdkFirstAndJaiImageIoLast() {
+        for (String format : new String[] {"tiff", "bmp"}) {
+            List<ImageReader> readers = PhotoSplitter.readerOrder(ImageIO.getImageReadersByFormatName(format));
+            try {
+                assertTrue(readers.size() >= 2, format + " " + readers);
+                assertTrue(readers.getFirst().getClass().getName().startsWith("com.sun.imageio.plugins."),
+                        format + " " + readers);
+                assertTrue(readers.getLast().getClass().getName().startsWith("com.github.jaiimageio."),
+                        format + " " + readers);
+            } finally {
+                readers.forEach(ImageReader::dispose);
+            }
+        }
+    }
+
+    @Test
+    void aReaderThatOverflowsGivesWayToTheNextReader() throws Exception {
+        OverflowingReaderSpi overflowing = new OverflowingReaderSpi();
+        IIORegistry registry = IIORegistry.getDefaultInstance();
+        registry.registerServiceProvider(overflowing, ImageReaderSpi.class);
+        try {
+            Path input = dir.resolve("scan.ppm");
+            Files.write(input, ppm(scan(), ""));
+            List<Path> written = PhotoSplitter.split(input, dir.resolve("out"), PhotoSplitter.Options.defaults());
+            assertEquals(2, written.size());
+            assertTrue(overflowing.attempts.get() > 0);
+        } finally {
+            registry.deregisterServiceProvider(overflowing, ImageReaderSpi.class);
+        }
+    }
+
+    private static List<String> readerClasses(String suffix) {
+        List<String> names = new ArrayList<>();
+        Iterator<ImageReader> readers = ImageIO.getImageReadersBySuffix(suffix);
+        while (readers.hasNext()) {
+            ImageReader reader = readers.next();
+            names.add(reader.getClass().getName());
+            reader.dispose();
+        }
+        return names;
+    }
+
+    private static byte[] ppm(BufferedImage image, String padding) {
+        int w = image.getWidth();
+        int h = image.getHeight();
+        byte[] header = ("P6\n" + padding + w + " " + h + "\n255\n").getBytes(StandardCharsets.ISO_8859_1);
+        byte[] out = new byte[header.length + 3 * w * h];
+        System.arraycopy(header, 0, out, 0, header.length);
+        int i = header.length;
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                int rgb = image.getRGB(x, y);
+                out[i++] = (byte) (rgb >> 16);
+                out[i++] = (byte) (rgb >> 8);
+                out[i++] = (byte) rgb;
+            }
+        }
+        return out;
+    }
+
+    private static final class OverflowingReaderSpi extends ImageReaderSpi {
+
+        final AtomicInteger attempts = new AtomicInteger();
+
+        OverflowingReaderSpi() {
+            super("test", "1", new String[] {"ppm-test"}, new String[] {"ppm"}, new String[] {"image/x-portable-pixmap"},
+                    OverflowingReader.class.getName(), new Class<?>[] {ImageInputStream.class}, null, false, null,
+                    null, null, null, false, null, null, null, null);
+        }
+
+        @Override
+        public boolean canDecodeInput(Object source) throws IOException {
+            ImageInputStream stream = (ImageInputStream) source;
+            stream.mark();
+            try {
+                return stream.read() == 'P' && stream.read() == '6';
+            } finally {
+                stream.reset();
+            }
+        }
+
+        @Override
+        public ImageReader createReaderInstance(Object extension) {
+            return new OverflowingReader(this);
+        }
+
+        @Override
+        public String getDescription(Locale locale) {
+            return "overflowing test reader";
+        }
+    }
+
+    private static final class OverflowingReader extends ImageReader {
+
+        private final OverflowingReaderSpi spi;
+
+        OverflowingReader(OverflowingReaderSpi spi) {
+            super(spi);
+            this.spi = spi;
+        }
+
+        private StackOverflowError overflow() {
+            spi.attempts.incrementAndGet();
+            return new StackOverflowError();
+        }
+
+        @Override
+        public int getNumImages(boolean allowSearch) {
+            throw overflow();
+        }
+
+        @Override
+        public int getWidth(int imageIndex) {
+            throw overflow();
+        }
+
+        @Override
+        public int getHeight(int imageIndex) {
+            throw overflow();
+        }
+
+        @Override
+        public Iterator<ImageTypeSpecifier> getImageTypes(int imageIndex) {
+            throw overflow();
+        }
+
+        @Override
+        public IIOMetadata getStreamMetadata() {
+            throw overflow();
+        }
+
+        @Override
+        public IIOMetadata getImageMetadata(int imageIndex) {
+            throw overflow();
+        }
+
+        @Override
+        public BufferedImage read(int imageIndex, ImageReadParam param) {
+            throw overflow();
         }
     }
 
