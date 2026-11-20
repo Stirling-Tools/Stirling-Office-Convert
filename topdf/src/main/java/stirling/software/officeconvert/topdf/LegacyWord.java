@@ -11,6 +11,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
+import stirling.software.officeconvert.UnsupportedFormatException;
 import stirling.software.officeconvert.memory.Admission;
 import stirling.software.officeconvert.topdf.OfficeToPdf.Options;
 import stirling.software.officeconvert.topdf.OfficeToPdf.Result;
@@ -31,7 +32,7 @@ final class LegacyWord {
     static Result render(Path source, OutputStream sink, Options options, OfficeToPdf.Renderer renderer)
             throws IOException {
         if (ancient(source)) {
-            throw new IOException("The file is a Word 2.0 or older document, which is not supported; save it as .docx");
+            throw new UnsupportedFormatException("The file is a Word 2.0 or older document, which is not supported; save it as .docx");
         }
         if (!DocFile.is(source)) {
             return null;

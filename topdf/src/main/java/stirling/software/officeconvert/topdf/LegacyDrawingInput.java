@@ -6,6 +6,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
 
+import stirling.software.officeconvert.UnsupportedFormatException;
 import stirling.software.officeconvert.memory.Admission;
 import stirling.software.officeconvert.topdf.OfficeToPdf.Options;
 import stirling.software.officeconvert.topdf.OfficeToPdf.Result;
@@ -36,7 +37,7 @@ final class LegacyDrawingInput {
     private static void refuseNamed(Path source) throws IOException {
         if (named(source) && !VsdxPackage.is(source)) {
             String reason = UnsupportedFormats.byContent(source);
-            throw new IOException(reason != null ? reason : UnsupportedFormats.byExtension(extension(source)));
+            throw new UnsupportedFormatException(reason != null ? reason : UnsupportedFormats.byExtension(extension(source)));
         }
     }
 
@@ -58,11 +59,11 @@ final class LegacyDrawingInput {
             String whole = kind == OleThumbnail.Kind.PUBLISHER ? "save the publication as PDF from Publisher"
                     : "save the drawing as .vsdx or as PDF from Visio";
             if (drawn == OleThumbnail.Outcome.NO_PREVIEW) {
-                throw new IOException("The " + what + " holds no preview picture, and its own format cannot be read; "
+                throw new UnsupportedFormatException("The " + what + " holds no preview picture, and its own format cannot be read; "
                         + whole);
             }
             if (drawn == OleThumbnail.Outcome.TOO_SMALL) {
-                throw new IOException("The " + what + " holds only a thumbnail too small to read, and its own format"
+                throw new UnsupportedFormatException("The " + what + " holds only a thumbnail too small to read, and its own format"
                         + " cannot be read; " + whole);
             }
             OfficeToPdf.stopIfInterrupted();

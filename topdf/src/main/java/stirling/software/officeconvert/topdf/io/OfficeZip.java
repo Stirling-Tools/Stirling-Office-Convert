@@ -37,6 +37,7 @@ import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
 
+import stirling.software.officeconvert.UnsupportedFormatException;
 import stirling.software.officeconvert.memory.Admission;
 
 public final class OfficeZip implements Closeable {
@@ -176,7 +177,7 @@ public final class OfficeZip implements Closeable {
         this.names = Collections.unmodifiableList(order);
         if (!exists(CONTENT_TYPES)) {
             if (exists("/mimetype") && exists("/META-INF/manifest.xml")) {
-                throw new IOException("The file is an OpenDocument file of a kind that is not supported (only text,"
+                throw new UnsupportedFormatException("The file is an OpenDocument file of a kind that is not supported (only text,"
                         + " spreadsheets and presentations are)");
             }
             throw new LostPart("The file is not an Office document: the zip package has no [Content_Types].xml", null);
@@ -749,20 +750,20 @@ public final class OfficeZip implements Closeable {
         }
         String text = new String(head, StandardCharsets.ISO_8859_1);
         if (text.startsWith("%PDF")) {
-            throw new IOException("The file is a PDF, not an Office document");
+            throw new UnsupportedFormatException("The file is a PDF, not an Office document");
         }
         if (text.startsWith("{\\rtf")) {
-            throw new IOException("The file is an RTF document, not an Office Open XML document");
+            throw new UnsupportedFormatException("The file is an RTF document, not an Office Open XML document");
         }
         if (head.length == OLE2.length && java.util.Arrays.equals(head, OLE2)) {
             if (encrypted(file)) {
                 throw new IOException("The document is password protected; remove the password and try again");
             }
-            throw new IOException("The file is a legacy binary Office document (Word, Excel or PowerPoint 97-2003),"
+            throw new UnsupportedFormatException("The file is a legacy binary Office document (Word, Excel or PowerPoint 97-2003),"
                     + " which is not supported yet");
         }
         if (head.length < 4 || head[0] != 'P' || head[1] != 'K') {
-            throw new IOException("The file is not an Office document: it is not a zip package");
+            throw new UnsupportedFormatException("The file is not an Office document: it is not a zip package");
         }
     }
 

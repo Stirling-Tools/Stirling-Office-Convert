@@ -7,6 +7,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+import stirling.software.officeconvert.UnsupportedFormatException;
+
 public final class Biff4Upgrade {
 
     private static final int FORMAT_BASE = 200;
@@ -43,7 +45,7 @@ public final class Biff4Upgrade {
                     + " supported; save it as .xlsx");
         }
         if (type == 0x0020 || type == 0x0040) {
-            throw new IOException("The file is an Excel 4.0 or older chart or macro sheet, which is not supported");
+            throw new UnsupportedFormatException("The file is an Excel 4.0 or older chart or macro sheet, which is not supported");
         }
         u.read();
         return u.assemble();

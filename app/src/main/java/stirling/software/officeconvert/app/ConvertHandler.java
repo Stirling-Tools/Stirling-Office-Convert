@@ -82,7 +82,7 @@ final class ConvertHandler implements HttpHandler, AutoCloseable {
 
     private static final int MAX_WARNINGS = 20;
 
-    private static final String FORMATS = "docx, odt, fodt, xml, rtf, doc, txt, html, json, md, epub, azw3, pptx, odp, ppt,"
+    private static final String FORMATS = "docx, odt, fodt, xml, rtf, txt, html, json, md, epub, azw3, pptx, odp, ppt,"
             + " xlsx or ods";
 
     private static final Map<String, Target> TARGETS = Map.ofEntries(
@@ -93,7 +93,6 @@ final class ConvertHandler implements HttpHandler, AutoCloseable {
                     (pdf, out, c) -> PdfToOdt.convertFlat(pdf, out, c.options()))),
             Map.entry("xml", new Target("application/xml", (pdf, out, c) -> PdfToOdt.convertFlat(pdf, out, c.options()))),
             Map.entry("rtf", new Target("application/rtf", (pdf, out, c) -> PdfToRtf.convert(pdf, out, c.options()))),
-            Map.entry("doc", new Target("application/msword", (pdf, out, c) -> PdfToRtf.convert(pdf, out, c.options()))),
             Map.entry("txt", new Target("text/plain; charset=utf-8", (pdf, out, c) -> PdfToText.convert(pdf, out, c.options()))),
             Map.entry("html", new Target("text/html; charset=utf-8", (pdf, out, c) -> PdfToHtml.convert(pdf, out, c.options()))),
             Map.entry("json", new Target("application/json", (pdf, out, c) -> PdfToJson.convert(pdf, out, c.options()))),

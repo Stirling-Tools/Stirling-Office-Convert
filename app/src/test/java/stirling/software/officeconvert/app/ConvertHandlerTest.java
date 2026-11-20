@@ -133,6 +133,14 @@ class ConvertHandlerTest {
     }
 
     @Test
+    void refusesWordDocOutput() throws Exception {
+        String url = start(300);
+        HttpResponse<byte[]> r = post(url + "?format=doc", Fixtures.pdf("x"));
+        assertEquals(422, r.statusCode());
+        assertEquals("format", header(r, "X-Error"));
+    }
+
+    @Test
     void refusesTheWrongDirection() throws Exception {
         String url = start(300);
         HttpResponse<byte[]> office = post(url + "?format=docx", Fixtures.docx("x", 1));
@@ -248,7 +256,7 @@ class ConvertHandlerTest {
     @Test
     void convertsToEveryFormatTheCliWrites() throws Exception {
         String url = start(300);
-        String[][] formats = {{"fodt", "office:document"}, {"doc", "{\\rtf"}, {"html", "<html"}, {"json", "{"},
+        String[][] formats = {{"fodt", "office:document"}, {"rtf", "{\\rtf"}, {"html", "<html"}, {"json", "{"},
             {"md", "Every format"}, {"epub", "PK"}, {"azw3", "BOOKMOBI"}, {"ppt", null}};
         for (String[] f : formats) {
             HttpResponse<byte[]> r = post(url + "?format=" + f[0], Fixtures.pdf("Every format"));

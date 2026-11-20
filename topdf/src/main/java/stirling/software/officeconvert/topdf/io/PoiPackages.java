@@ -23,6 +23,8 @@ import org.apache.poi.xslf.usermodel.XMLSlideShow;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
 
+import stirling.software.officeconvert.UnsupportedFormatException;
+
 public final class PoiPackages {
 
     private PoiPackages() {}
@@ -68,7 +70,7 @@ public final class PoiPackages {
         String ms = kind.equals("spreadsheetml") ? "application/vnd.ms-excel."
                 : kind.equals("presentationml") ? "application/vnd.ms-powerpoint." : "application/vnd.ms-word.";
         if (!t.contains(kind) && !t.startsWith(ms)) {
-            throw new IOException("The package is not a " + what + " (its main part is " + type + ")");
+            throw new UnsupportedFormatException("The package is not a " + what + " (its main part is " + type + ")");
         }
         OPCPackage pkg = open(zip);
         try {

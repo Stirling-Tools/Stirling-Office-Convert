@@ -39,13 +39,31 @@ public final class OfficeConvert {
         CSV;
 
         public static Format of(Path file) {
-            String name = file.getFileName().toString().toLowerCase(Locale.ROOT);
-            return switch (name.substring(name.lastIndexOf('.') + 1)) {
+            Format format = lookup(file);
+            if (format != null) {
+                return format;
+            }
+            String ext = extension(file);
+            if (ext.equals("doc")) {
+                throw new IllegalArgumentException("No output format for " + file.getFileName()
+                        + ": Word 97-2003 .doc output is not supported; use .docx or .rtf");
+            }
+            throw new IllegalArgumentException("No output format for " + file.getFileName()
+                    + ": use .docx, .odt, .fodt, .xml, .rtf, .txt, .html, .htm, .json, .md, .epub, .azw3, .pptx, .odp, .xlsx, .ods or .csv");
+        }
+
+        public static boolean supports(Path file) {
+            return lookup(file) != null;
+        }
+
+        private static Format lookup(Path file) {
+            Objects.requireNonNull(file, "file");
+            return switch (extension(file)) {
                 case "docx" -> DOCX;
                 case "odt" -> ODT;
                 case "fodt" -> FODT;
                 case "xml" -> XML;
-                case "rtf", "doc" -> RTF;
+                case "rtf" -> RTF;
                 case "txt" -> TXT;
                 case "html", "htm" -> HTML;
                 case "json" -> JSON;
@@ -57,9 +75,14 @@ public final class OfficeConvert {
                 case "xlsx" -> XLSX;
                 case "ods" -> ODS;
                 case "csv" -> CSV;
-                default -> throw new IllegalArgumentException("No output format for " + file.getFileName()
-                        + ": use .docx, .odt, .fodt, .xml, .rtf, .doc, .txt, .html, .htm, .json, .md, .epub, .azw3, .pptx, .odp, .xlsx, .ods or .csv");
+                default -> null;
             };
+        }
+
+        private static String extension(Path file) {
+            Path name = file.getFileName();
+            String n = name == null ? "" : name.toString().toLowerCase(Locale.ROOT);
+            return n.substring(n.lastIndexOf('.') + 1);
         }
     }
 
@@ -190,7 +213,13 @@ public final class OfficeConvert {
     }
 
     public static void convert(Path pdf, Path out, Settings settings) throws IOException {
-        convert(pdf, out, Format.of(out), settings);
+        Format format;
+        try {
+            format = Format.of(out);
+        } catch (IllegalArgumentException e) {
+            throw new UnsupportedFormatException(e.getMessage(), e);
+        }
+        convert(pdf, out, format, settings);
     }
 
     public static void convert(Path pdf, Path out, Format format, Settings settings) throws IOException {

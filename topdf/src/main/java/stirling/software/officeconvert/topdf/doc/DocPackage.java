@@ -11,6 +11,7 @@ import org.apache.poi.OldFileFormatException;
 import org.apache.poi.hwpf.HWPFDocument;
 import org.apache.poi.poifs.filesystem.DirectoryNode;
 
+import stirling.software.officeconvert.UnsupportedFormatException;
 import stirling.software.officeconvert.memory.Admission;
 import stirling.software.officeconvert.topdf.crypt.Passwords;
 
@@ -78,7 +79,7 @@ public final class DocPackage {
             } catch (EncryptedDocumentException e) {
                 throw new IOException(PASSWORD, e);
             } catch (OldFileFormatException e) {
-                throw new IOException("The file is a Word 6.0/95 or older document, which is not supported; save it"
+                throw new UnsupportedFormatException("The file is a Word 6.0/95 or older document, which is not supported; save it"
                         + " as .docx", e);
             } catch (IOException | RuntimeException | StackOverflowError e) {
                 if (Thread.currentThread().isInterrupted()) {

@@ -22,6 +22,7 @@ import org.apache.pdfbox.io.RandomAccessReadBufferedFile;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.encryption.InvalidPasswordException;
 
+import stirling.software.officeconvert.UnsupportedFormatException;
 import stirling.software.officeconvert.jpx.JpxImageIO;
 import stirling.software.officeconvert.memory.Admission;
 
@@ -58,7 +59,7 @@ public final class PdfFiles {
         try {
             return parse(new InterruptibleRead(new RandomAccessReadBufferedFile(pdf.toFile())), password, false, false);
         } catch (Unopened e) {
-            throw new IOException("The PDF could not be opened: " + reason(pdf, e.getCause()), e.getCause());
+            throw unopened(pdf, e.getCause());
         }
     }
 
@@ -176,7 +177,7 @@ public final class PdfFiles {
         } catch (Unopened e) {
             doc = salvage(pdf, password, allStreams, tolerant, e.getCause());
             if (doc == null) {
-                throw new IOException("The PDF could not be opened: " + reason(pdf, e.getCause()), e.getCause());
+                throw unopened(pdf, e.getCause());
             }
         }
         if (tolerant) {
@@ -256,17 +257,17 @@ public final class PdfFiles {
         }
     }
 
-    private static String reason(Path pdf, Exception e) {
+    private static IOException unopened(Path pdf, Exception e) {
         try (InputStream in = Files.newInputStream(pdf)) {
             byte[] head = in.readNBytes(1024);
             if (head.length == 0) {
-                return "the file is empty";
+                return new IOException("The PDF could not be opened: the file is empty", e);
             }
             if (!new String(head, StandardCharsets.ISO_8859_1).contains("%PDF-")) {
-                return "the file is not a PDF";
+                return new UnsupportedFormatException("The PDF could not be opened: the file is not a PDF", e);
             }
         } catch (IOException ignored) {
         }
-        return e.getMessage();
+        return new IOException("The PDF could not be opened: " + e.getMessage(), e);
     }
 }
