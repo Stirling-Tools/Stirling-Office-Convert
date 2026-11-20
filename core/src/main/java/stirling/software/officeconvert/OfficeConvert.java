@@ -284,7 +284,7 @@ public final class OfficeConvert {
         } catch (ArithmeticException e) {
             nanos = Long.MAX_VALUE;
         }
-        FutureTask<T> task = new FutureTask<>(() -> guarded(work));
+        FutureTask<T> task = new FutureTask<>(() -> Admission.readmitting(() -> guarded(work)));
         Thread worker = Thread.ofPlatform().name("office-convert").daemon().stackSize(STACK_BYTES).start(task);
         try {
             return nanos == 0 ? task.get() : task.get(nanos, TimeUnit.NANOSECONDS);
@@ -318,16 +318,16 @@ public final class OfficeConvert {
             return work.call();
         } catch (IOException e) {
             if (stoppedForMemory(e)) {
-                throw new IOException(Admission.NEEDS_MEMORY, e);
+                throw Admission.NeedsMemory.causedBy(e);
             }
             throw e;
         } catch (RuntimeException e) {
             if (stoppedForMemory(e)) {
-                throw new IOException(Admission.NEEDS_MEMORY, e);
+                throw Admission.NeedsMemory.causedBy(e);
             }
             throw e;
         } catch (OutOfMemoryError e) {
-            throw new IOException(Admission.NEEDS_MEMORY, e);
+            throw Admission.NeedsMemory.causedBy(e);
         } catch (StackOverflowError e) {
             throw new IOException(TOO_DEEP, e);
         }

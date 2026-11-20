@@ -1,5 +1,6 @@
 package stirling.software.officeconvert.memory;
 
+import java.io.IOException;
 import java.io.InterruptedIOException;
 import java.lang.management.ManagementFactory;
 import java.lang.management.MemoryPoolMXBean;
@@ -26,6 +27,8 @@ public final class Admission {
     public static final String WAIT_PROPERTY = "stirling.officeconvert.maxWaitSeconds";
 
     public static final String OVERSIZE_PROPERTY = "stirling.officeconvert.refuseOversize";
+
+    public static final String READMIT_PROPERTY = "stirling.officeconvert.readmitStopped";
 
     public static final String BUSY = "The converter is busy; try again later";
 
@@ -55,6 +58,8 @@ public final class Admission {
 
     private static final long WAIT_MILLIS = 50;
 
+    private static final int MAX_READMISSIONS = 3;
+
     private static final Heap JVM_HEAP = memory(ContainerMemory.find());
 
     private static final Admission JVM = new Admission(Runtime.getRuntime().maxMemory(), Limits.defaults(), JVM_HEAP);
@@ -63,7 +68,12 @@ public final class Admission {
 
     private static final Set<Thread> ABANDONED = ConcurrentHashMap.newKeySet();
 
-    public record Limits(int memoryBudgetPercent, int maxConcurrent, Duration maxWait, boolean refuseOversize) {
+    public record Limits(int memoryBudgetPercent, int maxConcurrent, Duration maxWait, boolean refuseOversize,
+            boolean readmitStopped) {
+
+        public Limits(int memoryBudgetPercent, int maxConcurrent, Duration maxWait, boolean refuseOversize) {
+            this(memoryBudgetPercent, maxConcurrent, maxWait, refuseOversize, false);
+        }
 
         public Limits {
             Objects.requireNonNull(maxWait, "maxWait");
@@ -81,8 +91,17 @@ public final class Admission {
         public static Limits defaults() {
             return new Limits(Math.max(10, Math.min(100, integer(BUDGET_PROPERTY, 60))),
                     Math.max(0, integer(CONCURRENT_PROPERTY, 0)),
-                    Duration.ofSeconds(Math.max(0, integer(WAIT_PROPERTY, 600))),
-                    Boolean.parseBoolean(System.getProperty(OVERSIZE_PROPERTY, "false").strip()));
+                    Duration.ofSeconds(Math.max(0, integer(WAIT_PROPERTY, 0))),
+                    Boolean.parseBoolean(System.getProperty(OVERSIZE_PROPERTY, "false").strip()),
+                    Boolean.parseBoolean(System.getProperty(READMIT_PROPERTY, "false").strip()));
+        }
+
+        public Limits readmitStopped(boolean readmit) {
+            return new Limits(memoryBudgetPercent, maxConcurrent, maxWait, refuseOversize, readmit);
+        }
+
+        public Limits maxWait(Duration wait) {
+            return new Limits(memoryBudgetPercent, maxConcurrent, wait, refuseOversize, readmitStopped);
         }
     }
 
@@ -95,6 +114,10 @@ public final class Admission {
             return 0;
         }
 
+        default double outsideBesidesFreeHeap() {
+            return outside();
+        }
+
         default boolean crowded() {
             return used(false) > CROWDED;
         }
@@ -104,10 +127,35 @@ public final class Admission {
         default void reclaim(boolean collect) {}
     }
 
-    /** Thrown by {@link #checkpoint()} when memory is nearly exhausted and this thread's conversion was chosen to stop. */
-    public static final class Stopped extends InterruptedIOException {
-        public Stopped() {
+    public static class NeedsMemory extends InterruptedIOException {
+        public NeedsMemory() {
             super(NEEDS_MEMORY);
+        }
+
+        public static NeedsMemory causedBy(Throwable cause) {
+            NeedsMemory e = new NeedsMemory();
+            e.initCause(cause);
+            return e;
+        }
+
+        protected NeedsMemory(String message) {
+            super(message);
+        }
+    }
+
+    public static final class Stopped extends NeedsMemory {
+        private final boolean shared;
+
+        public Stopped() {
+            this(false);
+        }
+
+        public Stopped(boolean shared) {
+            this.shared = shared;
+        }
+
+        public boolean shared() {
+            return shared;
         }
     }
 
@@ -117,10 +165,14 @@ public final class Admission {
         }
     }
 
-    public static final class TooLarge extends InterruptedIOException {
+    public static final class TooLarge extends NeedsMemory {
         public TooLarge() {
             super(TOO_LARGE);
         }
+    }
+
+    public interface Attempt<T> {
+        T run() throws IOException;
     }
 
     private final ReentrantLock lock = new ReentrantLock();
@@ -215,7 +267,55 @@ public final class Admission {
     public static void checkpoint() throws Stopped {
         Ticket t = open(CURRENT.get());
         if (t != null && t.exhausted()) {
-            throw new Stopped();
+            throw new Stopped(t.stoppedWhileShared());
+        }
+    }
+
+    public static <T> T readmitting(Attempt<T> attempt) throws IOException {
+        return JVM.retrying(attempt);
+    }
+
+    <T> T retrying(Attempt<T> attempt) throws IOException {
+        for (int tries = 1;; tries++) {
+            try {
+                return attempt.run();
+            } catch (IOException e) {
+                if (!limits.readmitStopped() || tries >= MAX_READMISSIONS || open(CURRENT.get()) != null
+                        || !stoppedWhileShared(e)) {
+                    throw e;
+                }
+                awaitIdle();
+            }
+        }
+    }
+
+    private static boolean stoppedWhileShared(Throwable e) {
+        int depth = 0;
+        for (Throwable t = e; t != null && depth++ < 16; t = t.getCause()) {
+            if (t instanceof Stopped s) {
+                return s.shared();
+            }
+        }
+        return false;
+    }
+
+    private void awaitIdle() throws InterruptedIOException {
+        try {
+            lock.lockInterruptibly();
+            try {
+                long start = System.nanoTime();
+                while (!running.isEmpty()) {
+                    if (waitNanos > 0 && System.nanoTime() - start >= waitNanos) {
+                        throw new Busy();
+                    }
+                    freed.await(WAIT_MILLIS, TimeUnit.MILLISECONDS);
+                }
+            } finally {
+                lock.unlock();
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new InterruptedIOException("Interrupted while waiting to convert");
         }
     }
 
@@ -235,6 +335,8 @@ public final class Admission {
 
         private volatile boolean stopped;
 
+        private volatile boolean shared;
+
         private volatile boolean closed;
 
         private Ticket(long cost, Ticket previous, Ticket outer) {
@@ -246,6 +348,10 @@ public final class Admission {
 
         public long cost() {
             return cost;
+        }
+
+        public boolean stoppedWhileShared() {
+            return outer != null ? outer.shared : shared;
         }
 
         private Admission gate() {
@@ -322,16 +428,17 @@ public final class Admission {
                         throw new TooLarge();
                     }
                     cost = Math.max(BASE_BYTES, Math.min(estimate, budget));
-                    if (running.isEmpty() || inUse + cost <= budget && running.size() < slots && !heap.crowded()) {
+                    if (running.isEmpty() ? !full()
+                            : inUse + cost <= budget && running.size() < slots && !heap.crowded()) {
                         break;
                     }
                     if (waitNanos > 0 && System.nanoTime() - start >= waitNanos) {
+                        if (running.isEmpty()) {
+                            throw new Stopped();
+                        }
                         throw new Busy();
                     }
                     freed.await(WAIT_MILLIS, TimeUnit.MILLISECONDS);
-                }
-                if (running.isEmpty() && full()) {
-                    throw new Stopped();
                 }
                 Ticket t = new Ticket(cost, null, null);
                 running.add(t);
@@ -366,7 +473,7 @@ public final class Admission {
 
     // With nothing converting, a container still at the edge after a collection and a trim has no room for one
     private boolean full() {
-        if (heap.outside() <= CONTAINER_ALONE) {
+        if (heap.outsideBesidesFreeHeap() <= CONTAINER_ALONE) {
             return false;
         }
         long now = System.nanoTime();
@@ -375,7 +482,7 @@ public final class Admission {
             lastGc = now;
         }
         heap.reclaim(collect);
-        return heap.outside() > CONTAINER_ALONE;
+        return heap.outsideBesidesFreeHeap() > CONTAINER_ALONE;
     }
 
     // One conversion at a time is stopped, the largest of several (a lone one only at the very edge), and only on a
@@ -412,6 +519,7 @@ public final class Admission {
                     largest = r;
                 }
             }
+            largest.shared = !alone;
             largest.stopped = true;
             return largest == t;
         } finally {
@@ -441,6 +549,15 @@ public final class Admission {
             @Override
             public double outside() {
                 return container == null ? 0 : container.share(0);
+            }
+
+            @Override
+            public double outsideBesidesFreeHeap() {
+                if (container == null) {
+                    return 0;
+                }
+                long[] heap = heapUse(false);
+                return container.share(0, heap[1] - heap[0]);
             }
 
             @Override
