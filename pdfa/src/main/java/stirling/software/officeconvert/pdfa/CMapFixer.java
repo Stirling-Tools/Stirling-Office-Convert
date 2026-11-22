@@ -172,9 +172,9 @@ final class CMapFixer {
         if (cid == null || cmap == null) {
             return null;
         }
-        if (level.part() > 1 && showsCidZero(font, codes)) {
+        if (showsCidZero(font, codes)) {
             String text = enc instanceof COSStream st ? text(st) : null;
-            return flatten(font, cid, cmap, codes, text) ? "Moved glyphs shown as CID 0, which PDF/A-2 reserves for "
+            return flatten(font, cid, cmap, codes, text) ? "Moved glyphs shown as CID 0, which PDF/A reserves for "
                     + ".notdef, to another CID" : null;
         }
         if (enc instanceof COSName n) {
@@ -380,7 +380,7 @@ final class CMapFixer {
         Map<Integer, Integer> remap = new TreeMap<>();
         int free = 1;
         for (Map.Entry<Integer, Integer> e : mapping.entrySet()) {
-            if (e.getValue() > MAX_CID || e.getValue() == 0 && level.part() > 1) {
+            if (e.getValue() > MAX_CID || e.getValue() == 0) {
                 Integer to = remap.get(e.getValue());
                 if (to == null) {
                     while (usedCids.contains(free)) {
