@@ -5,6 +5,8 @@ import java.awt.Paint;
 import java.awt.Shape;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
+import java.io.InterruptedIOException;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -15,6 +17,7 @@ import org.apache.pdfbox.contentstream.operator.Operator;
 import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.PDType3Font;
@@ -79,14 +82,69 @@ public class GuardedRenderer extends PDFRenderer {
         private int patterns;
         private boolean left;
         private final Map<COSDictionary, String[]> builtIn = new HashMap<>();
+        private final PageTokens pageTokens;
+        private Object[] replay;
 
         public Drawer(PageDrawerParameters parameters, String pass) throws IOException {
-            this(parameters, pass, OperatorBudget.MAX_FORMS);
+            this(parameters, pass, OperatorBudget.MAX_FORMS, null);
+        }
+
+        public Drawer(PageDrawerParameters parameters, String pass, PageTokens pageTokens) throws IOException {
+            this(parameters, pass, OperatorBudget.MAX_FORMS, pageTokens);
         }
 
         Drawer(PageDrawerParameters parameters, String pass, int maxForms) throws IOException {
+            this(parameters, pass, maxForms, null);
+        }
+
+        private Drawer(PageDrawerParameters parameters, String pass, int maxForms, PageTokens pageTokens)
+                throws IOException {
             super(parameters);
             budget = new OperatorBudget(pass, maxForms);
+            this.pageTokens = pageTokens;
+        }
+
+        @Override
+        public void processPage(PDPage page) throws IOException {
+            Object[] tokens = null;
+            if (pageTokens != null && page.hasContents()) {
+                try {
+                    tokens = pageTokens.of(page);
+                } catch (InterruptedIOException e) {
+                    throw e;
+                } catch (IOException | RuntimeException e) {
+                    tokens = null;
+                }
+            }
+            if (tokens == null) {
+                super.processPage(page);
+                return;
+            }
+            replay = tokens;
+            try {
+                super.processPage(new PageTokens.Replayed(page));
+            } finally {
+                replay = null;
+            }
+        }
+
+        // True for the stand-in operator that replays the page's recorded content in place
+        public boolean replays(Operator operator) {
+            return replay != null && PageTokens.REPLAY.equals(operator.getName());
+        }
+
+        private void replayPage() throws IOException {
+            Object[] tokens = replay;
+            replay = null;
+            List<COSBase> arguments = new ArrayList<>();
+            for (Object token : tokens) {
+                if (token instanceof Operator operator) {
+                    processOperator(operator, arguments);
+                    arguments.clear();
+                } else {
+                    arguments.add((COSBase) token);
+                }
+            }
         }
 
         public boolean leftOut() {
@@ -112,6 +170,10 @@ public class GuardedRenderer extends PDFRenderer {
 
         @Override
         protected void processOperator(Operator operator, List<COSBase> operands) throws IOException {
+            if (replays(operator)) {
+                replayPage();
+                return;
+            }
             if (!budget.run(operator)) {
                 left = true;
                 return;

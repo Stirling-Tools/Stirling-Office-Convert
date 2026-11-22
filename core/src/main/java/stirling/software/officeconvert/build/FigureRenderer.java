@@ -26,6 +26,7 @@ import stirling.software.officeconvert.extract.SkewedText;
 import org.apache.pdfbox.util.Vector;
 
 import stirling.software.officeconvert.extract.GuardedRenderer;
+import stirling.software.officeconvert.extract.PageTokens;
 import stirling.software.officeconvert.extract.RgbGroup;
 
 final class FigureRenderer extends PDFRenderer {
@@ -38,6 +39,7 @@ final class FigureRenderer extends PDFRenderer {
 
     private final boolean text;
     private final boolean paper;
+    private final PageTokens tokens = new PageTokens();
     private Rectangle2D span;
 
     FigureRenderer(PDDocument document, boolean text) {
@@ -65,7 +67,7 @@ final class FigureRenderer extends PDFRenderer {
     @Override
     protected PageDrawer createPageDrawer(PageDrawerParameters parameters) throws IOException {
         Rectangle2D target = span;
-        return new GuardedRenderer.Drawer(parameters, "rendering a figure") {
+        return new GuardedRenderer.Drawer(parameters, "rendering a figure", tokens) {
             private boolean painting;
             private int masks;
 
