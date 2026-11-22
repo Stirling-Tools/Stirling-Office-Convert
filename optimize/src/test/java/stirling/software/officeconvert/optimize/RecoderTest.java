@@ -71,6 +71,13 @@ class RecoderTest {
                     byte[] expected = new java.io.ByteArrayInputStream(stream).readNBytes(limit);
                     byte[] actual = Recoder.upTo(new java.io.ByteArrayInputStream(stream), limit, declared);
                     assertArrayEquals(expected, actual, length + " bytes, limit " + limit + ", declared " + declared);
+                    java.io.InputStream silent = new java.io.FilterInputStream(new java.io.ByteArrayInputStream(stream)) {
+                        @Override
+                        public int available() {
+                            return 0;
+                        }
+                    };
+                    assertArrayEquals(expected, Recoder.upTo(silent, limit, declared));
                 }
             }
         }

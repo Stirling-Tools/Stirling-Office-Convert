@@ -115,7 +115,7 @@ final class Palette {
     static byte[] indices(BufferedImage image, int[] palette) {
         int w = image.getWidth();
         byte[] out = new byte[w * image.getHeight()];
-        Nearest nearest = new Nearest(palette, out.length);
+        Nearest nearest = new Nearest(palette);
         int[] row = new int[w];
         int i = 0;
         for (int y = 0; y < image.getHeight(); y++) {
@@ -132,18 +132,16 @@ final class Palette {
 
         private final int[] palette;
 
-        private final int[] keys;
+        private int[] keys = new int[1 << 10];
 
-        private final byte[] values;
+        private byte[] values = new byte[1 << 10];
 
-        private final int shift;
+        private int shift = 32 - 10;
 
-        Nearest(int[] palette, int pixels) {
+        private int size;
+
+        Nearest(int[] palette) {
             this.palette = palette;
-            int bits = Math.clamp(33 - Integer.numberOfLeadingZeros(Math.max(1, Math.min(pixels, 1 << 24))), 4, 25);
-            keys = new int[1 << bits];
-            values = new byte[1 << bits];
-            shift = 32 - bits;
             Arrays.fill(keys, -1);
         }
 
@@ -154,9 +152,33 @@ final class Palette {
                     return values[at];
                 }
                 if (keys[at] < 0) {
+                    byte index = (byte) nearest(palette, rgb);
                     keys[at] = rgb;
-                    values[at] = (byte) nearest(palette, rgb);
-                    return values[at];
+                    values[at] = index;
+                    if (++size * 2 > keys.length) {
+                        grow();
+                    }
+                    return index;
+                }
+            }
+        }
+
+        private void grow() {
+            int[] oldKeys = keys;
+            byte[] oldValues = values;
+            keys = new int[oldKeys.length * 2];
+            values = new byte[oldKeys.length * 2];
+            shift--;
+            Arrays.fill(keys, -1);
+            int mask = keys.length - 1;
+            for (int i = 0; i < oldKeys.length; i++) {
+                if (oldKeys[i] >= 0) {
+                    int at = oldKeys[i] * 0x9E3779B1 >>> shift;
+                    while (keys[at] >= 0) {
+                        at = at + 1 & mask;
+                    }
+                    keys[at] = oldKeys[i];
+                    values[at] = oldValues[i];
                 }
             }
         }

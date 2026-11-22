@@ -195,7 +195,7 @@ final class Recoder {
 
     // Same bytes as readNBytes(limit), but one buffer sized from the declared length instead of 16 KB chunks
     static byte[] upTo(InputStream in, int limit, long expected) throws IOException {
-        int size = (int) Math.min(limit, Math.max(0, expected));
+        int size = (int) Math.min(Math.min(limit, in.available()), Math.max(0, expected));
         byte[] head = new byte[size];
         int n = in.readNBytes(head, 0, size);
         if (n < size) {
