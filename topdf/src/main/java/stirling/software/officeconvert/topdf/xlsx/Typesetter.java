@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 import stirling.software.officeconvert.topdf.font.BidiRuns;
 import stirling.software.officeconvert.topdf.font.CloudFonts;
@@ -49,6 +50,10 @@ final class Typesetter {
     private FontSpec lastSpec;
 
     private Look lastLook;
+
+    private FontSpec lastMeasured;
+
+    private FontMeasure lastMeasure;
 
     private boolean mirrored;
 
@@ -99,8 +104,21 @@ final class Typesetter {
         return new Look(e.face(), scale, e.metrics(), k.family(), k.bold(), k.italic());
     }
 
+    // Cells styled alike carry equal, not identical, specs, and a measure hangs on the face alone
+    private static boolean sameFace(FontSpec f, FontSpec last) {
+        return f == last || last != null && f.bold() == last.bold() && f.italic() == last.italic()
+                && Objects.equals(f.family(), last.family());
+    }
+
     FontMeasure measure(FontSpec f) {
-        return measures.computeIfAbsent(resolve(f), k -> FontMeasure.of(fonts, k.family(), k.bold(), k.italic()));
+        if (sameFace(f, lastMeasured)) {
+            return lastMeasure;
+        }
+        FontMeasure m = measures.computeIfAbsent(resolve(f),
+                k -> FontMeasure.of(fonts, k.family(), k.bold(), k.italic()));
+        lastMeasured = f;
+        lastMeasure = m;
+        return m;
     }
 
     double width(String text, FontSpec f, double size) {
