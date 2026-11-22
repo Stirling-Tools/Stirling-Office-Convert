@@ -63,6 +63,9 @@ final class FlattenRenderer extends GuardedRenderer {
 
         private final Set<COSStream> groups = Collections.newSetFromMap(new IdentityHashMap<>());
 
+        // A form may be both a group and the soft mask applied to it, which is not a loop.
+        private final Set<COSStream> masks = Collections.newSetFromMap(new IdentityHashMap<>());
+
         Drawer(PageDrawerParameters parameters) throws IOException {
             super(parameters, "flattening transparency");
         }
@@ -75,7 +78,7 @@ final class FlattenRenderer extends GuardedRenderer {
 
         @Override
         public void showTransparencyGroup(PDTransparencyGroup form) throws IOException {
-            enter(form);
+            enter(groups, form);
             try {
                 super.showTransparencyGroup(RgbGroup.of(form));
             } finally {
@@ -85,17 +88,17 @@ final class FlattenRenderer extends GuardedRenderer {
 
         @Override
         protected void processSoftMask(PDTransparencyGroup form) throws IOException {
-            enter(form);
+            enter(masks, form);
             try {
                 super.processSoftMask(form);
             } finally {
-                groups.remove(form.getCOSObject());
+                masks.remove(form.getCOSObject());
             }
         }
 
-        private void enter(PDTransparencyGroup form) throws IOException {
+        private void enter(Set<COSStream> open, PDTransparencyGroup form) throws IOException {
             PdfFiles.stopIfInterrupted();
-            if (groups.size() >= 64 || !groups.add(form.getCOSObject())) {
+            if (groups.size() + masks.size() >= 64 || !open.add(form.getCOSObject())) {
                 recursiveGroup = true;
                 throw new IOException("A transparency group or soft mask is recursive or nested too deeply");
             }
