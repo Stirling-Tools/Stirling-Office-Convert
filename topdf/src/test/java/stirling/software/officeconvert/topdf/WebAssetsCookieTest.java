@@ -2,6 +2,7 @@ package stirling.software.officeconvert.topdf;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -73,8 +74,8 @@ class WebAssetsCookieTest {
             assertEquals("session=secret", seen.get("/secure-asset"));
             assertNotNull(web.read(http + "/plain-asset"));
             assertEquals("", seen.get("/plain-asset"));
-            assertNotNull(web.read(https + "/downgrade"));
-            assertEquals("", seen.get("/redirected"));
+            assertNull(web.read(https + "/downgrade"));
+            assertNull(seen.get("/redirected"));
             assertNotNull(web.read(http + "/set-plain"));
             assertNotNull(web.read(http + "/plain-after"));
             assertEquals("plain=value", seen.get("/plain-after"));
