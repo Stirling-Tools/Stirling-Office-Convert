@@ -19,18 +19,20 @@ final class Media {
 
     static boolean matches(String query, float viewportPx) {
         String q = query.strip().toLowerCase(Locale.ROOT);
-        if (q.isEmpty() || q.length() > MAX_QUERY_CHARS) {
+        if (q.isEmpty()) {
             return true;
         }
+        // Past the limit only the media type is judged, so a long screen query still stays out
+        boolean features = q.length() <= MAX_QUERY_CHARS;
         for (String one : Css.splitTopLevel(q, ',')) {
-            if (one(one.strip(), viewportPx)) {
+            if (one(one.strip(), viewportPx, features)) {
                 return true;
             }
         }
         return false;
     }
 
-    private static boolean one(String q, float viewportPx) {
+    private static boolean one(String q, float viewportPx, boolean features) {
         boolean not = q.startsWith("not ");
         String rest = q;
         if (not) {
@@ -40,6 +42,9 @@ final class Media {
         }
         String type = rest.startsWith("(") ? "all" : rest.split("[\\s(]", 2)[0];
         boolean result = "all".equals(type) || "print".equals(type);
+        if (!features) {
+            return not != result;
+        }
         Matcher r = RANGE.matcher(rest);
         while (r.find()) {
             result &= range(r.group(1), r.group(2), r.group(3), viewportPx);

@@ -532,7 +532,8 @@ final class ExcelFormat {
         // Filled right to left, then joined in reverse: inserting at the front costs the length so far each time
         List<String> parts = new ArrayList<>();
         int di = digits.length();
-        for (int k = intEnd - 1; k >= firstDigit; k--) {
+        // From the last digit: a literal after it is a suffix, which the caller writes
+        for (int k = last; k >= firstDigit; k--) {
             Token t = tokens.get(k);
             if (t.kind == Kind.LITERAL) {
                 parts.add(t.text);

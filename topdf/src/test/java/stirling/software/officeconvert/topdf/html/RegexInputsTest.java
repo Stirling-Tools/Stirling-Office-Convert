@@ -35,6 +35,15 @@ class RegexInputsTest {
     }
 
     @Test
+    void longQueriesStillJudgeTheMediaType() {
+        String gap = " ".repeat(Media.MAX_QUERY_CHARS + 1);
+        assertFalse(Media.matches("screen" + gap + "and (color)", 600));
+        assertTrue(Media.matches("print" + gap + "and (color)", 600));
+        assertTrue(Media.matches("not screen" + gap + "and (color)", 600));
+        assertTrue(Media.matches("screen, print" + gap + "and (color)", 600));
+    }
+
+    @Test
     void nestedUrlOpenersInASheetAreRebasedInLinearTime() {
         String sheet = "a{b:url(" + "url(".repeat(2 << 20);
         assertEquals(sheet, assertTimeoutPreemptively(QUICK, () -> Cascade.rebased(sheet, "https://x.test/c/s.css")));

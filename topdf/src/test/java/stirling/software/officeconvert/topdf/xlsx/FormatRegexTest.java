@@ -52,6 +52,7 @@ class FormatRegexTest {
         assertEquals(20_001 + 20_000, text.length());
         assertEquals("1-2-3", ExcelFormat.format(123, "0\"-\"0\"-\"0", true, false));
         assertEquals("0-0-1-2-3", ExcelFormat.format(123, "0\"-\"0\"-\"0\"-\"0\"-\"0", true, false));
+        assertEquals("1-2 kg", ExcelFormat.format(12, "0\"-\"0\" kg\"", true, false));
     }
 
     @Test
