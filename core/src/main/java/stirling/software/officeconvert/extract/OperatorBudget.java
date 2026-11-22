@@ -68,7 +68,7 @@ public final class OperatorBudget {
     private boolean spend(String what) {
         if (!spent) {
             spent = true;
-            LOG.warn(subject + " ran past " + (what.equals("forms") ? maxForms : MAX_OPERATORS) + " " + what
+            Warnings.leftOut(LOG, subject + " ran past " + (what.equals("forms") ? maxForms : MAX_OPERATORS) + " " + what
                     + " while " + pass + "; " + rest);
         }
         return false;

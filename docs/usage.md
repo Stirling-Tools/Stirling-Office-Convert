@@ -270,6 +270,10 @@ An interrupted thread stops within moments, mid-page, with an `InterruptedIOExce
 works. Each conversion runs on its own worker thread with an 8 MB stack; a document nested too deeply for it fails
 with "The document nests too deeply to convert" instead of a `StackOverflowError`. `OfficeConvert.run(timeout, work)`
 gives other converters, such as `PdfToPpt`, the same worker, timeout and failure handling. Warnings go through Commons Logging, like PDFBox's own, which reaches SLF4J or Log4j when either is present.
+`OfficeConvert.convertWithResult` takes the same arguments as `convert` and also returns a `Result`: the pages
+converted, the warnings in plain words, and `partial()`, true when content of the PDF was left out of the output (a
+picture that could not be decoded or was past a limit, a figure that could not be rendered, a page cut short by its
+operator or form limit, a stream emptied as a compression bomb). A page kept as a picture is a warning only.
 
 Damaged input is read the way viewers read it: a broken operator is skipped, and a content stream that breaks off
 keeps what it drew before the break. Limits that keep one document from exhausting a shared server, each far above

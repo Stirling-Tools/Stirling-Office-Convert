@@ -104,6 +104,7 @@ public final class PdfFiles {
         if (last < first) {
             throw new IOException("The page range ends before it starts: " + firstPage + "-" + lastPage);
         }
+        Warnings.pages(last - first + 1);
         return new int[] {first, last};
     }
 

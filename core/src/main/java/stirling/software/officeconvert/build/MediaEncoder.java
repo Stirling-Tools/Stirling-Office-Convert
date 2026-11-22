@@ -12,6 +12,7 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InterruptedIOException;
 import java.util.Iterator;
 import java.util.List;
 import javax.imageio.IIOImage;
@@ -39,7 +40,9 @@ import stirling.software.officeconvert.extract.ImageBudget;
 import stirling.software.officeconvert.extract.Jpeg;
 import stirling.software.officeconvert.extract.PageGraphics.ImageDraw;
 import stirling.software.officeconvert.extract.PageGraphics;
+import stirling.software.officeconvert.extract.PdfFiles;
 import stirling.software.officeconvert.extract.StreamGuard;
+import stirling.software.officeconvert.extract.Warnings;
 import stirling.software.officeconvert.layout.Box;
 
 final class MediaEncoder {
@@ -103,7 +106,7 @@ final class MediaEncoder {
         textFreePage = -1;
     }
 
-    Encoded image(ImageDraw draw) {
+    Encoded image(ImageDraw draw) throws InterruptedIOException {
         try {
             PDImage image = draw.image();
             if (draw.stencilRgb() < 0 && image instanceof PDImageXObject x && opacity(draw) == 255
@@ -115,12 +118,12 @@ final class MediaEncoder {
             }
             PDImage fitted = ImageBudget.fitted(image);
             if (fitted == null) {
-                LOG.warn("Image left out: too large to decode");
+                Warnings.leftOut(LOG, "Image left out: too large to decode");
                 return null;
             }
             if (draw.stencilRgb() >= 0) {
                 if ((long) image.getWidth() * image.getHeight() > MAX_DECODE_PIXELS) {
-                    LOG.warn("Stencil mask of " + image.getWidth() + "x" + image.getHeight() + " left out: too large to decode");
+                    Warnings.leftOut(LOG, "Stencil mask of " + image.getWidth() + "x" + image.getHeight() + " left out: too large to decode");
                     return null;
                 }
                 BufferedImage st = fitted.getStencilImage(new Color(draw.stencilRgb() | opacity(draw) << 24, true));
@@ -138,12 +141,21 @@ final class MediaEncoder {
             }
             return png(bi);
         } catch (IOException | RuntimeException e) {
-            LOG.warn("Image left out: it could not be decoded", e);
-            return null;
-        } catch (OutOfMemoryError e) {
-            LOG.warn("Image left out: not enough memory to decode it");
+            stopIfStopping(e);
+            Warnings.leftOut(LOG, "Image left out: it could not be decoded", e);
             return null;
         }
+    }
+
+    // A timeout or memory stop ends the conversion rather than drop one picture; out of memory is not caught at all
+    private static void stopIfStopping(Exception e) throws InterruptedIOException {
+        Throwable t = e;
+        for (int depth = 0; t != null && depth < 16; depth++, t = t.getCause()) {
+            if (t instanceof InterruptedIOException stop) {
+                throw stop;
+            }
+        }
+        PdfFiles.stopIfInterrupted();
     }
 
     static int subsampling(ImageDraw draw) {
@@ -210,7 +222,8 @@ final class MediaEncoder {
         }
     }
 
-    Encoded figure(PDPage page, int pageIndex, AffineTransform toDisplay, Box box, boolean withText) {
+    Encoded figure(PDPage page, int pageIndex, AffineTransform toDisplay, Box box, boolean withText)
+            throws InterruptedIOException {
         try {
             if (!withText) {
                 return textFreeFigure(page, pageIndex, toDisplay, box);
@@ -229,7 +242,8 @@ final class MediaEncoder {
             }
             return png(render(renderer(), page, pageIndex, toDisplay, box, scaleFor(box)));
         } catch (Exception e) {
-            LOG.warn("Figure left out: the page region could not be rendered", e);
+            stopIfStopping(e);
+            Warnings.leftOut(LOG, "Figure left out: the page region could not be rendered", e);
             return null;
         }
     }
@@ -281,7 +295,7 @@ final class MediaEncoder {
                 : null;
     }
 
-    Encoded paper(PDPage page, int pageIndex, AffineTransform toDisplay, Box box) {
+    Encoded paper(PDPage page, int pageIndex, AffineTransform toDisplay, Box box) throws InterruptedIOException {
         try {
             float scale = Math.min(scaleFor(box), PAPER_DPI / 72f);
             FigureRenderer r = paperRenderer();
@@ -290,7 +304,8 @@ final class MediaEncoder {
             BufferedImage img = render(r, page, pageIndex, toDisplay, box, scale);
             return lossless ? png(img) : jpeg(img, 0.9f);
         } catch (Exception e) {
-            LOG.warn("Page background left out: it could not be rendered", e);
+            stopIfStopping(e);
+            Warnings.leftOut(LOG, "Page background left out: it could not be rendered", e);
             return null;
         }
     }
@@ -318,7 +333,7 @@ final class MediaEncoder {
             }
             return png(img);
         } catch (IOException | RuntimeException e) {
-            LOG.warn("Watermark left out: it could not be drawn", e);
+            Warnings.leftOut(LOG, "Watermark left out: it could not be drawn", e);
             return null;
         } finally {
             g.dispose();

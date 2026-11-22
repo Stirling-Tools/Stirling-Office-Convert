@@ -111,7 +111,7 @@ final class BrotliStreams {
                     + " stream decodes past " + (StreamGuard.MAX_DECODED >> 20) + " MB");
         }
         if (outcome == Outcome.DAMAGED) {
-            LOG.warn("A BrotliDecode stream is damaged; only the data before the damage is read");
+            Warnings.leftOut(LOG, "A BrotliDecode stream is damaged; only the data before the damage is read");
         }
         try (OutputStream out = s.createRawOutputStream()) {
             flate.writeTo(out);
@@ -150,7 +150,7 @@ final class BrotliStreams {
         if (structural) {
             throw new BrotliBudget.Spent(budget.exhausted());
         }
-        LOG.warn("A BrotliDecode stream was left out: " + budget.exhausted());
+        Warnings.leftOut(LOG, "A BrotliDecode stream was left out: " + budget.exhausted());
         s.removeItem(COSName.FILTER);
         s.removeItem(COSName.DECODE_PARMS);
         s.removeItem(COSName.DP);

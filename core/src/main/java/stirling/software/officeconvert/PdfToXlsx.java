@@ -22,6 +22,7 @@ import stirling.software.officeconvert.extract.PageReader;
 import stirling.software.officeconvert.extract.PdfFiles;
 import stirling.software.officeconvert.extract.PdfFootprint;
 import stirling.software.officeconvert.extract.StreamGuard;
+import stirling.software.officeconvert.extract.Warnings;
 import stirling.software.officeconvert.jpx.JpxImageIO;
 import stirling.software.officeconvert.layout.DocStats;
 import stirling.software.officeconvert.layout.Line;
@@ -205,7 +206,7 @@ public final class PdfToXlsx {
                     if (!fallback) {
                         throw new IOException("Page " + (page.index() + 1) + " could not be converted", e);
                     }
-                    LOG.warn("Page " + (page.index() + 1) + " left out of the document statistics", e);
+                    Warnings.note(LOG, "Page " + (page.index() + 1) + " left out of the document statistics", e);
                 }
                 if (cacheAll && cacheWeight[0] + PageStream.weight(page) <= CACHE_BUDGET) {
                     cache.put(page.index(), page);
@@ -268,10 +269,10 @@ public final class PdfToXlsx {
             lines = List.of();
         }
         if (tablesOnly && !lines.isEmpty()) {
-            LOG.warn("Page " + (page.index() + 1) + " could not be analysed; left out of this tables-only output", e);
+            Warnings.leftOut(LOG, "Page " + (page.index() + 1) + " could not be analysed; left out of this tables-only output", e);
             return;
         }
-        LOG.warn("Page " + (page.index() + 1) + " could not be analysed; kept as lines of text", e);
+        Warnings.note(LOG, "Page " + (page.index() + 1) + " could not be analysed; kept as lines of text", e);
         builder.plainPage(page, lines);
     }
 

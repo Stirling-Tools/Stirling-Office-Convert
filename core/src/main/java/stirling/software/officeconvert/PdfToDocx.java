@@ -29,6 +29,7 @@ import stirling.software.officeconvert.extract.PageReader;
 import stirling.software.officeconvert.extract.PdfFiles;
 import stirling.software.officeconvert.extract.PdfFootprint;
 import stirling.software.officeconvert.extract.StreamGuard;
+import stirling.software.officeconvert.extract.Warnings;
 import stirling.software.officeconvert.jpx.JpxImageIO;
 import stirling.software.officeconvert.layout.DocStats;
 import stirling.software.officeconvert.layout.FallbackPage;
@@ -198,7 +199,7 @@ public final class PdfToDocx {
                     if (!fallback) {
                         throw new IOException("Page " + (page.index() + 1) + " could not be converted", e);
                     }
-                    LOG.warn("Page " + (page.index() + 1) + " left out of the document statistics", e);
+                    Warnings.note(LOG, "Page " + (page.index() + 1) + " left out of the document statistics", e);
                 }
                 if (cacheAll && cacheWeight[0] + weight(page) <= CACHE_BUDGET) {
                     cache.put(page.index(), page);
@@ -255,7 +256,7 @@ public final class PdfToDocx {
         if (!fallback) {
             throw new IOException("Page " + (page.index() + 1) + " could not be converted", e);
         }
-        LOG.warn("Page " + (page.index() + 1) + " could not be converted; kept as a picture", e);
+        Warnings.note(LOG, "Page " + (page.index() + 1) + " could not be converted; kept as a picture", e);
         return FallbackPage.of(page);
     }
 
@@ -290,7 +291,7 @@ public final class PdfToDocx {
                 if (onUnreadable == null) {
                     throw new IOException("Page " + (reading[0] + 1) + " could not be read", e);
                 }
-                LOG.warn("Page " + (reading[0] + 1) + " could not be read; kept as a picture", e);
+                Warnings.note(LOG, "Page " + (reading[0] + 1) + " could not be read; kept as a picture", e);
                 onUnreadable.accept(reader.unreadable(reading[0]));
                 from = reading[0] + 1;
             }

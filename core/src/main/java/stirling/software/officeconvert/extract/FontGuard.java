@@ -76,7 +76,7 @@ public final class FontGuard {
         }
         if (removed > 0) {
             doc.setResourceCache(new DefaultResourceCache());
-            LOG.warn(removed + " embedded font program(s) left out: their glyphs expand too far to draw safely");
+            Warnings.leftOut(LOG, removed + " embedded font program(s) left out: their glyphs expand too far to draw safely");
         }
         CHECKED.put(cos, Boolean.TRUE);
         return removed;

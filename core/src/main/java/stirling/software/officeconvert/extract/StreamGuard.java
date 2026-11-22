@@ -64,7 +64,7 @@ public final class StreamGuard {
             }
         }
         if (emptied > 0) {
-            LOG.warn(emptied + " stream(s) inflate past " + (MAX_DECODED >> 20) + " MB and were left out");
+            Warnings.leftOut(LOG, emptied + " stream(s) inflate past " + (MAX_DECODED >> 20) + " MB and were left out");
         }
         return emptied;
     }
@@ -81,7 +81,7 @@ public final class StreamGuard {
             fits = false;
         }
         if (!fits) {
-            LOG.warn("A picture inflates past " + (MAX_DECODED >> 20) + " MB and was left out");
+            Warnings.leftOut(LOG, "A picture inflates past " + (MAX_DECODED >> 20) + " MB and was left out");
         }
         FITS.put(s, fits);
         return fits;

@@ -7,6 +7,7 @@ import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.concurrent.ExecutionException;
@@ -18,6 +19,7 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 
 import stirling.software.officeconvert.extract.PdfFiles;
 import stirling.software.officeconvert.extract.PdfFootprint;
+import stirling.software.officeconvert.extract.Warnings;
 import stirling.software.officeconvert.memory.Admission;
 
 public final class OfficeConvert {
@@ -343,6 +345,55 @@ public final class OfficeConvert {
         Objects.requireNonNull(settings, "settings");
         float dpi = format == Format.XLSX || format == Format.ODS || format == Format.CSV ? 72f : settings.figureDpi();
         return PdfFootprint.estimate(pdf, settings.firstPage(), settings.lastPage(), dpi);
+    }
+
+    /** What a conversion produced: the pages it converted, its warnings in plain words, and whether content of the
+     * PDF was left out of the output (a picture that could not be decoded, a page cut short by a limit). */
+    public record Result(int pages, List<String> warnings, boolean partial) {
+
+        public Result {
+            Objects.requireNonNull(warnings, "warnings");
+            warnings = List.copyOf(warnings);
+        }
+    }
+
+    /** As {@link #convert(Path, Path)}, reporting what the conversion left out instead of only logging it. */
+    public static Result convertWithResult(Path pdf, Path out) throws IOException {
+        return convertWithResult(pdf, out, Settings.defaults());
+    }
+
+    public static Result convertWithResult(Path pdf, Path out, Settings settings) throws IOException {
+        Format format;
+        try {
+            format = Format.of(out);
+        } catch (IllegalArgumentException e) {
+            throw new UnsupportedFormatException(e.getMessage(), e);
+        }
+        return convertWithResult(pdf, out, format, settings);
+    }
+
+    public static Result convertWithResult(Path pdf, Path out, Format format, Settings settings) throws IOException {
+        Objects.requireNonNull(pdf, "pdf");
+        Objects.requireNonNull(out, "out");
+        Objects.requireNonNull(format, "format");
+        Objects.requireNonNull(settings, "settings");
+        try (Warnings.Sink sink = Warnings.open()) {
+            Admission.readmitting(() -> {
+                sink.reset();
+                convertOnce(pdf, out, format, settings);
+                return null;
+            });
+            return new Result(sink.pages(), sink.messages(), sink.partial());
+        }
+    }
+
+    /** As {@link #convert(PDDocument, OutputStream, Format, Settings)}, reporting what the conversion left out. */
+    public static Result convertWithResult(PDDocument pdf, OutputStream out, Format format, Settings settings)
+            throws IOException {
+        try (Warnings.Sink sink = Warnings.open()) {
+            convert(pdf, out, format, settings);
+            return new Result(sink.pages(), sink.messages(), sink.partial());
+        }
     }
 
     @FunctionalInterface

@@ -520,7 +520,7 @@ public final class PageReader {
                 }
             }
         }
-        LOG.warn("A page has " + links.size() + " links; kept the first " + kept.size() + " that lie on it");
+        Warnings.leftOut(LOG, "A page has " + links.size() + " links; kept the first " + kept.size() + " that lie on it");
         return kept;
     }
 

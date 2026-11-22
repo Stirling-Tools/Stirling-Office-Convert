@@ -25,6 +25,7 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 import stirling.software.officeconvert.build.PlacedContent;
 import stirling.software.officeconvert.build.RgbPixels;
 import stirling.software.officeconvert.extract.OperatorBudget;
+import stirling.software.officeconvert.extract.Warnings;
 import stirling.software.officeconvert.layout.Box;
 import stirling.software.officeconvert.model.Picture;
 import stirling.software.officeconvert.slides.PaintOrder.Kind;
@@ -278,7 +279,7 @@ final class Art {
             return new Piece(new PictureShape(new Frame(box.x(), box.top(), box.width(), box.height()), pic),
                     run.stream().mapToInt(Mark::order).max().orElse(0));
         } catch (IOException | RuntimeException e) {
-            LOG.warn("Page art left out: it could not be rendered", e);
+            Warnings.leftOut(LOG, "Page art left out: it could not be rendered", e);
             return null;
         }
     }
