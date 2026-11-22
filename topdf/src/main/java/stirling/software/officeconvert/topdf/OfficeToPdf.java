@@ -29,6 +29,7 @@ import stirling.software.officeconvert.UnsupportedFormatException;
 import stirling.software.officeconvert.extract.PdfFiles;
 import stirling.software.officeconvert.jpx.JpxImageIO;
 import stirling.software.officeconvert.memory.Admission;
+import stirling.software.officeconvert.memory.ConversionTimedOut;
 import stirling.software.officeconvert.topdf.crypt.EncryptedPackage;
 import stirling.software.officeconvert.topdf.docx.DocxRenderer;
 import stirling.software.officeconvert.topdf.font.FontLibrary;
@@ -292,7 +293,7 @@ public final class OfficeToPdf {
         }
     }
 
-    public static final class TimedOut extends IOException {
+    public static final class TimedOut extends ConversionTimedOut {
         TimedOut(Duration limit) {
             super("The conversion took longer than " + limit.toMillis() + " ms and was stopped");
         }

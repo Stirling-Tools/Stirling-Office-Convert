@@ -21,6 +21,7 @@ import stirling.software.officeconvert.extract.PdfFiles;
 import stirling.software.officeconvert.extract.PdfFootprint;
 import stirling.software.officeconvert.extract.Warnings;
 import stirling.software.officeconvert.memory.Admission;
+import stirling.software.officeconvert.memory.ConversionTimedOut;
 
 public final class OfficeConvert {
 
@@ -196,7 +197,7 @@ public final class OfficeConvert {
         }
     }
 
-    public static final class TimedOut extends IOException {
+    public static final class TimedOut extends ConversionTimedOut {
         TimedOut(Duration limit) {
             super("The conversion took longer than " + limit.toMillis() + " ms and was stopped");
         }

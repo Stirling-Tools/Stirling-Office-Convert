@@ -127,7 +127,11 @@ public final class Admission {
         default void reclaim(boolean collect) {}
     }
 
-    public static class NeedsMemory extends InterruptedIOException {
+    /** A conversion the gate refused or stopped (busy, too large, out of memory), not a cancelled or timed-out one,
+     * though each is an {@link InterruptedIOException}. */
+    public interface Refusal {}
+
+    public static class NeedsMemory extends InterruptedIOException implements Refusal {
         public NeedsMemory() {
             super(NEEDS_MEMORY);
         }
@@ -159,7 +163,7 @@ public final class Admission {
         }
     }
 
-    public static final class Busy extends InterruptedIOException {
+    public static final class Busy extends InterruptedIOException implements Refusal {
         public Busy() {
             super(BUSY);
         }

@@ -8,12 +8,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InterruptedIOException;
 import java.io.OutputStream;
 import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -32,6 +34,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import stirling.software.officeconvert.memory.Admission;
+import stirling.software.officeconvert.memory.ConversionTimedOut;
 import stirling.software.officeconvert.testing.Workers;
 
 class OfficeConvertTest {
@@ -280,5 +283,15 @@ class OfficeConvertTest {
         } finally {
             Admission.configure(saved);
         }
+    }
+
+    @Test
+    void timeoutsShareABaseAndRefusalsAreMarked() {
+        assertTrue(ConversionTimedOut.class.isAssignableFrom(OfficeConvert.TimedOut.class));
+        for (IOException e : List.of(new Admission.Busy(), new Admission.TooLarge(), new Admission.NeedsMemory(),
+                new Admission.Stopped())) {
+            assertTrue(e instanceof Admission.Refusal, e.getClass().getName());
+        }
+        assertFalse(new InterruptedIOException() instanceof Admission.Refusal);
     }
 }

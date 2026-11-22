@@ -12,6 +12,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
@@ -111,7 +112,10 @@ class MemoryAdmissionTest {
             doc.save(pdf.toFile());
         }
         Path out = dir.resolve("out.docx");
-        Admission.Ticket hog = Admission.jvm().enter(Long.MAX_VALUE);
+        // Another conversion's ticket: one held by this thread would make the conversion below nested
+        FutureTask<Admission.Ticket> other = new FutureTask<>(() -> Admission.jvm().enter(Long.MAX_VALUE));
+        Thread.ofPlatform().start(other);
+        Admission.Ticket hog = other.get();
         try {
             Set<Thread> before = Workers.named("office-convert");
             long start = System.nanoTime();

@@ -940,6 +940,14 @@ further; the JDK default is 240 MB.
   with status 2. Write `.docx` or `.rtf` instead.
 - Input of a kind the library does not read, by extension or content, throws `UnsupportedFormatException`, an
   `IOException` subclass; a damaged or empty file of a kind it reads still throws a plain `IOException`.
+- `OfficeConvert.TimedOut`, `OfficeToPdf.TimedOut` and `PdfToPdfA.TimedOut` now share the base class
+  `stirling.software.officeconvert.memory.ConversionTimedOut` (an `IOException`), so one catch covers all three.
+- `Admission.Busy`, `TooLarge`, `NeedsMemory` and `Stopped` implement the marker interface `Admission.Refusal`:
+  check `e instanceof Admission.Refusal` to tell a refused or stopped conversion from a cancelled one. They still
+  extend `InterruptedIOException`.
+- `OfficeConvert.convertWithResult` returns the pages converted, the warnings and a `partial` flag.
+- A conversion started on a thread that already converts (inside `OfficeConvert.run`) runs under that thread's
+  admission ticket and no longer queues for a second slot.
 
 ### 0.2.0
 
