@@ -305,7 +305,8 @@ preferred on purpose: it is bounded, interruptible and faster. Every conversion 
 `PDDocument` methods of `OfficeConvert`, the `PdfTo*` classes, `OfficeToPdf` and `PdfToPdfA`) puts it first again, so
 a host that calls `ImageIO.scanForPlugins()` later cannot reorder it for the next conversion. To keep another reader
 first, start the JVM with `-Dstirling.officeconvert.jpxReader=imageio`; the conversions then leave that reader in
-front of this one. A picture drawn small is decoded at a lower resolution level. One image is held to 134 million
+front of this one. A picture drawn small is decoded at a lower resolution level. The registered ImageIO reader holds
+one image to 67 million samples; a direct `JpxDecoder` call holds it to 134 million
 samples by default (`JpxOptions`, which refuses a negative reduction, a sample limit below one or an empty region), a
 tile to 2 million code-blocks, and an interrupted thread stops decoding. PDF to Office leaves out a JPEG 2000 picture
 of more than 67 million samples, judged from its codestream header before anything decodes it. `JpxDecoder` also
