@@ -91,7 +91,7 @@ Every page render goes through one guarded renderer, so these limits hold for pa
 | Decoded image size | 256 MB, counting the raster PDFBox builds | the image is drawn at the smallest subsampling (up to 1/16) that fits; beyond that it is left out |
 | JPEG 2000 samples | 2^26 | the image is left out |
 | Decoded stream size | 256 MB | a content stream is emptied, an image refused |
-| Path segments in PDF/A flattening | 100,000 | flattening fails |
+| Path segments in PDF/A flattening (fill, stroke and clip paths) | 100,000 | flattening fails |
 | Transparency group nesting in PDF/A flattening | 64 | flattening fails |
 | PDF/A flattening raster | 40 M pixels | the resolution is lowered |
 | PDF/A content streams (pages, forms, patterns, glyphs, appearances) | 200,000 | the conversion fails |

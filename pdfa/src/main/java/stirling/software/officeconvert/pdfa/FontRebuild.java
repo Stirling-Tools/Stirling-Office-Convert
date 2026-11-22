@@ -48,11 +48,11 @@ final class FontRebuild {
     }
 
     /** What a rebuild says about itself; {@code missing} counts characters drawn as empty glyphs. */
-    record Rebuilt(String note, int missing) {}
+    record Rebuilt(String note, int missing, int invented) {}
 
-    static String rebuild(PDDocument doc, PDFont font, Set<Integer> codes, Mode mode, GlyphSource substitute,
+    static Rebuilt rebuild(PDDocument doc, PDFont font, Set<Integer> codes, Mode mode, GlyphSource substitute,
             PdfALevel level, int bytesPerCode) throws IOException {
-        return new FontRebuild(doc, level, true).run(font, codes, mode, substitute, bytesPerCode).note();
+        return new FontRebuild(doc, level, true).run(font, codes, mode, substitute, bytesPerCode);
     }
 
     static Rebuilt substitute(PDDocument doc, PDFont font, Set<Integer> codes, GlyphSource substitute,
@@ -85,6 +85,7 @@ final class FontRebuild {
         TreeMap<Integer, String> unicode = new TreeMap<>();
         TreeMap<Integer, Float> widths = new TreeMap<>();
         int missing = 0;
+        int invented = 0;
         boolean standIn = UnicodeGuess.standIn(font);
         for (int code : codes) {
             PdfFiles.stopIfInterrupted();
@@ -104,7 +105,9 @@ final class FontRebuild {
                 unicode.put(code, UnicodeGuess.searchable(font, code, mapped));
             } else if (level.unicode()) {
                 String e = UnicodeGuess.extracted(font, code);
-                unicode.put(code, usable(e) || e != null && !level.tagged() ? e : ToUnicodeWriter.unknown(code, level));
+                boolean known = usable(e) || e != null && !level.tagged();
+                invented += known ? 0 : 1;
+                unicode.put(code, known ? e : ToUnicodeWriter.unknown(code, level));
             }
             if (slots.containsKey(key)) {
                 continue;
@@ -171,7 +174,7 @@ final class FontRebuild {
         if (missing > 0 && note != null) {
             note += ", " + missing + (missing == 1 ? " character" : " characters") + " not in it";
         }
-        return new Rebuilt(note, missing);
+        return new Rebuilt(note, missing, invented);
     }
 
     private boolean usable(String text) {

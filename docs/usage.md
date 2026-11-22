@@ -759,7 +759,7 @@ exactly what is written.
   its bytes show. CMaps PDF/A does not accept are embedded (part 1), merged with the CMap they refer to, or rewritten
   for the codes in use, with CIDs past 65,535 and, for parts 2 and 3, CID 0 (.notdef) moved to free CIDs; an unknown
   CMap name is read as Identity. CharSet and CIDSet are written for part 1 and dropped for parts 2 and 3. For the u and a levels every shown code gets a ToUnicode value, a private-use one (u) or
-  U+FFFD (a) when the PDF gives no clue; a ToUnicode map with ranges across a byte boundary is written again.
+  U+FFFD (a) when the PDF gives no clue, with a warning that such text cannot be searched; a ToUnicode map with ranges across a byte boundary is written again.
 - Colour. An sRGB output intent with an ICC profile generated in code (version 2, so it serves part 1 too) is added
   unless the PDF already has a usable one. Device CMYK is given a `DefaultCMYK` space with the CC0 CMYK profile that
   PDFBox ships (its own DeviceCMYK profile), so nothing is converted; it is added only when a page uses device CMYK.
@@ -803,7 +803,7 @@ exactly what is written.
   and Unix streams gain standard references, and retained attachment bytes are not rewritten. Incompatible variants
   are removed with warnings without discarding other eligible variants of the same file. A bounded prefix check rejects
   non-PDF variants before applying the PDF verification limit. Attachment checks allow up to
-  16 MiB of PDF bytes, 100,000 parsed values, 64 levels of object nesting and 8 MiB of decoded object and cross-reference
+  32 PDF files and 128 MiB in all per conversion, nested ones included, 16 MiB of PDF bytes each, 100,000 parsed values, 64 levels of object nesting and 8 MiB of decoded object and cross-reference
   streams. Exceeding a verification budget, or failing to decode a retained attachment for lossless recompression,
   fails the conversion instead of silently dropping or emptying its data. The path-based API leaves an existing
   output file unchanged on failure.
