@@ -12,8 +12,6 @@ import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -30,6 +28,7 @@ import stirling.software.officeconvert.model.Picture;
 import stirling.software.officeconvert.model.Scripts;
 import stirling.software.officeconvert.sink.KeepOpen;
 import stirling.software.officeconvert.sink.SpillFile;
+import stirling.software.officeconvert.sink.Timestamps;
 import stirling.software.officeconvert.sink.ZipParts;
 import stirling.software.officeconvert.slides.Slide;
 import stirling.software.officeconvert.slides.SlideSink;
@@ -172,7 +171,7 @@ public final class OdpWriter implements SlideSink {
         zip.closeEntry();
         entry("styles.xml", OdpParts.styles(width, height, styles.fontDecls(), mostUsedFont(), backgrounds,
                 styles.gradients()));
-        entry("meta.xml", OdpParts.meta(title, author, Instant.now().truncatedTo(ChronoUnit.SECONDS).toString()));
+        entry("meta.xml", OdpParts.meta(title, author, Timestamps.now().toString()));
         List<String[]> manifest = new ArrayList<>();
         for (Map.Entry<String, Object> m : mediaData.entrySet()) {
             ZipParts.picture(zip, "Pictures/" + m.getKey(),

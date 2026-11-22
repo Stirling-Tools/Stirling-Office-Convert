@@ -54,6 +54,23 @@ class DownsampleTest {
     }
 
     @Test
+    void photoIsResampledWithoutImageIoDiskCache() throws Exception {
+        Path in = pdf(doc -> draw(doc, LosslessFactory.createFromImage(doc, photo(1200, 1200)), 144));
+        boolean use = javax.imageio.ImageIO.getUseCache();
+        java.io.File dir = javax.imageio.ImageIO.getCacheDirectory();
+        Path gone = java.nio.file.Files.createTempDirectory("imageio-cache-");
+        javax.imageio.ImageIO.setUseCache(true);
+        javax.imageio.ImageIO.setCacheDirectory(gone.toFile());
+        java.nio.file.Files.delete(gone);
+        try {
+            assertTrue(filters(onlyImage(optimize(in, AT_150_DPI))).contains(COSName.DCT_DECODE));
+        } finally {
+            javax.imageio.ImageIO.setCacheDirectory(dir);
+            javax.imageio.ImageIO.setUseCache(use);
+        }
+    }
+
+    @Test
     void aGrayPhotoIsReencodedAsJpeg() throws Exception {
         Path in = pdf(doc -> draw(doc, LosslessFactory.createFromImage(doc, grayPhoto(600, 600)), 288));
 

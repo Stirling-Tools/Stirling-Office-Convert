@@ -20,6 +20,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
 import stirling.software.officeconvert.extract.PdfFiles;
+import stirling.software.officeconvert.sink.Timestamps;
 
 final class Kf8Writer {
 
@@ -290,7 +291,7 @@ final class Kf8Writer {
             for (String piece : split(html.substring(openEnd, close))) {
                 byte[] bytes = piece.getBytes(StandardCharsets.UTF_8);
                 Fragment fr = new Fragment(f, insert + within, within, flow0.size(), bytes);
-                chunks.add(String.format("%010d", fr.insert()), Map.of(
+                chunks.add(String.format(Locale.ROOT, "%010d", fr.insert()), Map.of(
                         2, new long[] {chunks.text("P-//*[@aid='" + bodyAid + "']")},
                         3, new long[] {f},
                         4, new long[] {fragments.size()},
@@ -300,7 +301,7 @@ final class Kf8Writer {
                 within += bytes.length;
                 count++;
             }
-            skeletons.add(String.format("SKEL%010d", f), Map.of(
+            skeletons.add(String.format(Locale.ROOT, "SKEL%010d", f), Map.of(
                     1, new long[] {count, count},
                     6, new long[] {start, skeleton.length, start, skeleton.length}));
         }
@@ -529,7 +530,7 @@ final class Kf8Writer {
                 tags.put(23, new long[] {position[children.get(i).get(children.get(i).size() - 1)]});
             }
             tags.put(6, new long[] {at[i].fragment(), at[i].offset()});
-            index.add(String.format(key, k), tags);
+            index.add(String.format(Locale.ROOT, key, k), tags);
         }
         return index;
     }
@@ -696,7 +697,7 @@ final class Kf8Writer {
         h.writeBytes(name);
         Kf8Index.u16(h, 0);
         Kf8Index.u16(h, 0);
-        long now = System.currentTimeMillis() / 1000;
+        long now = Timestamps.now().getEpochSecond();
         Kf8Index.u32(h, now);
         Kf8Index.u32(h, now);
         Kf8Index.u32(h, 0);

@@ -1,7 +1,5 @@
 package stirling.software.officeconvert.odt;
 
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Set;
 
@@ -9,6 +7,7 @@ import stirling.software.officeconvert.model.Picture;
 import stirling.software.officeconvert.model.RunStyle;
 import stirling.software.officeconvert.model.Scripts;
 import stirling.software.officeconvert.model.StyleSheet;
+import stirling.software.officeconvert.sink.Timestamps;
 
 final class OdtParts {
 
@@ -113,7 +112,7 @@ final class OdtParts {
     }
 
     static void meta(StringBuilder sb, String title, String author) {
-        String now = Instant.now().truncatedTo(ChronoUnit.SECONDS).toString();
+        String now = Timestamps.now().toString();
         now = now.endsWith("Z") ? now.substring(0, now.length() - 1) : now;
         sb.append("<office:meta><meta:generator>Stirling-PDF</meta:generator>");
         if (title != null && !title.isBlank()) {

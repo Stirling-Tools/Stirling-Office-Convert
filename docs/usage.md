@@ -251,6 +251,11 @@ once. The per-format classes (`PdfToDocx`, `PdfToOdt`, `PdfToRtf`, `PdfToText`, 
 stay available for options the facade leaves out, such as untyped spreadsheet cells; see Other formats. PowerPoint
 97-2003 (`.ppt`) comes from `com.stirling:stirling-office-convert-legacy` (`PdfToPpt`), which adds Apache POI.
 
+Zip entries in DOCX, PPTX, XLSX, ODT, ODP, ODS, EPUB and Markdown packages are all dated 1980-02-01, a date zip
+holds without a zone-dependent extra field. The created and modified dates in document properties are the current
+time, or a fixed time in epoch seconds from the system property `stirling.officeconvert.sourceDateEpoch` or the
+`SOURCE_DATE_EPOCH` environment variable, for byte-reproducible output.
+
 ### Pictures
 
 `Pictures.COMPACT`, the default, keeps pictures at 220 ppi or more at their printed size (Word's own default)
@@ -932,6 +937,11 @@ further; the JDK default is 240 MB.
   with status 2. Write `.docx` or `.rtf` instead.
 - Input of a kind the library does not read, by extension or content, throws `UnsupportedFormatException`, an
   `IOException` subclass; a damaged or empty file of a kind it reads still throws a plain `IOException`.
+- Line-art conversion leaves a signed PDF unchanged with a warning, as the optimizer does, instead of invalidating its
+  signatures. `LineArt.Options` gains `timeout` (default 5 minutes, `LineArt.TimedOut`) and `maxImages` (default
+  10,000; later images are left as they were), and `DEFAULT_MAX_PIXELS` drops from 1 G to 300 M pixels per image.
+- PDF-to-Office packages date their zip entries 1980-02-01, and document-property dates honour
+  `SOURCE_DATE_EPOCH` (see Library use).
 
 ### 0.2.0
 

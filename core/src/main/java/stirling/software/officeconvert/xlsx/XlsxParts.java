@@ -1,10 +1,9 @@
 package stirling.software.officeconvert.xlsx;
 
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.List;
 
 import stirling.software.officeconvert.sheet.SheetXml;
+import stirling.software.officeconvert.sink.Timestamps;
 
 final class XlsxParts {
 
@@ -82,7 +81,7 @@ final class XlsxParts {
     }
 
     static String core(String title, String author) {
-        String now = Instant.now().truncatedTo(ChronoUnit.SECONDS).toString();
+        String now = Timestamps.now().toString();
         return HEAD + "<cp:coreProperties xmlns:cp=\"http://schemas.openxmlformats.org/package/2006/metadata/core-properties\""
                 + " xmlns:dc=\"http://purl.org/dc/elements/1.1/\" xmlns:dcterms=\"http://purl.org/dc/terms/\""
                 + " xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\">"

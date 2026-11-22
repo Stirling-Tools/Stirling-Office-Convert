@@ -18,6 +18,8 @@ import javax.imageio.ImageIO;
 import javax.imageio.ImageWriteParam;
 import javax.imageio.ImageWriter;
 import javax.imageio.stream.ImageOutputStream;
+import javax.imageio.stream.MemoryCacheImageInputStream;
+import javax.imageio.stream.MemoryCacheImageOutputStream;
 
 import stirling.software.officeconvert.build.PlacedContent;
 import stirling.software.officeconvert.model.Picture;
@@ -68,7 +70,8 @@ final class SlideMedia implements PlacedContent.MediaStore {
     }
 
     private static byte[] jpeg(byte[] png) throws IOException {
-        BufferedImage img = ImageIO.read(new ByteArrayInputStream(png));
+        // Memory-cached streams keep document bytes out of ImageIO's temp-file cache; read closes its input
+        BufferedImage img = ImageIO.read(new MemoryCacheImageInputStream(new ByteArrayInputStream(png)));
         if (img == null || !opaque(img)) {
             return null;
         }
@@ -82,7 +85,7 @@ final class SlideMedia implements PlacedContent.MediaStore {
         }
         ImageWriter writer = writers.next();
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        try (ImageOutputStream ios = ImageIO.createImageOutputStream(out)) {
+        try (ImageOutputStream ios = new MemoryCacheImageOutputStream(out)) {
             ImageWriteParam param = writer.getDefaultWriteParam();
             param.setCompressionMode(ImageWriteParam.MODE_EXPLICIT);
             param.setCompressionQuality(QUALITY);

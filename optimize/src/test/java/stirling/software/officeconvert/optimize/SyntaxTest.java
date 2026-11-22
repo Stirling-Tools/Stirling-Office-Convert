@@ -3,6 +3,7 @@ package stirling.software.officeconvert.optimize;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -149,6 +150,19 @@ class SyntaxTest {
             byte[] predicted = Predictors.encodePng(image, layout, f);
             assertArrayEquals(image, Predictors.decode(predicted, parms, 1 << 20));
         }
+    }
+
+    @Test
+    void longNamesAreWrittenButNotCached() {
+        COSName shortName = COSName.getPDFName("CacheMe" + System.nanoTime());
+        COSName longName = COSName.getPDFName("L".repeat(10_000) + System.nanoTime());
+        Bytes b = new Bytes();
+        Syntax syntax = new Syntax((ref, s) -> { }).into(b);
+        syntax.name(shortName);
+        syntax.name(longName);
+        assertTrue(Syntax.cached(shortName));
+        assertFalse(Syntax.cached(longName));
+        assertTrue(new String(b.toByteArray(), StandardCharsets.ISO_8859_1).endsWith(longName.getName()));
     }
 
     private static String string(String s) {

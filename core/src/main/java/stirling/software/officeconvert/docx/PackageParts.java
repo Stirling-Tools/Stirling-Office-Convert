@@ -1,7 +1,5 @@
 package stirling.software.officeconvert.docx;
 
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
@@ -10,6 +8,7 @@ import java.util.regex.Pattern;
 
 import stirling.software.officeconvert.build.DocSink.HeaderFooterSet;
 import stirling.software.officeconvert.extract.FontNames;
+import stirling.software.officeconvert.sink.Timestamps;
 
 final class PackageParts {
 
@@ -169,7 +168,7 @@ final class PackageParts {
     }
 
     static String core(String title, String author) {
-        String now = Instant.now().truncatedTo(ChronoUnit.SECONDS).toString();
+        String now = Timestamps.now().toString();
         return "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
                 + "<cp:coreProperties xmlns:cp=\"http://schemas.openxmlformats.org/package/2006/metadata/core-properties\""
                 + " xmlns:dc=\"http://purl.org/dc/elements/1.1/\" xmlns:dcterms=\"http://purl.org/dc/terms/\""

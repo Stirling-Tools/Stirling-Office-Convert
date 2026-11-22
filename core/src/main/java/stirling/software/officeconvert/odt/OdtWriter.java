@@ -28,6 +28,7 @@ import stirling.software.officeconvert.model.Picture;
 import stirling.software.officeconvert.model.Section;
 import stirling.software.officeconvert.model.StyleSheet;
 import stirling.software.officeconvert.model.Table;
+import stirling.software.officeconvert.sink.FixedTimeZip;
 import stirling.software.officeconvert.sink.KeepOpen;
 import stirling.software.officeconvert.sink.MediaStore;
 import stirling.software.officeconvert.sink.NoteHold;
@@ -76,7 +77,7 @@ public final class OdtWriter implements DocSink, Closeable {
         if (flat) {
             zip = null;
         } else {
-            zip = new ZipOutputStream(out, StandardCharsets.UTF_8);
+            zip = new FixedTimeZip(out, StandardCharsets.UTF_8);
             zip.setLevel(6);
             ZipParts.stored(zip, "mimetype", OdtParts.MIME.getBytes(StandardCharsets.US_ASCII));
         }

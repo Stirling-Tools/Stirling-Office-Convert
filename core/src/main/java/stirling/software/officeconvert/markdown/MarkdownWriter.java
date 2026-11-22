@@ -26,6 +26,7 @@ import stirling.software.officeconvert.model.Picture;
 import stirling.software.officeconvert.model.Section;
 import stirling.software.officeconvert.model.StyleSheet;
 import stirling.software.officeconvert.model.Table;
+import stirling.software.officeconvert.sink.FixedTimeZip;
 import stirling.software.officeconvert.sink.KeepOpen;
 import stirling.software.officeconvert.sink.ListLabels;
 import stirling.software.officeconvert.sink.MediaStore;
@@ -112,7 +113,7 @@ public final class MarkdownWriter implements DocSink, Closeable {
 
     private ZipOutputStream zip() {
         if (zip == null) {
-            zip = new ZipOutputStream(out, StandardCharsets.UTF_8);
+            zip = new FixedTimeZip(out, StandardCharsets.UTF_8);
         }
         return zip;
     }

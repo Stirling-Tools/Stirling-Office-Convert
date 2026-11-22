@@ -28,6 +28,8 @@ import javax.imageio.ImageWriteParam;
 import javax.imageio.ImageWriter;
 import javax.imageio.stream.ImageInputStream;
 import javax.imageio.stream.ImageOutputStream;
+import javax.imageio.stream.MemoryCacheImageInputStream;
+import javax.imageio.stream.MemoryCacheImageOutputStream;
 
 import org.apache.pdfbox.contentstream.PDFStreamEngine;
 import org.apache.pdfbox.contentstream.operator.Operator;
@@ -794,7 +796,8 @@ final class Downsample {
         if (reader == null) {
             return null;
         }
-        try (ImageInputStream in = ImageIO.createImageInputStream(new ByteArrayInputStream(data))) {
+        // Memory-cached streams keep document bytes out of ImageIO's temp-file cache
+        try (ImageInputStream in = new MemoryCacheImageInputStream(new ByteArrayInputStream(data))) {
             reader.setInput(in, true, true);
             return reader.read(0);
         } finally {
@@ -822,7 +825,7 @@ final class Downsample {
     private static byte[] jpeg(BufferedImage image, float quality) throws IOException {
         ImageWriter writer = jpegWriter();
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-        try (ImageOutputStream out = ImageIO.createImageOutputStream(bytes)) {
+        try (ImageOutputStream out = new MemoryCacheImageOutputStream(bytes)) {
             ImageWriteParam param = writer.getDefaultWriteParam();
             param.setCompressionMode(ImageWriteParam.MODE_EXPLICIT);
             param.setCompressionQuality(quality);

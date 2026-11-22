@@ -1,10 +1,9 @@
 package stirling.software.officeconvert.ods;
 
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.List;
 
 import stirling.software.officeconvert.sheet.SheetXml;
+import stirling.software.officeconvert.sink.Timestamps;
 
 final class OdsParts {
 
@@ -57,7 +56,7 @@ final class OdsParts {
     }
 
     static String meta(String title, String author) {
-        String now = Instant.now().truncatedTo(ChronoUnit.SECONDS).toString();
+        String now = Timestamps.now().toString();
         return HEAD + "<office:document-meta" + NS + " office:version=\"1.3\"><office:meta>"
                 + "<meta:generator>Stirling-PDF</meta:generator>"
                 + (title == null || title.isBlank() ? "" : "<dc:title>" + SheetXml.escape(title) + "</dc:title>")

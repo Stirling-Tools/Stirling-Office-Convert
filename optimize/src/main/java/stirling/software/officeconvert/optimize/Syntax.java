@@ -26,6 +26,11 @@ final class Syntax {
 
     private static final Map<COSName, byte[]> NAMES = new java.util.concurrent.ConcurrentHashMap<>();
 
+    // Names are document-controlled; caching only short ones bounds the cache at a few MB.
+    static final int MAX_CACHED_NAME_BYTES = 64;
+
+    static final int MAX_CACHED_NAMES = 65_536;
+
     private final References references;
 
     private Strings strings;
@@ -178,12 +183,16 @@ final class Syntax {
                 throw new IllegalStateException(e);
             }
             b = tmp.toByteArray();
-            if (NAMES.size() < 100_000) {
+            if (b.length <= MAX_CACHED_NAME_BYTES && NAMES.size() < MAX_CACHED_NAMES) {
                 NAMES.put(n, b);
             }
         }
         out.write(b);
         regularEnd = true;
+    }
+
+    static boolean cached(COSName n) {
+        return NAMES.containsKey(n);
     }
 
     static boolean absent(COSBase v) {
