@@ -4,10 +4,8 @@ import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 final class Palette {
@@ -22,9 +20,11 @@ final class Palette {
 
     static int[] exact(BufferedImage image) {
         Set<Integer> colours = new LinkedHashSet<>();
+        int[] row = new int[image.getWidth()];
         for (int y = 0; y < image.getHeight(); y++) {
+            rgbRow(image, y, row);
             for (int x = 0; x < image.getWidth(); x++) {
-                if (colours.add(image.getRGB(x, y) & 0xFFFFFF) && colours.size() > MAX_COLOURS) {
+                if (colours.add(row[x] & 0xFFFFFF) && colours.size() > MAX_COLOURS) {
                     return null;
                 }
             }
@@ -37,9 +37,11 @@ final class Palette {
     static int[] medianCut(BufferedImage image, int colours) {
         long[] count = new long[BINS];
         long[][] sums = new long[3][BINS];
+        int[] row = new int[image.getWidth()];
         for (int y = 0; y < image.getHeight(); y++) {
+            rgbRow(image, y, row);
             for (int x = 0; x < image.getWidth(); x++) {
-                int rgb = image.getRGB(x, y);
+                int rgb = row[x];
                 int bin = bin(rgb);
                 count[bin]++;
                 sums[0][bin] += rgb >> 16 & 0xFF;
@@ -111,30 +113,74 @@ final class Palette {
     }
 
     static byte[] indices(BufferedImage image, int[] palette) {
-        byte[] out = new byte[image.getWidth() * image.getHeight()];
-        Map<Integer, Integer> nearest = new HashMap<>();
+        int w = image.getWidth();
+        byte[] out = new byte[w * image.getHeight()];
+        Nearest nearest = new Nearest(palette, out.length);
+        int[] row = new int[w];
         int i = 0;
         for (int y = 0; y < image.getHeight(); y++) {
-            for (int x = 0; x < image.getWidth(); x++) {
-                int rgb = image.getRGB(x, y) & 0xFFFFFF;
-                out[i++] = (byte) (int) nearest.computeIfAbsent(rgb, c -> nearest(palette, c));
+            rgbRow(image, y, row);
+            for (int x = 0; x < w; x++) {
+                out[i++] = nearest.of(row[x] & 0xFFFFFF);
             }
         }
         return out;
     }
 
+    // Open-addressed colour to index memo; a boxed HashMap cost about 100 bytes per distinct colour
+    private static final class Nearest {
+
+        private final int[] palette;
+
+        private final int[] keys;
+
+        private final byte[] values;
+
+        private final int shift;
+
+        Nearest(int[] palette, int pixels) {
+            this.palette = palette;
+            int bits = Math.clamp(33 - Integer.numberOfLeadingZeros(Math.max(1, Math.min(pixels, 1 << 24))), 4, 25);
+            keys = new int[1 << bits];
+            values = new byte[1 << bits];
+            shift = 32 - bits;
+            Arrays.fill(keys, -1);
+        }
+
+        byte of(int rgb) {
+            int mask = keys.length - 1;
+            for (int at = rgb * 0x9E3779B1 >>> shift; ; at = at + 1 & mask) {
+                if (keys[at] == rgb) {
+                    return values[at];
+                }
+                if (keys[at] < 0) {
+                    keys[at] = rgb;
+                    values[at] = (byte) nearest(palette, rgb);
+                    return values[at];
+                }
+            }
+        }
+    }
+
     static double meanError(BufferedImage image, int[] palette, byte[] indices) {
         long total = 0;
         int i = 0;
+        int[] row = new int[image.getWidth()];
         for (int y = 0; y < image.getHeight(); y++) {
+            rgbRow(image, y, row);
             for (int x = 0; x < image.getWidth(); x++) {
-                int rgb = image.getRGB(x, y);
+                int rgb = row[x];
                 int p = palette[indices[i++] & 0xFF];
                 total += Math.abs((rgb >> 16 & 0xFF) - (p >> 16 & 0xFF)) + Math.abs((rgb >> 8 & 0xFF) - (p >> 8 & 0xFF))
                         + Math.abs((rgb & 0xFF) - (p & 0xFF));
             }
         }
         return i == 0 ? 0 : total / (3.0 * i);
+    }
+
+    // Same values as getRGB(x, y), without its per-pixel array allocation
+    static void rgbRow(BufferedImage image, int y, int[] row) {
+        image.getRGB(0, y, row.length, 1, row, 0, row.length);
     }
 
     static int bitsFor(int colours) {
@@ -175,10 +221,19 @@ final class Palette {
         int best = 0;
         int bestDistance = Integer.MAX_VALUE;
         for (int i = 0; i < palette.length; i++) {
-            int dr = r - (palette[i] >> 16 & 0xFF);
+            // Terms are never negative, so stop adding once this entry cannot win
             int dg = g - (palette[i] >> 8 & 0xFF);
+            int distance = 4 * dg * dg;
+            if (distance >= bestDistance) {
+                continue;
+            }
             int db = b - (palette[i] & 0xFF);
-            int distance = 2 * dr * dr + 4 * dg * dg + 3 * db * db;
+            distance += 3 * db * db;
+            if (distance >= bestDistance) {
+                continue;
+            }
+            int dr = r - (palette[i] >> 16 & 0xFF);
+            distance += 2 * dr * dr;
             if (distance < bestDistance) {
                 bestDistance = distance;
                 best = i;

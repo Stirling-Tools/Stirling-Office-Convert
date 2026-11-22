@@ -442,9 +442,11 @@ final class Downsample {
         if (image.getType() == BufferedImage.TYPE_BYTE_GRAY) {
             return true;
         }
+        int[] row = new int[image.getWidth()];
         for (int y = 0; y < image.getHeight(); y++) {
+            Palette.rgbRow(image, y, row);
             for (int x = 0; x < image.getWidth(); x++) {
-                int c = image.getRGB(x, y);
+                int c = row[x];
                 int r = c >> 16 & 0xFF;
                 if (r != (c >> 8 & 0xFF) || r != (c & 0xFF)) {
                     return false;
@@ -728,9 +730,11 @@ final class Downsample {
     private static BufferedImage toGray(BufferedImage rgb) {
         BufferedImage gray = new BufferedImage(rgb.getWidth(), rgb.getHeight(), BufferedImage.TYPE_BYTE_GRAY);
         WritableRaster raster = gray.getRaster();
+        int[] row = new int[rgb.getWidth()];
         for (int y = 0; y < rgb.getHeight(); y++) {
+            Palette.rgbRow(rgb, y, row);
             for (int x = 0; x < rgb.getWidth(); x++) {
-                int c = rgb.getRGB(x, y);
+                int c = row[x];
                 raster.setSample(x, y, 0, ((c >> 16 & 0xFF) * 299 + (c >> 8 & 0xFF) * 587 + (c & 0xFF) * 114) / 1000);
             }
         }
@@ -756,12 +760,16 @@ final class Downsample {
         int height = image.getHeight();
         byte[] samples = new byte[width * height * (gray ? 1 : 3)];
         int i = 0;
+        int[] row = new int[width];
         for (int y = 0; y < height; y++) {
+            if (!gray) {
+                Palette.rgbRow(image, y, row);
+            }
             for (int x = 0; x < width; x++) {
                 if (gray) {
                     samples[i++] = (byte) image.getRaster().getSample(x, y, 0);
                 } else {
-                    int rgb = image.getRGB(x, y);
+                    int rgb = row[x];
                     samples[i++] = (byte) (rgb >> 16);
                     samples[i++] = (byte) (rgb >> 8);
                     samples[i++] = (byte) rgb;
