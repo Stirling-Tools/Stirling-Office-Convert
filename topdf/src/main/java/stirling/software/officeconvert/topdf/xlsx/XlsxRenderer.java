@@ -53,7 +53,7 @@ public final class XlsxRenderer {
             total += p instanceof SheetPlan s ? s.pages.size() : 1;
         }
         String file = fileName(source);
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = job.options().now().toLocalDateTime();
         String date = book.formatter().dates().date(now);
         String time = book.formatter().dates().time(now);
         PagePainter painter = new PagePainter(book);

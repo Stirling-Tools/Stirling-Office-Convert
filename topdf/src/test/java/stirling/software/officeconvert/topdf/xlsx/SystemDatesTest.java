@@ -1,20 +1,28 @@
 package stirling.software.officeconvert.topdf.xlsx;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.nio.file.Path;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.Locale;
 
+import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.text.PDFTextStripper;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
+
+import stirling.software.officeconvert.topdf.OfficeToPdf;
 
 class SystemDatesTest {
-
-    @TempDir
-    Path dir;
 
     @Test
     void theShortDateFollowsTheLocaleWithFourYearDigits() {
@@ -71,14 +79,37 @@ class SystemDatesTest {
         String sheet = "<cols><col min=\"1\" max=\"1\" width=\"20\" customWidth=\"1\"/></cols><sheetData><row"
                 + " r=\"1\"><c r=\"A1\" s=\"1\"><v>43276</v></c></row></sheetData>";
         byte[] xlsx = new RawXlsx().styles(styles).sheet("S", sheet).bytes();
-        Locale before = Locale.getDefault(Locale.Category.FORMAT);
-        try {
-            Locale.setDefault(Locale.Category.FORMAT, Locale.UK);
-            assertTrue(XlsxTesting.convert(dir, "uk.xlsx", xlsx).all().contains("25/06/2018"));
-            Locale.setDefault(Locale.Category.FORMAT, Locale.US);
-            assertTrue(XlsxTesting.convert(dir, "us.xlsx", xlsx).all().contains("6/25/2018"));
-        } finally {
-            Locale.setDefault(Locale.Category.FORMAT, before);
+        OfficeToPdf.Options base = OfficeToPdf.Options.defaults().timeout(Duration.ofMinutes(2));
+        assertTrue(text(convert(xlsx, base.locale(Locale.UK))).contains("25/06/2018"));
+        assertTrue(text(convert(xlsx, base.locale(Locale.US))).contains("6/25/2018"));
+    }
+
+    @Test
+    void headerDatesFollowTheGivenClockZoneAndLocaleAndTheBytesRepeat() throws Exception {
+        String sheet = "<sheetData><row r=\"1\"><c r=\"A1\" t=\"inlineStr\"><is><t>x</t></is></c></row></sheetData>"
+                + "<headerFooter><oddHeader>&amp;L&amp;D &amp;T</oddHeader></headerFooter>";
+        byte[] xlsx = new RawXlsx().sheet("S", sheet).bytes();
+        Clock fixed = Clock.fixed(Instant.parse("2026-09-28T23:30:00Z"), ZoneOffset.UTC);
+        OfficeToPdf.Options options = OfficeToPdf.Options.defaults().timeout(Duration.ofMinutes(2))
+                .locale(Locale.UK).zone(ZoneId.of("Asia/Tokyo")).clock(fixed);
+        byte[] first = convert(xlsx, options);
+        assertTrue(text(first).contains("29/09/2026 08:30"), text(first));
+        assertArrayEquals(first, convert(xlsx, options));
+        try (PDDocument doc = Loader.loadPDF(first)) {
+            assertEquals(Instant.parse("2026-09-28T23:30:00Z"),
+                    doc.getDocumentInformation().getCreationDate().toInstant());
         }
     }
+
+    private static byte[] convert(byte[] xlsx, OfficeToPdf.Options options) throws Exception {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        OfficeToPdf.convert(new ByteArrayInputStream(xlsx), OfficeToPdf.Format.XLSX, out, options);
+        return out.toByteArray();
+    }
+
+    private static String text(byte[] pdf) throws Exception {
+        try (PDDocument doc = Loader.loadPDF(pdf)) {
+            return new PDFTextStripper().getText(doc);
+        }
+}
 }
