@@ -51,10 +51,12 @@ class XmlElementsTest {
     }
 
     @Test
-    void theJdkParserReadsEbcdicParts() throws IOException {
+    void theJdkParserReadsEbcdicParts() throws Exception {
         assumeTrue(Charset.isSupported("IBM037"));
+        // A bare JDK parser, since SecureXml.parse may itself refuse EBCDIC
+        javax.xml.parsers.DocumentBuilder jdk = javax.xml.parsers.DocumentBuilderFactory.newInstance().newDocumentBuilder();
         for (byte[] xml : new byte[][] {ebcdic(), asciiDeclaredEbcdic()}) {
-            Document d = SecureXml.parse(new ByteArrayInputStream(xml));
+            Document d = jdk.parse(new ByteArrayInputStream(xml));
             assertEquals(8, d.getElementsByTagName("b").getLength());
         }
     }
