@@ -200,7 +200,7 @@ final class CMapFixer {
             s.setInt(WMODE, cmap.getWMode());
             note = "Made the writing mode of a CMap agree with its program";
         }
-        String text = text(s);
+        String text = withPredefined(text(s));
         COSBase use = s.getDictionaryObject(USE_CMAP);
         boolean chained = use instanceof COSStream
                 || use instanceof COSName u && !(level.part() > 1 && PREDEFINED.contains(u.getName()))
