@@ -518,7 +518,7 @@ one of these names that is really an Office package or RTF converts as what it i
 Memory is shared out across the JVM, by both directions (`stirling.software.officeconvert.memory.Admission` in the
 core module, which the topdf module now depends on). Before a document is laid out, an estimate of the heap it needs
 is taken from its structure alone: for Office files the markup that becomes runs, cells and shapes and the largest
-picture to decode (`OfficeToPdf.memoryEstimate(path)`); for a loaded PDF the pages to read, the content of its busiest
+picture to decode (`OfficeToPdf.memoryEstimate(path)`); for a loaded PDF the pages to read, the content of its densest
 page, the largest picture and the largest figure to render (`OfficeConvert.memoryEstimate(pdf, format, settings)`). Conversions start only while
 their estimates fit in 60 % of the heap (`-Dstirling.officeconvert.memoryBudgetPercent`), at most
 `-Dstirling.officeconvert.maxConcurrent` run at once (by default two per processor, but no more than one per 192 MB

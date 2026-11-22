@@ -280,17 +280,22 @@ class PdfFootprintCoverageTest {
         return b.append("ET").toString();
     }
 
+    private static long charged(long bytes) {
+        return Math.max(0, bytes - PdfFootprint.PAGE_CONTENT_ALLOWANCE);
+    }
+
     @Test
-    void theBusiestPageIsChargedForItsContentPastTheAllowance() throws IOException {
+    void aDensePageIsChargedForItsContentPastTheAllowance() throws IOException {
         int bytes = 256 << 10;
         try (PDDocument doc = new PDDocument()) {
             page(doc).getCOSObject().setItem(COSName.CONTENTS, stream(doc, text(bytes)));
-            long charged = (text(bytes).length() - PdfFootprint.PAGE_CONTENT_ALLOWANCE) * PdfFootprint.CONTENT_BYTE_COST;
-            assertEquals(charged, extra(doc));
+            long excess = charged(text(bytes).length());
+            assertEquals(excess * (PdfFootprint.CONTENT_BYTE_COST + PdfFootprint.KEPT_BYTE_COST), extra(doc));
         }
         try (PDDocument doc = new PDDocument()) {
             page(doc).getCOSObject().setItem(COSName.CONTENTS, stream(doc, text(4 << 20)));
-            assertEquals(PdfFootprint.MAX_CONTENT_CHARGE, extra(doc), "a page is read only so far");
+            long kept = charged(text(4 << 20).length()) * PdfFootprint.KEPT_BYTE_COST;
+            assertEquals(PdfFootprint.MAX_CONTENT_CHARGE + kept, extra(doc), "one page is laid out only so far");
         }
         try (PDDocument doc = new PDDocument()) {
             page(doc).getCOSObject().setItem(COSName.CONTENTS, stream(doc, text(4 << 10)));
@@ -299,17 +304,15 @@ class PdfFootprintCoverageTest {
     }
 
     @Test
-    void contentSpreadOverPagesIsChargedForTheBusiestPageOnly() throws IOException {
-        long one;
-        try (PDDocument doc = new PDDocument()) {
-            page(doc).getCOSObject().setItem(COSName.CONTENTS, stream(doc, text(256 << 10)));
-            one = extra(doc);
-        }
+    void everyDensePageIsChargedForWhatIsKeptAndTheBusiestForItsLayout() throws IOException {
         try (PDDocument doc = new PDDocument()) {
             page(doc).getCOSObject().setItem(COSName.CONTENTS, stream(doc, text(256 << 10)));
             page(doc).getCOSObject().setItem(COSName.CONTENTS, stream(doc, text(64 << 10)));
+            long big = charged(text(256 << 10).length());
+            long small = charged(text(64 << 10).length());
+            long content = big * PdfFootprint.CONTENT_BYTE_COST + (big + small) * PdfFootprint.KEPT_BYTE_COST;
             long pages = PdfFootprint.estimate(doc, 0, 0, 150f);
-            assertEquals(one, pages - baseline() - PdfFootprint.SAMPLED_PAGE_BYTES - PdfFootprint.PAGE_BYTES);
+            assertEquals(content, pages - baseline() - PdfFootprint.SAMPLED_PAGE_BYTES - PdfFootprint.PAGE_BYTES);
         }
     }
 }

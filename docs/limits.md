@@ -37,8 +37,9 @@ Set them before the first conversion with system properties, or at any time with
 conversions already running finish under the old limits.
 
 The gate queues by default: with no `maxWaitSeconds` a conversion waits until room is free, bounded only by its own
-timeout. A conversion with timeout 0 can therefore wait forever behind stuck workers; set `maxWaitSeconds` on a
-shared server.
+timeout. A conversion with timeout 0, or one started through an entry point that takes a loaded `PDDocument` and no
+timeout (such as `PdfToDocx.convert(PDDocument, OutputStream, Options)`), can therefore wait forever behind stuck
+workers; set `maxWaitSeconds` on a shared server.
 
 With `readmitStopped`, a path-to-path PDF to Office or line-art conversion that was stopped for memory while others
 ran is tried again once one of them ends, at most three attempts per call. A call through `OfficeConvert` retries
@@ -121,9 +122,10 @@ AZW3 cover that fails is left out and the book still converts.
 
 The memory estimate for a PDF scans at most 2,000 pages, 20,000 objects and 64 MB of content, and forms nested 8
 deep; anything it cannot see or read is charged as a large picture. Besides a fixed cost per page and the largest
-picture, the page with the most content (its streams, forms, patterns and appearances) is charged 176 bytes for each
-byte past its first 16 KB, at most 64 MB, for the glyphs, lines and words the layout builds from it. That figure was
-measured on dense text; vector-heavy pages cost less, so for them the estimate errs high.
+picture, content past the first 16 KB of a page (its streams, forms, patterns and appearances) is charged for the
+glyphs, lines and words built from it: 96 bytes per byte on each of the first 60 pages, held for document statistics, and another 176 per byte
+(at most 64 MB) on the page with the most, while it is laid out. These figures were measured on dense text; vector
+pages cost less, so for them the estimate errs high. A form drawn many times is counted once.
 
 ## Office input (Office to PDF)
 
@@ -156,7 +158,7 @@ The library changes this JVM-wide state, which also affects other code in the sa
 
 - Apache POI's shared XML options (`POIXMLTypeLoader.DEFAULT_XML_OPTIONS`), on the first Office to PDF conversion:
   DOCTYPE declarations are refused and the library's own element-counting `XMLReader` is installed, so every other
-  POI user in the JVM parses through it from then on.
+  POI user in the JVM parses through it from then on. A reader the host set first is never replaced.
 - Apache POI's zip file count (`ZipSecureFile.setMaxFileCount`), raised above its default only when a package needs
   more entries and never lowered again until the JVM restarts.
 - The ImageIO registry: the library's JPEG 2000 reader is registered and ordered ahead of any other on every

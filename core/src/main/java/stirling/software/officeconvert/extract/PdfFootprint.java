@@ -40,11 +40,14 @@ public final class PdfFootprint {
     // The fixed page costs cover a page with this much content; past it, glyphs, lines and words grow with the bytes
     static final long PAGE_CONTENT_ALLOWANCE = 16L << 10;
 
-    // Measured on dense text pages laid out to DOCX, XLSX and PPTX (about 173 heap bytes per content byte)
+    // Measured on dense text pages laid out to DOCX, XLSX and PPTX: about 173 heap bytes per byte while a page is laid out
     static final long CONTENT_BYTE_COST = 176;
 
     // A page stops being read at 200,000 characters, which this covers; vector content costs less per byte
     static final long MAX_CONTENT_CHARGE = 64L << 20;
+
+    // What stays held of each dense sampled page for document statistics: measured 26 to 104 bytes per byte
+    static final long KEPT_BYTE_COST = 96;
 
     // The page costs were measured with figures drawn at this resolution; only a finer one costs more
     static final float MEASURED_DPI = 150f;
@@ -114,11 +117,14 @@ public final class PdfFootprint {
             } catch (IOException | RuntimeException e) {
                 scan.unknown();
             }
-            scan.busiest = Math.max(scan.busiest, contentBefore - scan.contentLeft);
+            long excess = Math.max(0, contentBefore - scan.contentLeft - PAGE_CONTENT_ALLOWANCE);
+            scan.busiest = Math.max(scan.busiest, excess);
+            if (i - first <= SAMPLED_PAGES) {
+                scan.dense += excess;
+            }
         }
         long render = renderBytes(scan.area, dpi) - renderBytes(scan.area, MEASURED_DPI);
-        long content = Math.min(MAX_CONTENT_CHARGE,
-                Math.max(0, scan.busiest - PAGE_CONTENT_ALLOWANCE) * CONTENT_BYTE_COST);
+        long content = Math.min(MAX_CONTENT_CHARGE, scan.busiest * CONTENT_BYTE_COST) + scan.dense * KEPT_BYTE_COST;
         long sum = model + scan.picture + Math.max(0, render) + content;
         return sum < 0 ? Long.MAX_VALUE : sum;
     }
@@ -318,6 +324,8 @@ public final class PdfFootprint {
         long contentLeft = MAX_SCANNED_CONTENT;
 
         long busiest;
+
+        long dense;
 
         long picture;
 

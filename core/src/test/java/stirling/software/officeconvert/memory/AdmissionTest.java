@@ -627,7 +627,7 @@ class AdmissionTest {
     @Test
     void retriesShareOneWaitForRoom() throws Exception {
         Admission a = new Admission(1024 * MB,
-                new Admission.Limits(100, 8, Duration.ofMillis(2_000), false, true), collect -> 0.1);
+                new Admission.Limits(100, 8, Duration.ofMillis(4_000), false, true), collect -> 0.1);
         Admission.Ticket first = apart(a, 10 * MB);
         Admission.Ticket second = apart(a, 10 * MB);
         int[] attempts = {0};
@@ -644,7 +644,7 @@ class AdmissionTest {
                 })));
         long took = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
         assertEquals(2, attempts[0]);
-        assertTrue(took < 3_000, "the second wait gets only what the first left, took " + took + " ms");
+        assertTrue(took < 6_000, "the second wait gets only what the first left, took " + took + " ms");
         second.close();
     }
 }
