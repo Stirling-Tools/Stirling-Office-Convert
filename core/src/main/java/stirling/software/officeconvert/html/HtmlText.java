@@ -30,7 +30,9 @@ final class HtmlText {
                 case '<' -> sb.append("&lt;");
                 case '>' -> sb.append("&gt;");
                 case '"' -> sb.append("&quot;");
-                case '\u00ad', '\0', '\r', '\ufffe', '\uffff' -> { }
+                // bidi embeddings, overrides and isolates could reorder what the reader sees
+                case '\u00ad', '\0', '\r', '\ufffe', '\uffff', '\u202a', '\u202b', '\u202c', '\u202d', '\u202e',
+                        '\u2066', '\u2067', '\u2068', '\u2069' -> { }
                 default -> {
                     if (c >= 0x20 || c == '\t' || c == '\n') {
                         sb.append(c);

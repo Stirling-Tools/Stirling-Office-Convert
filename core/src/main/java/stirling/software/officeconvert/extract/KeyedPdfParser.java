@@ -80,7 +80,7 @@ final class KeyedPdfParser extends PDFParser {
 
     static boolean contentInTheClear(COSDictionary encryption) {
         if (encryption == null || !COSName.getPDFName("Standard").equals(encryption.getCOSName(COSName.FILTER))
-                || encryption.getInt(COSName.V, 0) < 4) {
+                || encryption.getInt(COSName.V, 0) < 4 || !attachmentsOnly(encryption)) {
             return false;
         }
         for (COSName key : new COSName[] {COSName.STM_F, COSName.STR_F}) {
@@ -90,6 +90,14 @@ final class KeyedPdfParser extends PDFParser {
             }
         }
         return true;
+    }
+
+    // Only a password asked for when an attachment opens (EFOpen) may be skipped; a DocOpen one guards the document
+    private static boolean attachmentsOnly(COSDictionary encryption) {
+        COSName eff = encryption.getCOSName(COSName.getPDFName("EFF"));
+        COSDictionary filters = encryption.getCOSDictionary(COSName.CF);
+        COSDictionary filter = eff == null || filters == null ? null : filters.getCOSDictionary(eff);
+        return filter != null && COSName.getPDFName("EFOpen").equals(filter.getCOSName(COSName.getPDFName("AuthEvent")));
     }
 
     @Override

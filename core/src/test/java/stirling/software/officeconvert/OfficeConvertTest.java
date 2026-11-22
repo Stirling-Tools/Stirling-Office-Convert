@@ -211,4 +211,38 @@ class OfficeConvertTest {
         assertThrows(IllegalArgumentException.class, () -> OfficeConvert.Format.of(Path.of("out.pdfx")));
         assertFalse(OfficeConvert.Settings.defaults().password("hunter2").toString().contains("hunter2"));
     }
+
+    @Test
+    void aRuntimeExceptionInAConversionArrivesAsAnIOException() {
+        IOException e = assertThrows(IOException.class, () -> OfficeConvert.run(Duration.ofMinutes(1), () -> {
+            throw new IllegalStateException("broken table");
+        }));
+        assertTrue(e.getMessage().contains("broken table"), e.getMessage());
+        assertTrue(e.getCause() instanceof IllegalStateException);
+    }
+
+    @Test
+    void onlyTheCallingThreadWritesTheCallersStream() throws IOException {
+        Path pdf = sample();
+        Thread caller = Thread.currentThread();
+        AtomicBoolean foreign = new AtomicBoolean();
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        OutputStream out = new OutputStream() {
+            @Override
+            public void write(int b) {
+                write(new byte[] {(byte) b}, 0, 1);
+            }
+
+            @Override
+            public void write(byte[] b, int off, int len) {
+                foreign.compareAndSet(false, Thread.currentThread() != caller);
+                bytes.write(b, off, len);
+            }
+        };
+        try (PDDocument doc = Loader.loadPDF(pdf.toFile())) {
+            OfficeConvert.convert(doc, out, OfficeConvert.Format.DOCX, OfficeConvert.Settings.defaults());
+        }
+        assertFalse(foreign.get(), "the worker wrote the caller's stream");
+        assertEquals('P', bytes.toByteArray()[0]);
+    }
 }
