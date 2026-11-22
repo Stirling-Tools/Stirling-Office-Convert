@@ -932,16 +932,16 @@ further; the JDK default is 240 MB.
 
 ### Unreleased
 
-- Word 97-2003 `.doc` output is removed: `OfficeConvert.Format.of("x.doc")` throws `IllegalArgumentException`,
-  `OfficeConvert.convert` to a `.doc` name throws `UnsupportedFormatException`, and the CLI's `--format doc` exits
-  with status 2. Write `.docx` or `.rtf` instead.
-- Input of a kind the library does not read, by extension or content, throws `UnsupportedFormatException`, an
-  `IOException` subclass; a damaged or empty file of a kind it reads still throws a plain `IOException`.
 - Line-art conversion leaves a signed PDF unchanged with a warning, as the optimizer does, instead of invalidating its
   signatures. `LineArt.Options` gains `timeout` (default 5 minutes, `LineArt.TimedOut`) and `maxImages` (default
   10,000; later images are left as they were), and `DEFAULT_MAX_PIXELS` drops from 1 G to 300 M pixels per image.
 - PDF-to-Office packages date their zip entries 1980-02-01, and document-property dates honour
   `SOURCE_DATE_EPOCH` (see Library use).
+- Word 97-2003 `.doc` output is removed: `OfficeConvert.Format.of("x.doc")` throws `IllegalArgumentException`,
+  `OfficeConvert.convert` to a `.doc` name throws `UnsupportedFormatException`, and the CLI's `--format doc` exits
+  with status 2. Write `.docx` or `.rtf` instead.
+- Input of a kind the library does not read, by extension or content, throws `UnsupportedFormatException`, an
+  `IOException` subclass; a damaged or empty file of a kind it reads still throws a plain `IOException`.
 
 ### 0.2.0
 
