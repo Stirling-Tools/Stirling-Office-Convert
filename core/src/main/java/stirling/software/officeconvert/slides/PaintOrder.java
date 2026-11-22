@@ -968,6 +968,9 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
         mark(Kind.IMAGE, ctm.createTransformedShape(new Rectangle2D.Double(0, 0, 1, 1)).getBounds2D(), alpha, opaque);
     }
 
+    // Reused for every glyph's slant test rather than copied from the display transform each time
+    private final AffineTransform glyphToDisplay = new AffineTransform();
+
     @Override
     protected void showGlyph(Matrix textRenderingMatrix, PDFont font, int code, Vector displacement) throws IOException {
         if (hiddenContent != null && hiddenContent.active()) {
@@ -1012,7 +1015,8 @@ final class PaintOrder extends PDFGraphicsStreamEngine {
     }
 
     private void slant(AffineTransform trm, double advance) {
-        AffineTransform t = new AffineTransform(toDisplay);
+        AffineTransform t = glyphToDisplay;
+        t.setTransform(toDisplay);
         t.concatenate(trm);
         double angle = Math.toDegrees(Math.atan2(t.getShearY(), t.getScaleX()));
         if (Math.abs(angle - 90 * Math.round(angle / 90)) < MIN_SLANT || slants.size() >= MAX_MARKS) {

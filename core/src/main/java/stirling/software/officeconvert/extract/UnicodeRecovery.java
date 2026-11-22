@@ -58,8 +58,12 @@ final class UnicodeRecovery {
             return unicode;
         }
         if (tp.getFont() instanceof PDType0Font t0) {
-            String collected = collections.computeIfAbsent(t0.getCOSObject(), k -> Optional.ofNullable(CollectionText.of(t0)))
-                    .map(c -> c.text(tp.getCharacterCodes()[0], unicode)).orElse(null);
+            Optional<CollectionText> known = collections.get(t0.getCOSObject());
+            if (known == null) {
+                known = Optional.ofNullable(CollectionText.of(t0));
+                collections.put(t0.getCOSObject(), known);
+            }
+            String collected = known.isPresent() ? known.get().text(tp.getCharacterCodes()[0], unicode) : null;
             if (collected != null) {
                 return collected;
             }

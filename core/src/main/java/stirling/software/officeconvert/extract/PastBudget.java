@@ -12,17 +12,22 @@ final class PastBudget {
 
     private final float cellW;
     private final float cellH;
-    private final float[] bounds = new float[CELLS * CELLS * 4];
-    private final float[] points = new float[CELLS * CELLS];
+    // Allocated on the first path, so pages of plain text skip the grid
+    private float[] bounds;
+    private float[] points;
     private boolean any;
 
     PastBudget(float pageWidth, float pageHeight) {
         cellW = Math.max(pageWidth, 1f) / CELLS;
         cellH = Math.max(pageHeight, 1f) / CELLS;
-        Arrays.fill(bounds, Float.NaN);
     }
 
     void add(float x, float top, float right, float bottom, int pathPoints) {
+        if (bounds == null) {
+            bounds = new float[CELLS * CELLS * 4];
+            points = new float[CELLS * CELLS];
+            Arrays.fill(bounds, Float.NaN);
+        }
         int c0 = cell(x, cellW);
         int c1 = cell(right, cellW);
         int r0 = cell(top, cellH);
