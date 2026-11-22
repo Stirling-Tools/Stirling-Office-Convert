@@ -426,6 +426,19 @@ public final class Admission {
         return t;
     }
 
+    /** The open ticket the calling thread converts under, or null, for a worker thread it starts to {@link #carry}. */
+    public static Ticket current() {
+        return open(CURRENT.get());
+    }
+
+    /** Runs this worker thread under the ticket of the thread that started it, so a conversion started here is nested
+     * and never queues for a second slot. */
+    public static void carry(Ticket held) {
+        if (open(held) != null) {
+            CURRENT.set(held);
+        }
+    }
+
     /** Waits until the estimated heap is free and holds it until the ticket is closed; a document over the budget runs
      * alone, or is refused with {@link TooLarge} when the limits say so. A thread already holding a ticket never waits
      * and is never refused: its nested ticket is charged to the outer one. Interruptible; throws {@link Busy} after waiting the longest

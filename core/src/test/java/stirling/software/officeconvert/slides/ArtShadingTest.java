@@ -3,6 +3,7 @@ package stirling.software.officeconvert.slides;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import java.awt.geom.AffineTransform;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -53,7 +54,7 @@ class ArtShadingTest {
         }
     }
 
-    private static float dpi(PDDocument doc, int index) {
+    private static float dpi(PDDocument doc, int index) throws IOException {
         AffineTransform toDisplay = new AffineTransform(1, 0, 0, -1, 0, 405);
         PaintOrder paint = PaintOrder.read(doc.getPage(index), toDisplay, 720, 405, HiddenContent.of(null));
         Store store = new Store();

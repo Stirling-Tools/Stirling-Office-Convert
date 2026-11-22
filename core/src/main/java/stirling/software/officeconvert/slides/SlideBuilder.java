@@ -221,7 +221,8 @@ final class SlideBuilder {
         }
     }
 
-    private void table(PageLayout.TableItem ti, PageLayout layout, AffineTransform toDisplay, Stack stack) {
+    private void table(PageLayout.TableItem ti, PageLayout layout, AffineTransform toDisplay, Stack stack)
+            throws IOException {
         TableShape t = new TableShape(ti.x(), ti.top(), content.table(ti, layout));
         Box area = box(frameOf(t));
         int order = stack.paint.lastInside(area, Kind.FILL, Kind.STROKE, Kind.TEXT);
@@ -309,7 +310,7 @@ final class SlideBuilder {
     }
 
     private boolean drawn(PageLayout.FigureItem fi, Box on, boolean textFree, PageLayout layout, AffineTransform toDisplay,
-            Stack stack) {
+            Stack stack) throws IOException {
         Set<Integer> inside = new HashSet<>();
         stack.paint.inside(on, inside);
         boolean shapes = false;

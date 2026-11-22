@@ -3,6 +3,7 @@ package stirling.software.officeconvert;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.ByteArrayOutputStream;
@@ -261,5 +262,23 @@ class OfficeConvertTest {
                     OfficeConvert.Format.DOCX, OfficeConvert.Settings.defaults()));
         }
         assertFalse(Thread.interrupted());
+    }
+
+    @Test
+    void aConversionStartedInsideAnotherIsNestedAndNeverWaitsForASecondSlot() throws IOException {
+        Path pdf = sample();
+        Admission.Limits saved = Admission.jvm().limits();
+        Admission.configure(new Admission.Limits(60, 1, Duration.ZERO, false));
+        try {
+            assertTimeoutPreemptively(Duration.ofMinutes(1), () -> OfficeConvert.run(Duration.ofMinutes(1), () -> {
+                try (Admission.Ticket _ = Admission.jvm().enter(Admission.BASE_BYTES)) {
+                    OfficeConvert.convert(pdf, dir.resolve("nested.docx"));
+                }
+                return null;
+            }));
+            assertTrue(Files.size(dir.resolve("nested.docx")) > 0);
+        } finally {
+            Admission.configure(saved);
+        }
     }
 }

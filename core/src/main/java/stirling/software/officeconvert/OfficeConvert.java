@@ -411,7 +411,12 @@ public final class OfficeConvert {
         } catch (ArithmeticException e) {
             nanos = Long.MAX_VALUE;
         }
-        FutureTask<T> task = new FutureTask<>(() -> guarded(work));
+        // A worker of a thread that already converts carries its ticket, so nested work never waits for a slot
+        Admission.Ticket held = Admission.current();
+        FutureTask<T> task = new FutureTask<>(() -> {
+            Admission.carry(held);
+            return guarded(work);
+        });
         Thread worker = Thread.ofPlatform().name("office-convert").daemon().stackSize(STACK_BYTES).start(task);
         try {
             return nanos == 0 ? task.get() : task.get(nanos, TimeUnit.NANOSECONDS);
