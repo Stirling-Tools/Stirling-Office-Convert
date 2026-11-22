@@ -3,6 +3,7 @@ package stirling.software.officeconvert.extract;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -157,6 +158,18 @@ class PageTokensTest {
             write(edited, "1 0 0 rg 10 10 50 50 re f");
             page.setContents(edited);
             assertNotSame(first, tokens.of(page));
+        }
+    }
+
+    @Test
+    void aPageTooLargeToKeepIsDrawnByTheStockEngine() throws IOException {
+        try (PDDocument doc = new PDDocument()) {
+            PDPage page = page(doc, "1 0 0 rg " + "10 10 m 20 20 l ".repeat(PageTokens.MAX_TOKENS / 6 + 1) + "S");
+            PageTokens tokens = new PageTokens();
+            assertNull(tokens.of(page));
+            assertNull(tokens.of(page));
+            int[] stock = pixels(new Drawing(doc, null).renderImage(0, 0.5f, ImageType.ARGB));
+            assertArrayEquals(stock, pixels(new Drawing(doc, tokens).renderImage(0, 0.5f, ImageType.ARGB)));
         }
     }
 
