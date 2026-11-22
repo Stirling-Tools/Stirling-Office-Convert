@@ -102,6 +102,23 @@ class SilentLossTest {
     }
 
     @Test
+    void levelARefusesFormsNestedTooDeeplyToCheck() {
+        RawPdf r = RawPdf.page(RawPdf.helvetica() + "/XObject<</X 6 0 R>>", "/X Do");
+        r.set(1, "<</Type/Catalog/Pages 2 0 R/StructTreeRoot 5 0 R/MarkInfo<</Marked true>>/Lang(en)>>");
+        r.add("<</Type/StructTreeRoot/K[]>>");
+        int forms = 14;
+        for (int i = 0; i < forms; i++) {
+            boolean last = i == forms - 1;
+            String res = last ? RawPdf.helvetica() : "/XObject<</X " + (7 + i) + " 0 R>>";
+            r.add(RawPdf.stream("/Type/XObject/Subtype/Form/BBox[0 0 300 300]/Resources<<" + res + ">>",
+                    last ? "BT /F1 12 Tf 10 10 Td (Deep text) Tj ET" : "/X Do"));
+        }
+        IOException e = assertThrows(IOException.class, () -> PdfToPdfA.convert(Hostile.write(dir, "deep", r),
+                dir.resolve("deep-out.pdf"), PdfToPdfA.Options.defaults().level(PdfALevel.A2A)));
+        assertTrue(e.getMessage().contains("nested more than 12 deep"), e.getMessage());
+    }
+
+    @Test
     void removingEncryptionIsReported() throws Exception {
         Path in = dir.resolve("locked.pdf");
         try (PDDocument d = new PDDocument()) {

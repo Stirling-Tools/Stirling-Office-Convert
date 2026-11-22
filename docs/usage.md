@@ -829,7 +829,7 @@ every image on a page must sit in marked content that the structure tree refers 
 needs alternative text; and the document needs a language. Untagged drawings, and marked drawings no element refers
 to, become artifacts; a missing document language is taken from the structure; a parent tree that does not match the
 structure is rebuilt from it. Anything else (untagged text or images, figures without alternative text, no language
-anywhere) fails with an `IOException` naming the problem and the pages, rather than claiming level a. Limits and failure contract follow the other converters: a 1 GB input limit, `maxPages`
+anywhere, forms nested more than 12 deep or unreadable, so their tagging cannot be checked) fails with an `IOException` naming the problem and the pages, rather than claiming level a. Limits and failure contract follow the other converters: a 1 GB input limit, `maxPages`
 (10,000 by default) refuses longer documents rather than cutting them, the timeout and thread interrupts stop the work,
 and the output is moved into place only when complete.
 
