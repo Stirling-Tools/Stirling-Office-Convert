@@ -128,7 +128,7 @@ final class Palette {
     }
 
     // Open-addressed colour to index memo; a boxed HashMap cost about 100 bytes per distinct colour
-    private static final class Nearest {
+    static final class Nearest {
 
         private final int[] palette;
 
@@ -161,6 +161,10 @@ final class Palette {
                     return index;
                 }
             }
+        }
+
+        int capacity() {
+            return keys.length;
         }
 
         private void grow() {

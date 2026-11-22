@@ -2,6 +2,7 @@ package stirling.software.officeconvert.optimize;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.awt.image.BufferedImage;
 import java.awt.image.IndexColorModel;
@@ -53,6 +54,23 @@ class PaletteTest {
             }
             assertArrayEquals(expected, Palette.indices(image, palette));
         }
+    }
+
+    @Test
+    void theMemoGrowsWithDistinctColoursNotWithPixels() {
+        int[] palette = Palette.medianCut(noise(BufferedImage.TYPE_INT_RGB, 64, 64, 256, 9), 256);
+        Palette.Nearest few = new Palette.Nearest(palette);
+        for (int i = 0; i < 4_000_000; i++) {
+            few.of(i % 16 * 0x0F0F0F);
+        }
+        assertEquals(1 << 10, few.capacity());
+        Palette.Nearest many = new Palette.Nearest(palette);
+        Random r = new Random(11);
+        for (int i = 0; i < 100_000; i++) {
+            int rgb = r.nextInt(1 << 24);
+            assertEquals((byte) nearest(palette, rgb), many.of(rgb));
+        }
+        assertTrue(many.capacity() >= 2 * 99_000 && many.capacity() <= 1 << 19, "capacity " + many.capacity());
     }
 
     @Test
