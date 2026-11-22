@@ -70,31 +70,47 @@ final class BuiltinTableStyles {
         }
     }
 
+    interface Source {
+        InputStream open() throws IOException;
+    }
+
     private static Map<String, Entry> entries() {
+        return entries(() -> BuiltinTableStyles.class.getResourceAsStream(RESOURCE));
+    }
+
+    static synchronized Map<String, Entry> entries(Source source) {
         if (entries != null) {
             return entries;
         }
-        Map<String, Entry> m = new HashMap<>();
-        try (InputStream in = BuiltinTableStyles.class.getResourceAsStream(RESOURCE)) {
-            if (in != null) {
-                Document d = SecureXml.parse(in);
-                NodeList families = d.getDocumentElement().getElementsByTagName("family");
-                for (int i = 0; i < families.getLength(); i++) {
-                    Element f = (Element) families.item(i);
-                    Element template = (Element) f.getElementsByTagName("template").item(0);
-                    NodeList ids = f.getElementsByTagName("id");
-                    for (int j = 0; template != null && j < ids.getLength(); j++) {
-                        Element id = (Element) ids.item(j);
-                        String accent = id.getAttribute("accent").strip();
-                        m.put(id.getAttribute("guid").toUpperCase(Locale.ROOT),
-                                new Entry(template, accent.isEmpty() ? new String[] {"dk1"} : accent.split(" ")));
-                    }
-                }
-            }
+        try (InputStream in = source.open()) {
+            Map<String, Entry> m = in == null ? Map.of() : read(in);
+            entries = m;
+            return m;
         } catch (IOException | RuntimeException e) {
-            m.clear();
+            // Most likely a timeout or memory stop during the first read, so the next table tries again
+            return Map.of();
         }
-        entries = m;
+    }
+
+    private static Map<String, Entry> read(InputStream in) throws IOException {
+        Map<String, Entry> m = new HashMap<>();
+        Document d = SecureXml.parse(in);
+        NodeList families = d.getDocumentElement().getElementsByTagName("family");
+        for (int i = 0; i < families.getLength(); i++) {
+            Element f = (Element) families.item(i);
+            Element template = (Element) f.getElementsByTagName("template").item(0);
+            NodeList ids = f.getElementsByTagName("id");
+            for (int j = 0; template != null && j < ids.getLength(); j++) {
+                Element id = (Element) ids.item(j);
+                String accent = id.getAttribute("accent").strip();
+                m.put(id.getAttribute("guid").toUpperCase(Locale.ROOT),
+                        new Entry(template, accent.isEmpty() ? new String[] {"dk1"} : accent.split(" ")));
+            }
+        }
         return m;
+    }
+
+    static synchronized void forget() {
+        entries = null;
     }
 }

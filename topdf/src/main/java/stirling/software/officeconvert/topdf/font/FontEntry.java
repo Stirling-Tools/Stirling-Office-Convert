@@ -49,6 +49,8 @@ final class FontEntry {
 
     private IOException broken;
 
+    private long retryAt;
+
     FontEntry(Path file, byte[] data, int index, long offset, String postScriptName, String family, String subfamily,
             String fullName, List<String> legacyFamilies, List<String> typographicFamilies, int weight, boolean bold,
             boolean italic, boolean symbolCmap, boolean noSubsetting, boolean postScript, String unusable) {
@@ -141,7 +143,14 @@ final class FontEntry {
 
     boolean usable() {
         synchronized (this) {
-            return unusable == null && broken == null;
+            return unusable == null && (broken == null || Failures.due(retryAt));
+        }
+    }
+
+    // A failure kept until the JVM stops; others are retried after a while
+    boolean failedForGood() {
+        synchronized (this) {
+            return broken != null && retryAt == Failures.NEVER;
         }
     }
 
@@ -167,7 +176,7 @@ final class FontEntry {
     }
 
     synchronized FontProgram program() throws IOException {
-        if (broken != null) {
+        if (broken != null && !Failures.due(retryAt)) {
             throw broken;
         }
         FontProgram p = program == null ? null : program.get();
@@ -179,9 +188,15 @@ final class FontEntry {
                 }
                 p = FontProgram.load(this);
             } catch (IOException | RuntimeException e) {
+                if (Failures.interrupted(e)) {
+                    throw e;
+                }
                 broken = new IOException("The font " + describe() + " could not be read: " + e.getMessage(), e);
+                // Bytes in memory fail the same way every time; a file may be locked or briefly unreadable
+                retryAt = file == null || e instanceof RuntimeException ? Failures.NEVER : Failures.retryAt();
                 throw broken;
             }
+            broken = null;
             program = new SoftReference<>(p);
         }
         return p;

@@ -36,7 +36,18 @@ public final class ColorEmoji {
     private static final int CACHED = 512;
     private static final int[] NONE = {};
     private static final FontRenderContext FRC = new FontRenderContext(null, false, true);
-    private static final Map<Path, Optional<ColorEmoji>> OPENED = new ConcurrentHashMap<>();
+    private static final Map<Path, Known> OPENED = new ConcurrentHashMap<>();
+
+    // A file that is not a colour emoji font is known for good; one that could not be read is tried again later
+    private record Known(ColorEmoji font, long retryAt) {}
+
+    private static final class Malformed extends IOException {
+        private static final long serialVersionUID = 1L;
+
+        Malformed(String message) {
+            super(message);
+        }
+    }
 
     private record Location(long offset, int length, int format, byte[] metrics) {}
 
@@ -64,8 +75,27 @@ public final class ColorEmoji {
     }
 
     static ColorEmoji open(Path file) {
-        return OPENED.computeIfAbsent(file.toAbsolutePath().normalize(), f -> Optional.ofNullable(read(f)))
-                .orElse(null);
+        Path key = file.toAbsolutePath().normalize();
+        Known known = OPENED.get(key);
+        if (known == null || Failures.due(known.retryAt())) {
+            known = OPENED.compute(key, (f, old) -> old != null && !Failures.due(old.retryAt()) ? old : known(f));
+        }
+        return known == null ? null : known.font();
+    }
+
+    // When the file is next looked at, or null when nothing is known about it
+    static Long retryAt(Path file) {
+        Known k = OPENED.get(file.toAbsolutePath().normalize());
+        return k == null ? null : k.retryAt();
+    }
+
+    private static Known known(Path file) {
+        try {
+            return new Known(read(file), Failures.NEVER);
+        } catch (IOException e) {
+            // A read cut short by a timeout says nothing about the file, so nothing is kept
+            return Failures.interrupted(e) ? null : new Known(null, Failures.retryAt());
+        }
     }
 
     public float ascent() {
@@ -269,8 +299,10 @@ public final class ColorEmoji {
             Bitmap read;
             try {
                 read = load(glyph);
-            } catch (IOException | RuntimeException e) {
+            } catch (Malformed | RuntimeException e) {
                 read = null;
+            } catch (IOException e) {
+                return null;
             }
             known = Optional.ofNullable(read);
             bitmaps.putIfAbsent(glyph, known);
@@ -312,7 +344,7 @@ public final class ColorEmoji {
         }
     }
 
-    private static ColorEmoji read(Path file) {
+    private static ColorEmoji read(Path file) throws IOException {
         try (FileChannel ch = FileChannel.open(file, StandardOpenOption.READ)) {
             long size = ch.size();
             if (size < 12) {
@@ -372,7 +404,7 @@ public final class ColorEmoji {
             }
             return new ColorEmoji(file, awt, unitsPerEm, hhea.getShort(4) / (float) unitsPerEm,
                     -hhea.getShort(6) / (float) unitsPerEm, advances, ppem, locations);
-        } catch (IOException | FontFormatException | RuntimeException | LinkageError | AWTError e) {
+        } catch (Malformed | FontFormatException | RuntimeException | LinkageError | AWTError e) {
             return null;
         }
     }
@@ -504,7 +536,7 @@ public final class ColorEmoji {
 
     private static ByteBuffer table(FileChannel ch, long[] t) throws IOException {
         if (t[1] > MAX_TABLE_BYTES) {
-            throw new IOException("table too large");
+            throw new Malformed("table too large");
         }
         return read(ch, t[0], (int) t[1]);
     }
@@ -513,7 +545,7 @@ public final class ColorEmoji {
         ByteBuffer b = ByteBuffer.allocate(length);
         while (b.hasRemaining()) {
             if (ch.read(b, at + b.position()) < 0) {
-                throw new IOException("short read");
+                throw new Malformed("short read");
             }
         }
         return b.flip();

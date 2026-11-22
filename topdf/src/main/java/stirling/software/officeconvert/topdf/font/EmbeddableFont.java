@@ -5,6 +5,7 @@ import java.awt.geom.GeneralPath;
 import java.io.Closeable;
 import java.io.IOException;
 import java.lang.ref.SoftReference;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
 
@@ -24,20 +25,42 @@ public final class EmbeddableFont implements Closeable {
 
     private final String description;
 
-    private static final Lru<FontEntry, SoftReference<CFFFont>> PARSED = new Lru<>(4);
+    // Shared across conversions, so keyed by the host font file alone: a document's own font never goes in
+    private record Key(Path file, long offset, int index) {}
 
-    private static final Lru<FontEntry, SoftReference<LazyCidCff>> LAZY = new Lru<>(8);
+    private static final Lru<Key, SoftReference<CFFFont>> PARSED = new Lru<>(4);
 
-    private static final Lru<FontEntry, Boolean> NOT_LAZY = new Lru<>(64);
+    private static final Lru<Key, SoftReference<LazyCidCff>> LAZY = new Lru<>(8);
+
+    private static final Lru<Key, Boolean> NOT_LAZY = new Lru<>(64);
+
+    private final Key key;
 
     private CFFFont outlines;
 
     private LazyCidCff lazy;
 
+    private boolean notLazy;
+
     private EmbeddableFont(FontProgram.Opened opened, FontEntry entry) {
         this.opened = opened;
         this.entry = entry;
         this.description = entry.describe();
+        this.key = entry.file() == null ? null : new Key(entry.file(), entry.offset(), entry.index());
+    }
+
+    static int shared() {
+        return PARSED.size() + LAZY.size() + NOT_LAZY.size();
+    }
+
+    private static <V> V get(Lru<Key, V> cache, Key key) {
+        return key == null ? null : cache.get(key);
+    }
+
+    private static <V> void put(Lru<Key, V> cache, Key key, V value) {
+        if (key != null) {
+            cache.put(key, value);
+        }
     }
 
     public static EmbeddableFont open(FontFace face) throws IOException {
@@ -102,17 +125,20 @@ public final class EmbeddableFont implements Closeable {
     }
 
     private LazyCidCff lazy() {
-        if (lazy != null || NOT_LAZY.get(entry) != null) {
+        if (lazy != null || notLazy || get(NOT_LAZY, key) != null) {
             return lazy;
         }
-        SoftReference<LazyCidCff> known = LAZY.get(entry);
+        SoftReference<LazyCidCff> known = get(LAZY, key);
         lazy = known == null ? null : known.get();
         if (lazy == null) {
             try {
                 lazy = LazyCidCff.open(entry);
-                LAZY.put(entry, new SoftReference<>(lazy));
+                put(LAZY, key, new SoftReference<>(lazy));
             } catch (IOException e) {
-                NOT_LAZY.put(entry, Boolean.TRUE);
+                notLazy = true;
+                if (!Failures.interrupted(e) && !Failures.fileSystem(e)) {
+                    put(NOT_LAZY, key, Boolean.TRUE);
+                }
             }
         }
         return lazy;
@@ -120,7 +146,7 @@ public final class EmbeddableFont implements Closeable {
 
     private CFFFont cff() throws IOException {
         if (outlines == null) {
-            SoftReference<CFFFont> known = PARSED.get(entry);
+            SoftReference<CFFFont> known = get(PARSED, key);
             outlines = known == null ? null : known.get();
         }
         if (outlines == null) {
@@ -130,7 +156,7 @@ public final class EmbeddableFont implements Closeable {
                 throw new IOException("the font has no CFF outlines");
             }
             outlines = fonts.get(0);
-            PARSED.put(entry, new SoftReference<>(outlines));
+            put(PARSED, key, new SoftReference<>(outlines));
         }
         return outlines;
     }

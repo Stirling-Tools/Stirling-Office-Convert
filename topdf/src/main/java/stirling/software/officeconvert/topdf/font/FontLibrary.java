@@ -24,6 +24,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.SortedSet;
 import java.util.TreeSet;
+import java.util.concurrent.ForkJoinPool;
 import java.util.regex.Pattern;
 
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -41,6 +42,8 @@ public final class FontLibrary {
     private static final long MAX_FONT_FILE = 256L << 20;
 
     private static final int FALLBACK_LOADS = 48;
+
+    private static final int SCAN_THREADS = Math.max(1, Math.min(8, Runtime.getRuntime().availableProcessors()));
 
     private static final Pattern SPACES = Pattern.compile("\\s+");
 
@@ -74,6 +77,13 @@ public final class FontLibrary {
     private final Lru<Long, Optional<FontFace>> fallbacks = new Lru<>(MAX_FACES);
 
     private volatile Optional<ColorEmoji> colorEmoji;
+
+    // Font files the scan could not read, and when they are tried again
+    private Scan scan;
+
+    private long rescanAt = Failures.NEVER;
+
+    private FontLibrary base;
 
     private FontLibrary(List<FontEntry> entries) {
         this(entries, Map.of(), Map.of());
@@ -111,11 +121,14 @@ public final class FontLibrary {
 
     public static FontLibrary system() {
         FontLibrary lib = system;
-        if (lib == null) {
+        if (lib == null || lib.stale()) {
             synchronized (SYSTEM_LOCK) {
                 lib = system;
                 if (lib == null) {
-                    lib = new FontLibrary(scanDirs(systemFontDirs()));
+                    lib = scanned(scanDirs(systemFontDirs()), null);
+                    system = lib;
+                } else if (lib.stale()) {
+                    lib = lib.rescanned(null);
                     system = lib;
                 }
             }
@@ -139,7 +152,12 @@ public final class FontLibrary {
 
     public static FontLibrary of(List<Path> dirs) {
         List<Path> key = key(dirs);
-        return DIRS.computeIfAbsent(key, k -> new FontLibrary(scanDirs(k)));
+        FontLibrary lib = DIRS.get(key);
+        if (lib == null || lib.stale()) {
+            lib = lib == null ? scanned(scanDirs(key), null) : lib.rescanned(null);
+            DIRS.put(key, lib);
+        }
+        return lib;
     }
 
     public static FontLibrary withSystem(List<Path> extraDirs) {
@@ -148,11 +166,36 @@ public final class FontLibrary {
             return system();
         }
         FontLibrary base = system();
-        return WITH_SYSTEM.computeIfAbsent(key, k -> {
-            List<FontEntry> all = new ArrayList<>(scanDirs(k));
+        FontLibrary lib = WITH_SYSTEM.get(key);
+        if (lib == null || lib.stale() || lib.base != base) {
+            lib = lib == null ? scanned(scanDirs(key), base) : lib.rescanned(base);
+            WITH_SYSTEM.put(key, lib);
+        }
+        return lib;
+    }
+
+    private static FontLibrary scanned(Scan scan, FontLibrary base) {
+        List<FontEntry> all = new ArrayList<>(scan.entries());
+        if (base != null) {
             all.addAll(base.entries);
-            return new FontLibrary(all);
-        });
+        }
+        FontLibrary lib = new FontLibrary(all);
+        lib.scan = scan;
+        lib.base = base;
+        lib.rescanAt = scan.unread().isEmpty() ? Failures.NEVER : Failures.retryAt();
+        return lib;
+    }
+
+    // Reads again only the files that failed, keeping the faces already found
+    private FontLibrary rescanned(FontLibrary newBase) {
+        Scan again = scanFiles(scan.unread());
+        List<FontEntry> found = new ArrayList<>(scan.entries());
+        found.addAll(again.entries());
+        return scanned(new Scan(found, again.unread()), newBase);
+    }
+
+    private boolean stale() {
+        return Failures.due(rescanAt);
     }
 
     public FontLibrary withFonts(List<byte[]> fontData) {
@@ -232,9 +275,8 @@ public final class FontLibrary {
         String key = "f\u0000" + normalize(family) + '\u0000' + (bold ? 1 : 0) + (italic ? 1 : 0);
         Optional<FontFace> known = faces.get(key);
         if (known == null) {
-            known = Optional.of(resolve(family, bold, italic));
-            Optional<FontFace> raced = faces.putIfAbsent(key, known);
-            known = raced == null ? known : raced;
+            long misses = Failures.misses();
+            known = remember(faces, key, Optional.of(resolve(family, bold, italic)), misses);
         }
         return known.get();
     }
@@ -244,9 +286,8 @@ public final class FontLibrary {
         String key = "e\u0000" + normalize(family) + '\u0000' + (bold ? 1 : 0) + (italic ? 1 : 0);
         Optional<FontFace> known = faces.get(key);
         if (known == null) {
-            known = Optional.ofNullable(lookup(family, bold, italic));
-            Optional<FontFace> raced = faces.putIfAbsent(key, known);
-            known = raced == null ? known : raced;
+            long misses = Failures.misses();
+            known = remember(faces, key, Optional.ofNullable(lookup(family, bold, italic)), misses);
         }
         return known.orElse(null);
     }
@@ -257,6 +298,7 @@ public final class FontLibrary {
         if (known != null) {
             return known.orElse(null);
         }
+        long misses = Failures.misses();
         FontFace found = null;
         FontFace light = null;
         List<Object> lights = new ArrayList<>();
@@ -310,7 +352,7 @@ public final class FontLibrary {
         if (found == null) {
             found = light;
         }
-        fallbacks.putIfAbsent(key, Optional.ofNullable(found));
+        remember(fallbacks, key, Optional.ofNullable(found), misses);
         return found;
     }
 
@@ -369,6 +411,7 @@ public final class FontLibrary {
                 + like.italicStyle() + '\u0000' + like.program().entry().describe();
         Optional<FontFace> known = faces.get(key);
         if (known == null) {
+            long misses = Failures.misses();
             FontFace found = null;
             for (int cp : candidates) {
                 FontFace f = like.program().glyph(cp) > 0 ? like : fallback(cp, like.boldStyle(), like.italicStyle());
@@ -382,9 +425,7 @@ public final class FontLibrary {
                     found = null;
                 }
             }
-            known = Optional.ofNullable(found);
-            Optional<FontFace> raced = faces.putIfAbsent(key, known);
-            known = raced == null ? known : raced;
+            known = remember(faces, key, Optional.ofNullable(found), misses);
         }
         return known.orElse(null);
     }
@@ -433,7 +474,10 @@ public final class FontLibrary {
                 }
             }
             known = Optional.ofNullable(found);
-            colorEmoji = known;
+            // ColorEmoji keeps its own answers per file, so only a found font is worth pinning here
+            if (found != null) {
+                colorEmoji = known;
+            }
         }
         return known.orElse(null);
     }
@@ -679,6 +723,8 @@ public final class FontLibrary {
         for (FontEntry e : group) {
             if (e.usable()) {
                 ok.add(e);
+            } else if (e.unusable() == null && !e.failedForGood()) {
+                Failures.missed();
             }
         }
         int target = bold ? 700 : 400;
@@ -693,8 +739,21 @@ public final class FontLibrary {
             FontProgram p = e.program();
             return new FontFace(p, requested, bold && !e.bold(), italic && !e.italic(), note);
         } catch (IOException ex) {
+            if (!e.failedForGood()) {
+                Failures.missed();
+            }
             return null;
         }
+    }
+
+    // Keeps a lookup's answer unless it skipped a font that may load next time
+    private static <K> Optional<FontFace> remember(Lru<K, Optional<FontFace>> cache, K key, Optional<FontFace> found,
+            long misses) {
+        if (Failures.misses() != misses) {
+            return found;
+        }
+        Optional<FontFace> raced = cache.putIfAbsent(key, found);
+        return raced == null ? found : raced;
     }
 
     private static boolean common(int cp) {
@@ -721,18 +780,35 @@ public final class FontLibrary {
         return List.copyOf(new LinkedHashSet<>(out));
     }
 
-    private static List<FontEntry> scanDirs(List<Path> dirs) {
+    record Scan(List<FontEntry> entries, List<Path> unread) {}
+
+    static Scan scanDirs(List<Path> dirs) {
         Map<Path, Boolean> files = new LinkedHashMap<>();
         for (Path dir : dirs) {
             collect(dir, files);
         }
-        List<Path> list = new ArrayList<>(files.keySet());
-        List<List<FontEntry>> scanned = list.parallelStream().map(FontScanner::scan).toList();
-        List<FontEntry> out = new ArrayList<>();
-        for (List<FontEntry> s : scanned) {
-            out.addAll(s);
+        return scanFiles(new ArrayList<>(files.keySet()));
+    }
+
+    static Scan scanFiles(List<Path> list) {
+        if (list.isEmpty()) {
+            return new Scan(List.of(), List.of());
         }
-        return out;
+        List<List<FontEntry>> scanned;
+        // Its own pool: the reads block, and the host's common pool is not ours to stall
+        try (ForkJoinPool pool = new ForkJoinPool(SCAN_THREADS)) {
+            scanned = pool.submit(() -> list.parallelStream().map(FontScanner::scanFile).toList()).join();
+        }
+        List<FontEntry> out = new ArrayList<>();
+        List<Path> unread = new ArrayList<>();
+        for (int i = 0; i < scanned.size(); i++) {
+            if (scanned.get(i) == null) {
+                unread.add(list.get(i));
+            } else {
+                out.addAll(scanned.get(i));
+            }
+        }
+        return new Scan(out, unread);
     }
 
     private static void collect(Path dir, Map<Path, Boolean> files) {
