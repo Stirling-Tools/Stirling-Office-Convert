@@ -120,6 +120,9 @@ final class GlyphCollector extends PDFStreamEngine {
     }
 
     private final FontResolver fonts;
+    // The TeX maths name test is a regex, so it runs once per resolved font rather than per glyph
+    private FontInfo texChecked;
+    private boolean texMath;
     private final PageSink sink;
     private final UnicodeRecovery recovery;
     private final Map<org.apache.pdfbox.cos.COSDictionary, float[]> metrics = new WeakHashMap<>();
@@ -881,7 +884,11 @@ final class GlyphCollector extends PDFStreamEngine {
                         bold,
                         italic);
         g.hscale = horizontalScale(tp);
-        if (FontNames.isTexMath(font.postScriptName())) {
+        if (font != texChecked) {
+            texChecked = font;
+            texMath = FontNames.isTexMath(font.postScriptName());
+        }
+        if (texMath) {
             g.hang = hang(tp, size);
         }
         boolean dingbat = font.symbolic() && pdFont.isEmbedded()
