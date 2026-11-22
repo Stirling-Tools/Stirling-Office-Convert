@@ -409,6 +409,29 @@ final class SweepSamples {
                         + "/Descent -212/CapHeight 716/StemV 80>>",
                 "<</Type/Font/Subtype/CIDFontType0/BaseFont/ArialMT/CIDSystemInfo<</Registry(Adobe)/Ordering"
                         + "(Identity)/Supplement 0>>/FontDescriptor 9 0 R/CIDToGIDMap/Identity>>"));
+        ALL.put("w27_four_byte_codes", () -> page("", "", "/Font<</G 5 0 R/E 7 0 R>>",
+                "BT /G 18 Tf 72 700 Td <4E00D840DC0032A3> Tj /E 18 Tf 72 650 Td <4E8CD840DC014E00> Tj ET",
+                "<</Type/Font/Subtype/Type0/BaseFont/STSong-Light-UniGB-UTF16-H/Encoding/UniGB-UTF16-H"
+                        + "/DescendantFonts[6 0 R]>>",
+                "<</Type/Font/Subtype/CIDFontType0/BaseFont/STSong-Light/CIDSystemInfo<</Registry(Adobe)/Ordering(GB1)"
+                        + "/Supplement 4>>/FontDescriptor<</Type/FontDescriptor/FontName/STSong-Light/Flags 6/FontBBox"
+                        + "[-195 -272 1110 1075]/ItalicAngle 0/Ascent 880/Descent -120/CapHeight 763/StemV 80>>/DW 1000>>",
+                "<</Type/Font/Subtype/Type0/BaseFont/STSong-Light/Encoding 8 0 R/DescendantFonts[9 0 R]>>",
+                RawPdf.stream("/Type/CMap/CMapName/Over/CIDSystemInfo<</Registry(Adobe)/Ordering(GB1)/Supplement 4>>",
+                        "/CIDInit /ProcSet findresource begin 12 dict begin begincmap /UniGB-UTF16-H usecmap /CMapName "
+                                + "/Over def 1 begincidchar <4E00> 500 endcidchar endcmap CMapName currentdict /CMap "
+                                + "defineresource pop end end"),
+                "<</Type/Font/Subtype/CIDFontType0/BaseFont/STSong-Light/CIDSystemInfo<</Registry(Adobe)/Ordering(GB1)"
+                        + "/Supplement 4>>/FontDescriptor<</Type/FontDescriptor/FontName/STSong-Light/Flags 6/FontBBox"
+                        + "[-195 -272 1110 1075]/ItalicAngle 0/Ascent 880/Descent -120/CapHeight 763/StemV 80>>>>"));
+        ALL.put("w28_shared_cid_font", () -> page("", "", "/Font<</H 5 0 R/V 6 0 R>>",
+                "BT /H 18 Tf 72 700 Td <4E004E09D840DC01> Tj /V 18 Tf 300 700 Td <4E8C9F98> Tj ET",
+                "<</Type/Font/Subtype/Type0/BaseFont/STSong-Light-UniGB-UTF16-H/Encoding/UniGB-UTF16-H"
+                        + "/DescendantFonts[7 0 R]>>",
+                "<</Type/Font/Subtype/Type0/BaseFont/STSong-Light-GBK-EUC-H/Encoding/UniGB-UCS2-H/DescendantFonts[7 0 R]>>",
+                "<</Type/Font/Subtype/CIDFontType0/BaseFont/STSong-Light/CIDSystemInfo<</Registry(Adobe)/Ordering(GB1)"
+                        + "/Supplement 4>>/FontDescriptor<</Type/FontDescriptor/FontName/STSong-Light/Flags 6/FontBBox"
+                        + "[-195 -272 1110 1075]/ItalicAngle 0/Ascent 880/Descent -120/CapHeight 763/StemV 80>>>>"));
     }
 
     private static String hex(String s) {

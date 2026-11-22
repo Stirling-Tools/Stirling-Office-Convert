@@ -102,6 +102,7 @@ final class FontFixer {
                 byDescendant.computeIfAbsent(cid, k -> new ArrayList<>()).add(font);
             }
         }
+        byDescendant.values().forEach(FontFixer::unshare);
         Map<COSDictionary, List<COSDictionary>> out = new IdentityHashMap<>();
         for (List<COSDictionary> fonts : byDescendant.values()) {
             for (COSDictionary font : fonts) {
@@ -119,6 +120,41 @@ final class FontFixer {
                 }
             }
         }
+        return out;
+    }
+
+    // Fonts with different CMaps get their own copy of a shared CIDFont, as each one is embedded and remapped alone.
+    private static void unshare(List<COSDictionary> fonts) {
+        List<COSDictionary> kinds = new ArrayList<>();
+        List<COSArray> copies = new ArrayList<>();
+        for (COSDictionary font : fonts) {
+            int kind = 0;
+            while (kind < kinds.size() && !sameEncoding(kinds.get(kind), font)) {
+                kind++;
+            }
+            if (kind == kinds.size()) {
+                kinds.add(font);
+                copies.add(kind == 0 ? null : descendantCopy(font));
+            }
+            if (copies.get(kind) != null) {
+                font.setItem(COSName.DESCENDANT_FONTS, copies.get(kind));
+            }
+        }
+    }
+
+    private static COSArray descendantCopy(COSDictionary font) {
+        COSDictionary cid = new COSDictionary(ContentGraph.dict(
+                ContentGraph.array(font.getDictionaryObject(COSName.DESCENDANT_FONTS)).getObject(0)));
+        if (ContentGraph.dict(cid.getDictionaryObject(COSName.FONT_DESC)) instanceof COSDictionary fd) {
+            cid.setItem(COSName.FONT_DESC, new COSDictionary(fd));
+        }
+        if (ContentGraph.array(cid.getDictionaryObject(COSName.W)) instanceof COSArray w) {
+            COSArray widths = new COSArray();
+            widths.addAll(w);
+            cid.setItem(COSName.W, widths);
+        }
+        COSArray out = new COSArray();
+        out.add(cid);
         return out;
     }
 
