@@ -124,10 +124,7 @@ public final class OfficeToPdf {
     }
 
     /** {@code password} opens a password protected document; it is never written anywhere, nor printed by
-     * {@link #toString()}. {@code locale}, {@code zone} and {@code clock} pin the short date order, the time zone and
-     * the time stamped into the output; null means the host's, and a clock also fixes the PDF's /ID. {@code
-     * maxScratchBytes} bounds the PDF being written, not temporary copies of the input. {@code allowPackages} gates a
-     * plain .zip of a page; .htmlz, .fbz and .epub are their formats' own containers and open without it. */
+     * {@link #toString()}. A null {@code locale}, {@code zone} or {@code clock} means the host's. */
     public record Options(Duration timeout, List<Path> fontDirs, int maxPages, long maxScratchBytes, FontSet fonts,
             String displayName, String password, HtmlAssets htmlAssets, boolean allowPackages, boolean tableOfContents,
             boolean pageNumbers, float zoom, Locale locale, ZoneId zone, Clock clock) {
@@ -234,6 +231,7 @@ public final class OfficeToPdf {
                     allowPackages, tableOfContents, pageNumbers, zoom, locale, zone, clock);
         }
 
+        /** Bounds the PDF being written; temporary copies of the input are not counted. */
         public Options maxScratchBytes(long bytes) {
             return new Options(timeout, fontDirs, maxPages, bytes, fonts, displayName, password, htmlAssets,
                     allowPackages, tableOfContents, pageNumbers, zoom, locale, zone, clock);
@@ -254,6 +252,7 @@ public final class OfficeToPdf {
                     allowPackages, tableOfContents, pageNumbers, zoom, locale, zone, clock);
         }
 
+        /** Gates a plain .zip of a page; .htmlz, .fbz and .epub are their own formats and need no flag. */
         public Options allowPackages(boolean allow) {
             return new Options(timeout, fontDirs, maxPages, maxScratchBytes, fonts, displayName, password, htmlAssets,
                     allow, tableOfContents, pageNumbers, zoom, locale, zone, clock);
@@ -274,16 +273,19 @@ public final class OfficeToPdf {
                     allowPackages, tableOfContents, pageNumbers, scale, locale, zone, clock);
         }
 
+        /** The short date order of built-in spreadsheet date formats. */
         public Options locale(Locale formats) {
             return new Options(timeout, fontDirs, maxPages, maxScratchBytes, fonts, displayName, password, htmlAssets,
                     allowPackages, tableOfContents, pageNumbers, zoom, formats, zone, clock);
         }
 
+        /** The time zone of header dates and the PDF's creation date. */
         public Options zone(ZoneId id) {
             return new Options(timeout, fontDirs, maxPages, maxScratchBytes, fonts, displayName, password, htmlAssets,
                     allowPackages, tableOfContents, pageNumbers, zoom, locale, id, clock);
         }
 
+        /** The conversion's time; a given clock also fixes the PDF's /ID, so the same input gives the same bytes. */
         public Options clock(Clock time) {
             return new Options(timeout, fontDirs, maxPages, maxScratchBytes, fonts, displayName, password, htmlAssets,
                     allowPackages, tableOfContents, pageNumbers, zoom, locale, zone, time);
