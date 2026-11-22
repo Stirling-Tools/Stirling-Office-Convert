@@ -17,7 +17,10 @@ public final class Passwords {
 
     public static final String WRONG = "The password given for the document is not correct";
 
-    static final int MAX_SPIN_COUNT = 10_000_000;
+    // Ten times what Office writes: a derivation runs inside POI, which never polls for interrupts
+    static final int MAX_SPIN_COUNT = 1_000_000;
+
+    static final int OFFICE_SPIN_COUNT = 100_000;
 
     private Passwords() {}
 
@@ -62,7 +65,8 @@ public final class Passwords {
             if (password != null && d.verifyPassword(password)) {
                 return d;
             }
-            if (d.verifyPassword(Decryptor.DEFAULT_PASSWORD)) {
+            // Office stretches its built-in password only as far as its own default, so a costlier file cannot use it
+            if ((v == null || v.getSpinCount() <= OFFICE_SPIN_COUNT) && d.verifyPassword(Decryptor.DEFAULT_PASSWORD)) {
                 return d;
             }
         } catch (GeneralSecurityException e) {

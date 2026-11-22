@@ -113,7 +113,7 @@ deep; anything it cannot see or read is charged as a large picture, so an estima
 | XML element depth | 1,000 | parse error; the part is left out |
 | XML elements in any XML part POI reads | 250,000 | the part is left out with a warning; for the main part or its relationships the conversion fails |
 | XML elements in a DOCX header, footer, notes, numbering, chart or theme part | 500,000 | the part is left out with a warning naming it |
-| XML elements in other parts read whole (workbooks, spreadsheet drawings, Visio pages and others) | memory budget ÷ 512 bytes, between 500,000 and 4,000,000 | the part is left out with a warning naming it; for the main part the conversion fails |
+| XML elements in other parts read whole (workbooks, spreadsheet drawings, Visio pages, OpenDocument, flat OPC, FB2, OpenOffice.org 1.x XML and others) | memory budget ÷ 512 bytes, between 500,000 and 4,000,000 | the part is left out with a warning naming it; for the main part the conversion fails |
 | XML elements in a DOCX body | one conversion slot's share of the memory budget ÷ 384 bytes, between 250,000 and 8,000,000 | the rest of the body is skipped with "The document is too long" and the result is marked partial; a final section break still keeps up to 10,000 |
 | XML elements in spreadsheet styles | 500,000 | default styles are used, with a warning |
 | Custom shape path commands | 100,000 | the path is cut short |

@@ -2,8 +2,10 @@ package stirling.software.officeconvert.topdf.odf;
 
 import java.io.ByteArrayInputStream;
 import java.io.Closeable;
+import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InterruptedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.Base64;
@@ -63,6 +65,8 @@ public final class OdfDocument implements Closeable {
     final WorkBudget work;
 
     private long budget = MAX_TOTAL_BYTES;
+
+    private long dense = OfficeZip.Limits.DEFAULT.maxDenseBytes();
 
     private boolean damaged;
 
@@ -195,8 +199,11 @@ public final class OdfDocument implements Closeable {
         Document doc;
         boolean damaged = false;
         try {
-            doc = SecureXml.parse(new ByteArrayInputStream(data));
+            doc = SecureXml.parse(new ByteArrayInputStream(data), file.getFileName().toString());
         } catch (IOException e) {
+            if (spent(e)) {
+                throw e;
+            }
             byte[] declared = withPrefixes(data, e);
             Document fixed = declared == data ? null : parseOrNull(declared);
             if (fixed != null) {
@@ -206,7 +213,7 @@ public final class OdfDocument implements Closeable {
                 if (salvaged == null || salvaged == declared) {
                     throw e;
                 }
-                doc = SecureXml.parse(new ByteArrayInputStream(salvaged));
+                doc = SecureXml.parse(new ByteArrayInputStream(salvaged), file.getFileName().toString());
                 damaged = true;
             }
         }
@@ -232,6 +239,7 @@ public final class OdfDocument implements Closeable {
                     map.putIfAbsent(BoundedZip.normalised(e.getName()), e);
                 }
             }
+            checkInflation(map.values());
             OdfDocument probe = new OdfDocument(kind, z, null, null, null, 0);
             probe.entries.putAll(map);
             probe.crypt = OdfEncryption.read(probe.bytes("META-INF/manifest.xml", 16L << 20), password);
@@ -251,11 +259,33 @@ public final class OdfDocument implements Closeable {
             doc.entries.putAll(map);
             doc.crypt = probe.crypt;
             doc.budget = probe.budget;
+            doc.dense = probe.dense;
             doc.damaged = probe.damaged;
             return doc;
         } catch (IOException | RuntimeException e) {
             z.close();
             throw e;
+        }
+    }
+
+    static void checkInflation(Iterable<ZipEntry> entries) throws OfficeZip.Oversized {
+        OfficeZip.Limits limits = OfficeZip.Limits.DEFAULT;
+        long total = 0;
+        long compressed = 0;
+        for (ZipEntry e : entries) {
+            long size = Math.max(0, e.getSize());
+            long csize = Math.max(0, e.getCompressedSize());
+            if (size > limits.graceBytes() && csize == 0) {
+                throw new OfficeZip.Oversized("The document looks like a zip bomb: the part /" + e.getName()
+                        + " inflates without limit");
+            }
+            total += size;
+            compressed += csize;
+        }
+        if (total > Math.max(limits.graceBytes(), limits.maxDenseBytes())
+                && (double) compressed / total < limits.minInflateRatio()) {
+            throw new OfficeZip.Oversized("The document looks like a zip bomb: it inflates "
+                    + (compressed == 0 ? "without limit" : (total / compressed) + " times"));
         }
     }
 
@@ -329,8 +359,11 @@ public final class OdfDocument implements Closeable {
             return null;
         }
         try {
-            return SecureXml.parse(new ByteArrayInputStream(data)).getDocumentElement();
+            return SecureXml.parse(new ByteArrayInputStream(data), "/" + name).getDocumentElement();
         } catch (IOException e) {
+            if (spent(e)) {
+                throw e;
+            }
             byte[] declared = withPrefixes(data, e);
             Document fixed = declared == data ? null : parseOrNull(declared);
             if (fixed != null) {
@@ -340,7 +373,7 @@ public final class OdfDocument implements Closeable {
             byte[] salvaged = SecureXml.refusedDoctype(e) ? null : XmlSalvage.salvage(data);
             if (salvaged != null && salvaged != data) {
                 damaged = true;
-                return SecureXml.parse(new ByteArrayInputStream(salvaged)).getDocumentElement();
+                return SecureXml.parse(new ByteArrayInputStream(salvaged), "/" + name).getDocumentElement();
             }
             if (required || SecureXml.refusedDoctype(e)) {
                 throw new IOException("The document is damaged: " + name + " is not well-formed XML", e);
@@ -354,12 +387,26 @@ public final class OdfDocument implements Closeable {
         return declared == null ? data : declared;
     }
 
-    private static Document parseOrNull(byte[] data) {
+    private static Document parseOrNull(byte[] data) throws IOException {
         try {
             return SecureXml.parse(new ByteArrayInputStream(data));
         } catch (IOException e) {
+            if (spent(e)) {
+                throw e;
+            }
             return null;
         }
+    }
+
+    // Past the element budget or stopped: salvaging and parsing again would spend as much a second time
+    private static boolean spent(IOException e) {
+        int depth = 0;
+        for (Throwable t = e; t != null && depth++ < 16; t = t.getCause()) {
+            if (t instanceof OfficeZip.Oversized || t instanceof InterruptedIOException) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private byte[] bytes(String name, long max) throws IOException {
@@ -372,7 +419,7 @@ public final class OdfDocument implements Closeable {
             throw new OfficeZip.Oversized("The document is too large: the part /" + name + " is over "
                     + (max >> 20) + " MB");
         }
-        try (InputStream in = sealed ? decrypted(name, e, max) : zip.open(e, max)) {
+        try (InputStream in = sealed ? decrypted(name, e, max) : new Inflation(zip.open(e, max), e)) {
             byte[] data = in.readNBytes((int) Math.min(Integer.MAX_VALUE - 16, Math.min(max, budget) + 1));
             if (data.length > max) {
                 throw new OfficeZip.Oversized("The document is too large: the part /" + name + " is over "
@@ -384,6 +431,46 @@ public final class OdfDocument implements Closeable {
             }
             budget -= data.length;
             return data;
+        }
+    }
+
+    // OfficeZip's rule: past the grace size a part may not inflate over 100 times, bar dense parts up to 48 MB in all
+    private final class Inflation extends FilterInputStream {
+
+        private final ZipEntry entry;
+
+        private long count;
+
+        private boolean over;
+
+        Inflation(InputStream in, ZipEntry entry) {
+            super(in);
+            this.entry = entry;
+        }
+
+        @Override
+        public int read() throws IOException {
+            byte[] one = new byte[1];
+            return read(one, 0, 1) < 0 ? -1 : one[0] & 0xff;
+        }
+
+        @Override
+        public int read(byte[] b, int off, int len) throws IOException {
+            int n = super.read(b, off, len);
+            if (n > 0) {
+                count += n;
+                OfficeZip.Limits limits = OfficeZip.Limits.DEFAULT;
+                if (!over && count > limits.graceBytes()
+                        && Math.max(0, entry.getCompressedSize()) < count * limits.minInflateRatio()) {
+                    over = true;
+                    dense -= count - n;
+                }
+                if (over && (dense -= n) < 0) {
+                    throw new OfficeZip.Oversized("The document looks like a zip bomb: the part /" + entry.getName()
+                            + " inflates more than " + Math.round(1 / limits.minInflateRatio()) + " times");
+                }
+            }
+            return n;
         }
     }
 
