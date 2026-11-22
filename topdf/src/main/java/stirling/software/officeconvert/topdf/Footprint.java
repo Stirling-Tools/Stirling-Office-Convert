@@ -242,7 +242,9 @@ final class Footprint {
     private static long decodeBytes(OfficeZip zip, String part, long size) {
         byte[] head;
         try {
-            head = zip.head(part, MEDIA_HEAD_BYTES);
+            // A JPEG is known by its first bytes, so a photo deck need not inflate 64 KB of each photo up front
+            head = zip.head(part, 16, MEDIA_HEAD_BYTES,
+                    start -> PictureDecoder.sniff(start) == PictureDecoder.Kind.JPEG);
         } catch (IOException | RuntimeException e) {
             return 0;
         }

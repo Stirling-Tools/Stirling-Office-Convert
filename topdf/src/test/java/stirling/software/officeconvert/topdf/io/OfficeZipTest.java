@@ -302,4 +302,29 @@ class OfficeZipTest {
         long share = XmlElements.share(384, 10, Long.MAX_VALUE);
         assertTrue(share <= Admission.jvm().budget() / 2 / 384, String.valueOf(share));
     }
+
+    @Test
+    void aProbedHeadStopsEarlyOnlyWhenTheFirstBytesSettleIt() throws Exception {
+        byte[] big = new byte[100_000];
+        new java.util.Random(3).nextBytes(big);
+        big[0] = 'B';
+        byte[] small = java.util.Arrays.copyOf(big, 20_000);
+        byte[] photo = big.clone();
+        photo[0] = (byte) 0xFF;
+        Path docx = Fixtures.write(dir, "h.docx", Fixtures.edit(Fixtures.docx("x")).put("word/media/big.bin", big)
+                .put("word/media/small.bin", small).put("word/media/tiny.bin", new byte[] {1, 2, 3})
+                .put("word/media/photo.bin", photo).bytes());
+        java.util.function.Predicate<byte[]> photoStart = start -> (start[0] & 0xFF) == 0xFF;
+        try (OfficeZip zip = OfficeZip.open(docx)) {
+            for (String part : new String[] {"big", "small", "tiny", "photo"}) {
+                String name = "/word/media/" + part + ".bin";
+                byte[] whole = zip.head(name, 65_536);
+                byte[] probed = zip.head(name, 16, 65_536, photoStart);
+                byte[] expected = part.equals("photo") ? java.util.Arrays.copyOf(whole, 16) : whole;
+                assertArrayEquals(expected, probed, part);
+            }
+            assertEquals(65_536, zip.head("/word/media/big.bin", 16, 65_536, photoStart).length);
+            assertEquals(20_000, zip.head("/word/media/small.bin", 16, 65_536, photoStart).length);
+        }
+    }
 }

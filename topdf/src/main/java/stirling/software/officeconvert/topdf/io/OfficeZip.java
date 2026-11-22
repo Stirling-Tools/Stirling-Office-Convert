@@ -15,6 +15,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Deque;
 import java.util.Enumeration;
@@ -27,6 +28,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Predicate;
 import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipException;
@@ -397,6 +399,11 @@ public final class OfficeZip implements Closeable {
 
     /** Up to max bytes from the start of a part, such as a picture's header, not counted as reading the part. */
     public byte[] head(String part, int max) throws IOException {
+        return head(part, max, max, start -> true);
+    }
+
+    /** As {@link #head(String, int)}, but only the first {@code probe} bytes when {@code enough} accepts them. */
+    public byte[] head(String part, int probe, int max, Predicate<byte[]> enough) throws IOException {
         ZipEntry e = entry(part);
         if (e == null) {
             throw new FileNotFoundException("The document has no part " + canonical(part));
@@ -406,7 +413,23 @@ public final class OfficeZip implements Closeable {
             return new byte[0];
         }
         try (InputStream in = new PartStream(zip.getInputStream(e), e.getSize(), canonical(part))) {
-            return in.readNBytes(max);
+            if (probe >= max) {
+                return in.readNBytes(max);
+            }
+            byte[] start = in.readNBytes(probe);
+            if (start.length < probe || enough.test(start)) {
+                return start;
+            }
+            // Read into one array sized by the entry, which readNBytes(max) would gather in chunks and copy
+            byte[] all = Arrays.copyOf(start, e.getSize() > probe && e.getSize() < max ? (int) e.getSize() : max);
+            int n = probe + in.readNBytes(all, probe, all.length - probe);
+            if (n == all.length && n < max) {
+                byte[] more = in.readNBytes(max - n);
+                all = Arrays.copyOf(all, n + more.length);
+                System.arraycopy(more, 0, all, n, more.length);
+                return all;
+            }
+            return n == all.length ? all : Arrays.copyOf(all, n);
         } catch (ZipException | EOFException x) {
             throw PartStream.unreadable(canonical(part), x);
         }
