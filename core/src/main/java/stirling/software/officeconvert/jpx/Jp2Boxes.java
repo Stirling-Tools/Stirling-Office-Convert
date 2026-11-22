@@ -64,6 +64,7 @@ final class Jp2Boxes {
     private void top(byte[] data) throws JpxException {
         Bytes b = new Bytes(data, 0, data.length);
         while (b.remaining() >= 8) {
+            int at = b.pos();
             int[] box = box(b);
             if (box == null) {
                 return;
@@ -76,7 +77,7 @@ final class Jp2Boxes {
                 codestreamEnd = box[2];
                 return;
             }
-            b.seek(box[2]);
+            advance(b, at, box[2]);
         }
     }
 
@@ -94,16 +95,15 @@ final class Jp2Boxes {
         } else if (length == 0) {
             length = b.end() - start;
         }
-        long end = start + length;
-        if (length < body - start || end > b.end()) {
-            end = b.end();
-        }
-        return new int[] {type, body, (int) end};
+        // Compared as a length so a 64-bit size cannot overflow the end back before the start.
+        int end = length < body - start || length > b.end() - start ? b.end() : start + (int) length;
+        return new int[] {type, body, end};
     }
 
     private void header(byte[] data, int start, int end) throws JpxException {
         Bytes b = new Bytes(data, start, end);
         while (b.remaining() >= 8) {
+            int at = b.pos();
             int[] box = box(b);
             if (box == null) {
                 return;
@@ -128,8 +128,15 @@ final class Jp2Boxes {
                     throw e;
                 }
             }
-            b.seek(box[2]);
+            advance(b, at, box[2]);
         }
+    }
+
+    private static void advance(Bytes b, int from, int to) throws JpxException {
+        if (to <= from) {
+            throw new JpxException("JPEG 2000 box does not advance");
+        }
+        b.seek(to);
     }
 
     private static int[][] mapping(Bytes in) throws JpxException {

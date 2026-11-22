@@ -1,5 +1,7 @@
 package stirling.software.officeconvert.jpx;
 
+import java.io.ByteArrayOutputStream;
+
 final class Bytes {
 
     private final byte[] data;
@@ -37,6 +39,12 @@ final class Bytes {
         if (n < 0 || n > end - pos) {
             throw new JpxException("JPEG 2000 data ends early");
         }
+        pos += n;
+    }
+
+    void copyTo(ByteArrayOutputStream out, int n) throws JpxException {
+        need(n);
+        out.write(data, pos, n);
         pos += n;
     }
 

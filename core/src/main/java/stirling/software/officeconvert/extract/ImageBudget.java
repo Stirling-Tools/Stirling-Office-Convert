@@ -250,25 +250,13 @@ public final class ImageBudget {
                 || !(stream.getDictionaryObject(COSName.COLORSPACE, COSName.CS) instanceof COSArray)) {
             return null;
         }
-        int[] shape = JP2_SHAPES.computeIfAbsent(stream, s -> {
-            byte[] header;
-            try {
-                header = jpxHeader(stream);
-            } catch (IOException | RuntimeException e) {
-                return new int[] {NO_PALETTE, 0};
-            }
-            int palette;
-            try {
-                palette = JpxDecoder.palette(header) ? 1 : NO_PALETTE;
-            } catch (RuntimeException e) {
-                palette = NO_PALETTE;
-            }
-            try {
-                return new int[] {palette, JpxDecoder.size(header)[2]};
-            } catch (IOException | RuntimeException e) {
-                return new int[] {palette, 0};
-            }
-        });
+        // Parsed outside the map's lock so a slow or hostile header cannot stall other conversions.
+        int[] shape = JP2_SHAPES.get(stream);
+        if (shape == null) {
+            shape = shape(stream);
+            int[] raced = JP2_SHAPES.putIfAbsent(stream, shape);
+            shape = raced == null ? shape : raced;
+        }
         PDColorSpace space;
         try {
             space = x.getColorSpace();
@@ -281,6 +269,26 @@ public final class ImageBudget {
         int n = space.getNumberOfComponents();
         boolean inferable = n == 1 || n == 3 || n == 4;
         return shape[0] == NO_PALETTE && !inferable && shape[1] == n ? space : null;
+    }
+
+    private static int[] shape(COSStream stream) {
+        byte[] header;
+        try {
+            header = jpxHeader(stream);
+        } catch (IOException | RuntimeException e) {
+            return new int[] {NO_PALETTE, 0};
+        }
+        int palette;
+        try {
+            palette = JpxDecoder.palette(header) ? 1 : NO_PALETTE;
+        } catch (RuntimeException e) {
+            palette = NO_PALETTE;
+        }
+        try {
+            return new int[] {palette, JpxDecoder.size(header)[2]};
+        } catch (IOException | RuntimeException e) {
+            return new int[] {palette, 0};
+        }
     }
 
     private static boolean jpx(PDImage image) {
@@ -563,16 +571,14 @@ public final class ImageBudget {
         return size == null ? Long.MAX_VALUE : samples(size[0], size[1], (int) size[2]);
     }
 
+    // Read with the decoder's own box parser, so a decoy SIZ in an earlier box cannot shrink the image.
     private static long[] jpxSize(byte[] b) {
-        for (int i = 0; i + 42 <= b.length; i++) {
-            if ((b[i] & 0xFF) == 0xFF && (b[i + 1] & 0xFF) == 0x4F && (b[i + 2] & 0xFF) == 0xFF && (b[i + 3] & 0xFF) == 0x51) {
-                long width = u32(b, i + 8) - u32(b, i + 16);
-                long height = u32(b, i + 12) - u32(b, i + 20);
-                int components = (b[i + 40] & 0xFF) << 8 | b[i + 41] & 0xFF;
-                return new long[] {width, height, components};
-            }
+        try {
+            int[] size = JpxDecoder.size(b);
+            return new long[] {size[0], size[1], size[2]};
+        } catch (IOException | RuntimeException e) {
+            return null;
         }
-        return null;
     }
 
     private static long samples(long width, long height, int components) {
@@ -581,10 +587,6 @@ public final class ImageBudget {
         }
         long pixels = width * height;
         return pixels > Long.MAX_VALUE / components ? Long.MAX_VALUE : pixels * components;
-    }
-
-    private static long u32(byte[] b, int at) {
-        return (long) (b[at] & 0xFF) << 24 | (b[at + 1] & 0xFF) << 16 | (b[at + 2] & 0xFF) << 8 | b[at + 3] & 0xFF;
     }
 
     private static long faxBytes(PDImage image) {

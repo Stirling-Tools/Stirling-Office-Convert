@@ -89,7 +89,7 @@ Every page render goes through one guarded renderer, so these limits hold for pa
 | Annotations drawn per page | 10,000 | the rest are not drawn; PDF/A removes them with a warning |
 | Type3 glyph nesting | 8 | deeper glyphs are not drawn |
 | Decoded image size | 256 MB, counting the raster PDFBox builds | the image is drawn at the smallest subsampling (up to 1/16) that fits; beyond that it is left out |
-| JPEG 2000 samples | 2^26 | the image is left out |
+| JPEG 2000 samples | 2^26, judged from the codestream the decoder reads; decoding needs about 6 bytes of working memory per sample (some 400 MB at the limit), outside the 256 MB decoded-image figure | the image is left out |
 | Decoded stream size | 256 MB | a content stream is emptied, an image refused |
 | Path segments in PDF/A flattening | 100,000 | flattening fails |
 | Transparency group nesting in PDF/A flattening | 64 | flattening fails |
