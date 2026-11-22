@@ -54,11 +54,11 @@ import stirling.software.officeconvert.extract.PageGraphics.VectorMark;
 
 final class GraphicsCollector extends PDFGraphicsStreamEngine {
 
+    private static final Log LOG = LogFactory.getLog(GraphicsCollector.class);
+
     private static final int MAX_PATH_POINTS = 200_000;
 
     private static final int MAX_IMAGES = 10_000;
-
-    private static final Log LOG = LogFactory.getLog(GraphicsCollector.class);
 
     private static final Point2D.Float CURVE = new Point2D.Float(Float.NaN, Float.NaN);
 
