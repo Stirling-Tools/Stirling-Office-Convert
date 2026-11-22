@@ -4,12 +4,22 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.function.Predicate;
+import java.util.regex.Pattern;
 
 import stirling.software.officeconvert.model.Paragraph;
 import stirling.software.officeconvert.model.RunStyle;
 
 /** The inherited part of an element's computed style: what its text looks like and how its lines are set. */
 final class Look {
+
+    // Compiled once: String.matches compiles its pattern again on every call, once per element here
+    private static final Pattern WEBKIT_ALIGN = Pattern.compile("-webkit-(left|center|right)");
+
+    private static final Pattern PLAIN_NUMBER = Pattern.compile("[0-9]*[.]?[0-9]+");
+
+    private static final Pattern WEIGHT = Pattern.compile("[0-9]{1,4}");
+
+    private static final Pattern RELATIVE = Pattern.compile("[0-9]*[.]?[0-9]+(em|%)");
 
     static final float ROOT_SIZE = 12f;
 
@@ -162,7 +172,7 @@ final class Look {
             String keyword = v.strip().toLowerCase(Locale.ROOT);
             l.alignFixed = keyword.contains("left") || keyword.contains("right")
                     || !keyword.equals("start") && !keyword.equals("end") && l.align == align && alignFixed;
-            l.legacyAlign = keyword.matches("-webkit-(left|center|right)");
+            l.legacyAlign = WEBKIT_ALIGN.matcher(keyword).matches();
         }
         if ((v = d.get("line-height")) != null) {
             lineHeight(l, v.strip().toLowerCase(Locale.ROOT));
@@ -214,7 +224,7 @@ final class Look {
             l.linePoints = 0;
             return;
         }
-        if (v.matches("[0-9]*[.]?[0-9]+")) {
+        if (PLAIN_NUMBER.matcher(v).matches()) {
             l.lineMultiple = Math.max(0.5f, Math.min(10f, Float.parseFloat(v)));
             l.linePoints = 0;
             return;
@@ -231,7 +241,7 @@ final class Look {
         return switch (t) {
             case "bold", "bolder" -> true;
             case "normal", "lighter" -> false;
-            default -> t.matches("[0-9]{1,4}") ? Integer.parseInt(t) >= 600 : parent;
+            default -> WEIGHT.matcher(t).matches() ? Integer.parseInt(t) >= 600 : parent;
         };
     }
 
@@ -252,7 +262,7 @@ final class Look {
         if (keyword > 0 || parent <= 0) {
             return keyword;
         }
-        if (t.matches("[0-9]*[.]?[0-9]+(em|%)")) {
+        if (RELATIVE.matcher(t).matches()) {
             Float factor = Css.length(t, 1, 1);
             return factor == null || factor <= 0 ? 0 : Math.min(400, parent * factor);
         }

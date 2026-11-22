@@ -3,8 +3,12 @@ package stirling.software.officeconvert.topdf.html;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 final class BoxCss {
+
+    // Compiled once: String.matches compiles its pattern again on every call, once per element here
+    private static final Pattern SMALL_COUNT = Pattern.compile("[0-9]{1,3}");
 
     static final int SHADOW_EDGE = 0xD9D9D9;
 
@@ -22,14 +26,14 @@ final class BoxCss {
         Integer count = null;
         Float least = null;
         for (String token : Css.tokens(d.getOrDefault("columns", ""))) {
-            if (token.matches("[0-9]{1,3}")) {
+            if (SMALL_COUNT.matcher(token).matches()) {
                 count = Integer.parseInt(token);
             } else if (!token.equalsIgnoreCase("auto")) {
                 least = Css.length(token, look.size, 0);
             }
         }
         String c = d.getOrDefault("column-count", "").strip();
-        if (c.matches("[0-9]{1,3}")) {
+        if (SMALL_COUNT.matcher(c).matches()) {
             count = Integer.parseInt(c);
         }
         String w = d.getOrDefault("column-width", "").strip();
@@ -199,7 +203,7 @@ final class BoxCss {
             return -1;
         }
         String clamp = d.getOrDefault("-webkit-line-clamp", d.getOrDefault("line-clamp", "")).strip();
-        if (clamp.matches("[0-9]{1,3}") && Integer.parseInt(clamp) > 0) {
+        if (SMALL_COUNT.matcher(clamp).matches() && Integer.parseInt(clamp) > 0) {
             return Integer.parseInt(clamp) * lineHeight(look);
         }
         String h = d.getOrDefault("max-height", d.get("height"));

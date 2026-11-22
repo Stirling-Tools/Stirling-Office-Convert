@@ -2,11 +2,17 @@ package stirling.software.officeconvert.topdf.html;
 
 import java.util.Locale;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 import org.jsoup.nodes.Element;
 
 /** A browser's default look for each tag, then the old presentational attributes; style sheets override both. */
 final class Presentation {
+
+    // Compiled once: String.matches compiles its pattern again on every call, once per element here
+    private static final Pattern DIGITS = Pattern.compile("[0-9.]+");
+
+    private static final Pattern PADDING = Pattern.compile("[0-9]{1,4}([.][0-9]+)?");
 
     private static final String[] FONT_SIZES = {"10px", "13px", "16px", "18px", "24px", "32px", "48px"};
 
@@ -118,7 +124,7 @@ final class Presentation {
         for (String dim : new String[] {"width", "height"}) {
             String v = e.attr(dim).strip();
             if (!v.isEmpty()) {
-                out.put(dim, v.matches("[0-9.]+") ? v + "px" : v);
+                out.put(dim, DIGITS.matcher(v).matches() ? v + "px" : v);
             }
         }
         if ("font".equals(e.normalName())) {
@@ -144,7 +150,7 @@ final class Presentation {
             table = table.parent();
         }
         String v = table == null || !"table".equals(table.normalName()) ? "" : table.attr("cellpadding").strip();
-        if (v.matches("[0-9]{1,4}([.][0-9]+)?")) {
+        if (PADDING.matcher(v).matches()) {
             for (String side : new String[] {"top", "right", "bottom", "left"}) {
                 out.put("padding-" + side, v + "px");
             }
