@@ -38,6 +38,11 @@ final class LineBreaker {
 
     private final List<TabStop> stops = new ArrayList<>();
 
+    // Reused for every word: a line copies the slices out, so the lists never outlive the word
+    private final List<Line.Slice> wordSlices = new ArrayList<>();
+
+    private final List<Item> wordZeros = new ArrayList<>();
+
     private float shrink;
 
     private float autoShrink;
@@ -234,8 +239,10 @@ final class LineBreaker {
             }
             int start = it.start + offset;
             int wordEnd = wordEnd(start);
-            List<Line.Slice> word = new ArrayList<>();
-            List<Item> zeros = new ArrayList<>();
+            List<Line.Slice> word = wordSlices;
+            List<Item> zeros = wordZeros;
+            word.clear();
+            zeros.clear();
             float w = 0;
             int wi = item;
             int wo = offset;
