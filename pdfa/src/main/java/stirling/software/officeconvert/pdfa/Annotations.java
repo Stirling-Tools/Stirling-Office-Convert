@@ -77,26 +77,26 @@ final class Annotations {
             if (!allowed && poster(a, type, level)) {
                 try {
                     AnnotationFlatten.run(doc, page, a);
-                    report.warn("Drew the appearance of a " + type + " annotation into the page and removed the"
-                            + " annotation, which " + level.label() + " does not allow");
+                    report.warn("Drew the appearance of a %s annotation into the page and removed the annotation, which "
+                            + level.label() + " does not allow", type);
                     continue;
                 } catch (IOException | RuntimeException e) {
                     PdfFiles.stopIfInterrupted();
                 }
             }
             if ((!allowed || forbidden) && !flatten) {
-                report.warn("Removed " + (type.isEmpty() ? "an annotation without a type" : "a " + type
-                        + " annotation") + ", which " + level.label() + " does not allow");
+                report.warn("Removed " + (type.isEmpty() ? "an annotation without a type" : "a %s annotation") + ", which "
+                        + level.label() + " does not allow", type);
                 continue;
             }
             int flags = a.getInt(COSName.F, 0);
             if ((flags & (HIDDEN | NO_VIEW)) != 0 && !"Popup".equals(type)) {
-                report.warn("Removed a hidden " + type + " annotation, which PDF/A does not allow");
+                report.warn("Removed a hidden %s annotation, which PDF/A does not allow", type);
                 continue;
             }
             if (flatten) {
                 AnnotationFlatten.run(doc, page, a);
-                report.warn("Drew a " + type + " annotation into the page, as PDF/A-1 does not allow its type");
+                report.warn("Drew a %s annotation into the page, as PDF/A-1 does not allow its type", type);
                 continue;
             }
             flags = (flags | PRINT) & ~(INVISIBLE | HIDDEN | NO_VIEW | TOGGLE_NO_VIEW);
@@ -157,7 +157,7 @@ final class Annotations {
                 PDAnnotation annot = PDAnnotation.createAnnotation(a);
                 annot.constructAppearances(doc);
             } catch (IOException | RuntimeException e) {
-                report.warn("Could not draw a " + type + " annotation's appearance: " + e.getMessage());
+                report.warn("Could not draw a %s annotation's appearance", type);
             }
             ap = ContentGraph.dict(a.getDictionaryObject(COSName.AP));
             if (ap != null) {
@@ -169,7 +169,7 @@ final class Annotations {
             ap = new COSDictionary();
             ap.setItem(COSName.N, empty(doc, a));
             a.setItem(COSName.AP, ap);
-            report.warn("Gave a " + type + " annotation an empty appearance, as it had none");
+            report.warn("Gave a %s annotation an empty appearance, as it had none", type);
         }
         COSBase n = ap.getDictionaryObject(COSName.N);
         boolean button = "Widget".equals(type) && COSName.BTN.equals(fieldType(a));

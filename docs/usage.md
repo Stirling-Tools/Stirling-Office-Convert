@@ -728,9 +728,21 @@ PdfToPdfA.convert(pdDocument, outputStream, options);     // an open document, w
 
 `convert(PDDocument, ...)` converts the document it is given in place: afterwards it holds the PDF/A changes (output
 intent, metadata, fonts, rewritten content), whether the call succeeds or fails, so load a fresh copy if the original
-is still needed. After a timeout the converter waits up to ten seconds for its worker to stop. If third-party
-work ignores interruption, that worker can still use the document after the call returns; do not reuse or close
-that instance. Prefer the file-based overload for documents that need a strict timeout.
+is still needed. It passes the same memory admission as the file-based overload, and writes to a temporary file that
+is copied to the stream only once the conversion has succeeded, so a failed or timed-out call writes nothing to it.
+After a timeout the converter waits up to ten seconds for its worker to stop. If third-party work ignores
+interruption, that worker can still use the document after the call returns; do not reuse or close that instance
+until `Admission.jvm().status().stuck()` is 0. Prefer the file-based overload for documents that need a strict timeout.
+
+`Result.warnings()` keeps up to 200 distinct messages; names taken from the file (annotation and action types,
+structure types) are clipped, at most 20 messages of one kind and 100 in all name the file, and anything past that is
+counted in a last "N more warnings omitted" line. `Result.unverified()` lists rules the output may still break because
+the converter could not fix them (an invalid ICC profile with no replacement, DeviceN colours it could not convert);
+validate the file before trusting its label when it is not empty. A content stream PDFBox cannot read to the end is
+cut at the last whole operation before the bad token, with open graphics states, text objects and marked content
+closed, and the conversion warns that what followed is lost; a stream that cannot be decoded is emptied with a
+warning. Either way the kept content is what every later check sees, so fonts, colours and operators are checked on
+exactly what is written.
 
 - Fonts. Every font a page uses is embedded. A font without a program is drawn from a metric-compatible stand-in
   from the font library (Liberation, URW base 35, Carlito and the rest of the production set; `fonts` takes a
@@ -782,8 +794,8 @@ that instance. Prefer the file-based overload for documents that need a strict t
   and invalid object metadata. Parts 2 and 3 keep valid predefined properties in page, image and font metadata;
   unsupported properties are removed individually, with a warning, while the other properties remain.
   Annotations without an appearance get one; LZW streams and inline images with filters PDF/A does not allow are
-  recompressed with Flate; forms that borrow their parent's resources get their own; encryption is removed (give the
-  password for a protected file).
+  recompressed with Flate; forms that borrow their parent's resources get their own; encryption is removed, with a
+  warning (give the password for a protected file).
 - Embedded files: removed for part 1, kept for part 2 only when they validate as PDF/A-1 or PDF/A-2, and for part 4
   when they validate as PDF/A-1, PDF/A-2 or PDF/A-4. Part 3 keeps arbitrary file types with a MIME type, a modification
   date, an `AFRelationship` and the catalog's `AF` array. Eligible files are listed in the embedded-file name tree

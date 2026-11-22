@@ -19,6 +19,8 @@ import stirling.software.officeconvert.extract.PdfFiles;
 
 final class Interactive {
 
+    static final int MAX_ITEMS = 1_000_000;
+
     private final PDDocument doc;
 
     private final PdfALevel level;
@@ -82,6 +84,15 @@ final class Interactive {
         }
     }
 
+    private static void visit(Set<COSDictionary> seen) throws IOException {
+        if (seen.size() > MAX_ITEMS) {
+            throw new IOException("The PDF has more than " + MAX_ITEMS + " outline items or form fields, too many to check");
+        }
+        if ((seen.size() & 0xFFF) == 0) {
+            PdfFiles.stopIfInterrupted();
+        }
+    }
+
     private void outlines() throws IOException {
         COSDictionary root = ContentGraph.dict(doc.getDocumentCatalog().getCOSObject().getDictionaryObject(COSName.OUTLINES));
         if (root == null) {
@@ -90,11 +101,12 @@ final class Interactive {
         Set<COSDictionary> seen = Collections.newSetFromMap(new IdentityHashMap<>());
         List<COSDictionary> stack = new ArrayList<>();
         stack.add(root);
-        while (!stack.isEmpty() && seen.size() < 1_000_000) {
+        while (!stack.isEmpty()) {
             COSDictionary item = stack.remove(stack.size() - 1);
             if (!seen.add(item)) {
                 continue;
             }
+            visit(seen);
             Actions.filterKey(item, COSName.A, level, report);
             COSDictionary first = ContentGraph.dict(item.getDictionaryObject(COSName.FIRST));
             COSDictionary next = ContentGraph.dict(item.getDictionaryObject(COSName.NEXT));
@@ -128,11 +140,12 @@ final class Interactive {
                 }
             }
         }
-        while (!stack.isEmpty() && seen.size() < 1_000_000) {
+        while (!stack.isEmpty()) {
             COSDictionary f = stack.remove(stack.size() - 1);
             if (!seen.add(f)) {
                 continue;
             }
+            visit(seen);
             if (level.part() == 4) {
                 Actions.filterAdditional(f, null, level, report);
                 if (f.containsKey(COSName.A) && !COSName.WIDGET.equals(f.getCOSName(COSName.SUBTYPE))) {

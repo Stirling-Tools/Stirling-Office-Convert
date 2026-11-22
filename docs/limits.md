@@ -94,6 +94,9 @@ Every page render goes through one guarded renderer, so these limits hold for pa
 | Path segments in PDF/A flattening | 100,000 | flattening fails |
 | Transparency group nesting in PDF/A flattening | 64 | flattening fails |
 | PDF/A flattening raster | 40 M pixels | the resolution is lowered |
+| PDF/A content streams (pages, forms, patterns, glyphs, appearances) | 200,000 | the conversion fails |
+| PDF/A outline items, and form fields | 1,000,000 each | the conversion fails |
+| PDF/A warnings | 200 distinct; 100 naming the file, 20 per kind | the rest are counted in "N more warnings omitted" |
 | Photo split pages / pixels | 1,000 / 100 M | refused |
 
 Stack overflows and out-of-memory errors while drawing are reported as ordinary conversion failures; an EPUB or

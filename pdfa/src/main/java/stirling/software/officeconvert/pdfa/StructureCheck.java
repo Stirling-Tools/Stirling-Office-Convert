@@ -79,7 +79,7 @@ final class StructureCheck {
                 problems.add("no document language");
             } else {
                 cat.setString(COSName.LANG, guess);
-                report.warn("Set the document language to " + guess + " from its structure");
+                report.warn("Set the document language to %s from its structure", guess);
             }
         }
         if (!problems.isEmpty()) {

@@ -45,21 +45,12 @@ final class ContentFixer {
                 n.owner().setItem(COSName.CONTENTS, known);
                 continue;
             }
-            ContentTokens.Salvaged parsed;
-            try {
-                parsed = ContentTokens.salvage(n.streams());
-            } catch (IOException e) {
-                Decoded.rethrowFatal(e);
-                PdfFiles.stopIfInterrupted();
-                colours.unknown();
-                continue;
-            }
+            ContentTokens.Salvaged parsed = ContentTokens.salvage(n.streams());
             List<Object> tokens = parsed.tokens();
             List<Object> out = new ArrayList<>(tokens.size());
-            boolean changed = !parsed.complete();
+            boolean changed = salvaged(parsed, report);
             if (changed) {
                 colours.unknown();
-                report.warn("Removed a broken token at the end of a content stream");
             }
             UndefinedResources undefined = UndefinedResources.in(n, glyphResources);
             int start = 0;
@@ -106,7 +97,7 @@ final class ContentFixer {
                 colours.operator(name);
                 if (!OPERATORS.contains(name)) {
                     changed = true;
-                    report.warn("Removed content operators that PDF/A does not allow (" + clip(name) + ")");
+                    report.warn("Removed content operators that PDF/A does not allow (%s)", clip(name));
                     continue;
                 }
                 if ("ri".equals(name) && operation.size() == 2
@@ -162,6 +153,39 @@ final class ContentFixer {
             }
         }
         usage.resolve();
+    }
+
+    /** Rewrites every content stream PDFBox cannot read to the end, so no later pass sees less than was kept. */
+    static void salvage(ContentGraph graph, Report report) throws IOException {
+        Map<List<COSStream>, COSBase> pages = new HashMap<>();
+        for (ContentGraph.Node n : graph.nodes()) {
+            PdfFiles.stopIfInterrupted();
+            List<COSStream> streams = n.streams();
+            COSBase known = n.kind() == ContentGraph.Kind.PAGE ? pages.get(streams) : null;
+            if (known != null) {
+                n.owner().setItem(COSName.CONTENTS, known);
+                continue;
+            }
+            ContentTokens.Salvaged parsed = ContentTokens.salvage(streams);
+            if (salvaged(parsed, report)) {
+                ContentTokens.replace(n, parsed.tokens());
+                if (n.kind() == ContentGraph.Kind.PAGE) {
+                    pages.put(streams, n.owner().getItem(COSName.CONTENTS));
+                }
+            }
+        }
+    }
+
+    private static boolean salvaged(ContentTokens.Salvaged parsed, Report report) {
+        if (parsed.unreadable() > 0) {
+            report.warn("Emptied content streams that could not be decoded, so what they drew is lost");
+        }
+        if (parsed.midStream()) {
+            report.warn("Cut content streams short at a token that could not be read, so what followed it is lost");
+        } else if (!parsed.complete()) {
+            report.warn("Removed a broken token at the end of a content stream");
+        }
+        return !parsed.complete() || parsed.unreadable() > 0;
     }
 
     private static COSDictionary resources(ContentGraph.Node n) {
