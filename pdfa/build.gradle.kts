@@ -12,6 +12,7 @@ dependencies {
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)
     testImplementation(libs.jai.imageio.jpeg2000)
+    testImplementation(libs.poi.ooxml)
     testRuntimeOnly(libs.junit.platform.launcher)
 }
 
