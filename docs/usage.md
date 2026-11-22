@@ -518,18 +518,21 @@ one of these names that is really an Office package or RTF converts as what it i
 Memory is shared out across the JVM, by both directions (`stirling.software.officeconvert.memory.Admission` in the
 core module, which the topdf module now depends on). Before a document is laid out, an estimate of the heap it needs
 is taken from its structure alone: for Office files the markup that becomes runs, cells and shapes and the largest
-picture to decode (`OfficeToPdf.memoryEstimate(path)`); for a loaded PDF the pages to read, the largest picture and
-the largest figure to render (`OfficeConvert.memoryEstimate(pdf, format, settings)`). Conversions start only while
+picture to decode (`OfficeToPdf.memoryEstimate(path)`); for a loaded PDF the pages to read, the content of its busiest
+page, the largest picture and the largest figure to render (`OfficeConvert.memoryEstimate(pdf, format, settings)`). Conversions start only while
 their estimates fit in 60 % of the heap (`-Dstirling.officeconvert.memoryBudgetPercent`), at most
 `-Dstirling.officeconvert.maxConcurrent` run at once (by default two per processor, but no more than one per 192 MB
 of budget, and at least two), and none starts while the heap after its last collection is over 75 % full or, in a Linux container, while
 the memory that cannot be reclaimed (tmpfs included, page cache not) plus the heap the JVM may still commit is over
 85 % of the limit. A document larger than the whole budget runs alone, or with
 `-Dstirling.officeconvert.refuseOversize=true` is refused at once with `Admission.TooLarge`. The wait counts towards the
-timeout, and a conversion that waits longer than `-Dstirling.officeconvert.maxWaitSeconds` (default 600, 0 = no limit)
-fails with `Admission.Busy` ("The converter is busy; try again later"). A conversion that already holds memory never
-waits again for a nested step (such as an eBook cover). A host can set all four at once with
-`Admission.configure(new Admission.Limits(percent, maxConcurrent, maxWait, refuseOversize))`, where `maxConcurrent` 0 is
+timeout, and a conversion that waits longer than `-Dstirling.officeconvert.maxWaitSeconds` (default 0, no limit of its
+own) fails with `Admission.Busy` ("The converter is busy; try again later"); with the default a conversion whose
+timeout is 0 can wait forever. A conversion that already holds memory never
+waits again for a nested step (such as an eBook cover). A host can set them all at once with
+`Admission.configure(new Admission.Limits(percent, maxConcurrent, maxWait, refuseOversize, readmitStopped))`
+(`readmitStopped`, `-Dstirling.officeconvert.readmitStopped`, retries a conversion stopped for memory while others ran;
+see [limits](limits.md#memory-admission)), where `maxConcurrent` 0 is
 automatic and `Limits.defaults()` reads the properties; conversions already running keep their memory and slot, and
 the new limits apply to those that start or are waiting. `Admission.jvm().status()` reports the budget, the bytes
 held, the conversions running, the slots, how many are stuck and the share of the heap in use. A worker that ignores its timeout is abandoned after a short wait and counted as

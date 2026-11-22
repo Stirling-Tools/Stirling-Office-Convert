@@ -530,4 +530,121 @@ class AdmissionTest {
         }
     }
 
+    private record Held(Admission.Ticket ticket, Thread owner, CountDownLatch release) {}
+
+    // Admitted on a thread that stays alive, as a worker that ignores its timeout would
+    private static Held held(Admission a, long bytes) throws Exception {
+        AtomicReference<Admission.Ticket> got = new AtomicReference<>();
+        CountDownLatch entered = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        Thread t = Thread.ofPlatform().daemon().start(() -> {
+            try {
+                got.set(a.enter(bytes));
+                entered.countDown();
+                release.await();
+            } catch (InterruptedIOException | InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        });
+        assertTrue(entered.await(1, TimeUnit.MINUTES));
+        return new Held(got.get(), t, release);
+    }
+
+    @Test
+    void aStoppedConversionWhoseWorkerWasAbandonedNoLongerShieldsTheOthers() throws Exception {
+        double[] used = {0.5};
+        Admission a = new Admission(1024 * MB, 100, 8, collect -> used[0]);
+        Held stuck = held(a, 300 * MB);
+        Admission.Ticket medium = apart(a, 100 * MB);
+        Admission.Ticket small = apart(a, 10 * MB);
+        assertTimeoutPreemptively(Duration.ofSeconds(30), () -> {
+            used[0] = 0.95;
+            awaitExhausted(stuck.ticket());
+            assertFalse(medium.exhausted(), "one stopped conversion at a time");
+            Admission.abandoned(stuck.owner());
+            awaitExhausted(medium);
+            Thread.sleep(30);
+            assertFalse(small.exhausted(), "the next largest gives way, not every one");
+        });
+        stuck.release().countDown();
+        stuck.owner().join(Duration.ofMinutes(1));
+        stuck.ticket().close();
+        medium.close();
+        small.close();
+    }
+
+    @Test
+    void aStoppedConversionThatDoesNotEndShieldsTheOthersOnlyForItsGrace() throws Exception {
+        double[] used = {0.5};
+        Admission a = new Admission(1024 * MB, 100, 8, collect -> used[0]);
+        a.stopGraceNanos = TimeUnit.MILLISECONDS.toNanos(1_500);
+        Held slow = held(a, 300 * MB);
+        Admission.Ticket medium = apart(a, 100 * MB);
+        assertTimeoutPreemptively(Duration.ofSeconds(30), () -> {
+            used[0] = 0.95;
+            awaitExhausted(slow.ticket());
+            Thread.sleep(30);
+            assertFalse(medium.exhausted(), "within its grace the stopped one is still given time to end");
+            awaitExhausted(medium);
+        });
+        slow.release().countDown();
+        slow.owner().join(Duration.ofMinutes(1));
+        slow.ticket().close();
+        medium.close();
+    }
+
+    @Test
+    void theFullCollectionRunsWithoutHoldingTheGate() throws Exception {
+        CountDownLatch collecting = new CountDownLatch(1);
+        CountDownLatch finish = new CountDownLatch(1);
+        double[] used = {0.5};
+        Admission a = new Admission(1024 * MB, 100, 8, collect -> {
+            if (collect) {
+                collecting.countDown();
+                try {
+                    finish.await();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+            return used[0];
+        });
+        Admission.Ticket small = apart(a, 10 * MB);
+        Admission.Ticket large = apart(a, 200 * MB);
+        used[0] = 0.95;
+        Thread checker = Thread.ofPlatform().start(large::exhausted);
+        assertTimeoutPreemptively(Duration.ofSeconds(30), () -> {
+            assertTrue(collecting.await(1, TimeUnit.MINUTES));
+            assertEquals(2, a.status().running());
+            small.close();
+            assertEquals(1, a.running());
+        });
+        finish.countDown();
+        checker.join(Duration.ofMinutes(1));
+        large.close();
+    }
+
+    @Test
+    void retriesShareOneWaitForRoom() throws Exception {
+        Admission a = new Admission(1024 * MB,
+                new Admission.Limits(100, 8, Duration.ofMillis(2_000), false, true), collect -> 0.1);
+        Admission.Ticket first = apart(a, 10 * MB);
+        Admission.Ticket second = apart(a, 10 * MB);
+        int[] attempts = {0};
+        long start = System.nanoTime();
+        assertTimeoutPreemptively(Duration.ofSeconds(30), () -> assertThrows(Admission.Stopped.class,
+                () -> a.retrying(() -> {
+                    if (++attempts[0] == 1) {
+                        Thread.ofVirtual().start(() -> {
+                            LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(1_500));
+                            first.close();
+                        });
+                    }
+                    throw new Admission.Stopped(true);
+                })));
+        long took = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
+        assertEquals(2, attempts[0]);
+        assertTrue(took < 3_000, "the second wait gets only what the first left, took " + took + " ms");
+        second.close();
+    }
 }

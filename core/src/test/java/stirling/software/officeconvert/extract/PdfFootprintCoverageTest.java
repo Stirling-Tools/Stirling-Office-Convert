@@ -271,4 +271,45 @@ class PdfFootprintCoverageTest {
             assertTrue(extra(doc) >= PdfFootprint.UNSCANNED_PICTURE);
         }
     }
+
+    private static String text(int bytes) {
+        StringBuilder b = new StringBuilder("BT /F1 4 Tf ");
+        while (b.length() < bytes - 3) {
+            b.append("(ab) Tj ");
+        }
+        return b.append("ET").toString();
+    }
+
+    @Test
+    void theBusiestPageIsChargedForItsContentPastTheAllowance() throws IOException {
+        int bytes = 256 << 10;
+        try (PDDocument doc = new PDDocument()) {
+            page(doc).getCOSObject().setItem(COSName.CONTENTS, stream(doc, text(bytes)));
+            long charged = (text(bytes).length() - PdfFootprint.PAGE_CONTENT_ALLOWANCE) * PdfFootprint.CONTENT_BYTE_COST;
+            assertEquals(charged, extra(doc));
+        }
+        try (PDDocument doc = new PDDocument()) {
+            page(doc).getCOSObject().setItem(COSName.CONTENTS, stream(doc, text(4 << 20)));
+            assertEquals(PdfFootprint.MAX_CONTENT_CHARGE, extra(doc), "a page is read only so far");
+        }
+        try (PDDocument doc = new PDDocument()) {
+            page(doc).getCOSObject().setItem(COSName.CONTENTS, stream(doc, text(4 << 10)));
+            assertEquals(0, extra(doc), "an ordinary page costs only the fixed amount");
+        }
+    }
+
+    @Test
+    void contentSpreadOverPagesIsChargedForTheBusiestPageOnly() throws IOException {
+        long one;
+        try (PDDocument doc = new PDDocument()) {
+            page(doc).getCOSObject().setItem(COSName.CONTENTS, stream(doc, text(256 << 10)));
+            one = extra(doc);
+        }
+        try (PDDocument doc = new PDDocument()) {
+            page(doc).getCOSObject().setItem(COSName.CONTENTS, stream(doc, text(256 << 10)));
+            page(doc).getCOSObject().setItem(COSName.CONTENTS, stream(doc, text(64 << 10)));
+            long pages = PdfFootprint.estimate(doc, 0, 0, 150f);
+            assertEquals(one, pages - baseline() - PdfFootprint.SAMPLED_PAGE_BYTES - PdfFootprint.PAGE_BYTES);
+        }
+    }
 }
