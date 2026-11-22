@@ -22,7 +22,9 @@ final class FigureLabels {
 
     private static final int MAX_TICK_CHARS = 80;
 
-    private static final Pattern NUMBER = Pattern.compile("[-+\\u2212]?[\\d.,]+[%)]?(?:\\s+[-+\\u2212]?[\\d.,]+[%)]?)*");
+    // Possessive: a greedy group loop recurses once per number and overflows the stack on a long row.
+    private static final Pattern NUMBER =
+            Pattern.compile("[-+\\u2212]?+[\\d.,]++[%)]?+(?:\\s++[-+\\u2212]?+[\\d.,]++[%)]?+)*+");
 
     private static final float MIN_WIDTH = 60f;
 

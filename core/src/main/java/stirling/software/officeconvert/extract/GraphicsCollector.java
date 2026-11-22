@@ -56,6 +56,9 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
 
     private static final int MAX_IMAGES = 10_000;
 
+    // Layout compares rules and fills pairwise, so past this the page is kept as a picture, like glyphs.
+    private static final int MAX_PAGE_SEGMENTS = 50_000;
+
     private static final Point2D.Float CURVE = new Point2D.Float(Float.NaN, Float.NaN);
 
     private final AffineTransform toDisplay;
@@ -658,6 +661,7 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
                 Math.max(far - near, 0.1f),
                 onPaper(PdfColours.toRgb(gs.getNonStrokingColor(), 0), gs.getNonStrokeAlphaConstant()));
         rules.add(rule);
+        withinSegmentCap();
         stencilRules++;
         paintOrder.put(rule, painted++);
         return true;
@@ -818,6 +822,7 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
         }
         rules.addAll(shapes.rules());
         fills.addAll(shapes.fills());
+        withinSegmentCap();
         BlendMode blend = gs.getBlendMode();
         boolean blended = gs.getSoftMask() != null
                 || blend != null && blend != BlendMode.NORMAL && blend != BlendMode.COMPATIBLE;
@@ -858,6 +863,12 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
             lettering.put(shapes.mark(), outline());
         }
         painted++;
+    }
+
+    private void withinSegmentCap() {
+        if (rules.size() + fills.size() > MAX_PAGE_SEGMENTS) {
+            throw new PageTooComplexException("More than " + MAX_PAGE_SEGMENTS + " lines and boxes on one page");
+        }
     }
 
     private void pastBudget(boolean fill, boolean stroke) {

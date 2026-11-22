@@ -1,7 +1,10 @@
 package stirling.software.officeconvert.layout;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Set;
 
 import stirling.software.officeconvert.extract.PageGraphics.Fill;
 import stirling.software.officeconvert.extract.PageGraphics;
@@ -18,12 +21,18 @@ final class TextBoxFinder {
         this.paragraphs = paragraphs;
     }
 
+    // Past this the pairwise passes cost more than side boxes are worth, as in HiddenFills.
+    private static final int MAX_CANDIDATES = 3000;
+    private static final long MAX_COMPARED = 10_000_000L;
+
     private static final float PANEL_WIDTH = 120f;
     private static final float PANEL_HEIGHT = 60f;
 
     static List<Container> containers(List<PageGraphics.VectorMark> marks, List<Line> segments, boolean tinted) {
         List<Container> out = new ArrayList<>();
-        for (PageGraphics.VectorMark m : marks) {
+        for (int mi = 0; mi < marks.size(); mi++) {
+            Polls.check(mi);
+            PageGraphics.VectorMark m = marks.get(mi);
             boolean panel = m.boxy() && m.width() >= PANEL_WIDTH && m.height() >= PANEL_HEIGHT
                     && FigureFinder.isProse(new Box(m.x(), m.top(), m.right(), m.bottom()), segments);
             if (m.shading() || m.sparse() || m.segments() > 180 || m.diagonal() && !m.curved() && !panel || m.width() < 40
@@ -75,23 +84,31 @@ final class TextBoxFinder {
                 candidates.add(new Container(null, Regions.of(f), f.rgb(), -1, 0, false));
             }
         }
-        candidates.removeIf(c -> c.box().width() > colWidth * 0.85f || c.box().width() < 36 || c.box().height() < 18
-                || Backdrops.isBackdrop(c.box(), flow));
-        for (Container cand : candidates) {
+        candidates.removeIf(c -> c.box().width() > colWidth * 0.85f || c.box().width() < 36 || c.box().height() < 18);
+        if (candidates.size() > MAX_CANDIDATES || (long) candidates.size() * flow.size() > MAX_COMPARED) {
+            return new Result(out, claimed);
+        }
+        candidates.removeIf(c -> Backdrops.isBackdrop(c.box(), flow));
+        Set<Line> enclosed = enclosed(flow, candidates);
+        Set<Line> taken = Collections.newSetFromMap(new IdentityHashMap<>());
+        for (int ci = 0; ci < candidates.size(); ci++) {
+            Polls.check(ci);
+            Container cand = candidates.get(ci);
             Box box = cand.box();
             Fill f = cand.mark() == null ? new Fill(box.x(), box.top(), box.right(), box.bottom(), cand.fill()) : null;
             List<Line> inside = new ArrayList<>();
             boolean beside = false;
             float gap = Float.MAX_VALUE;
             for (Line l : flow) {
-                boolean in = l.x >= box.x() - 1 && l.right <= box.right() + 1
-                        && l.top >= box.top() - 2 && l.bottom <= box.bottom() + 2;
-                if (in) {
+                if (taken.contains(l)) {
+                    continue;
+                }
+                if (encloses(box, l)) {
                     inside.add(l);
                     continue;
                 }
                 boolean overlapsV = l.top < box.bottom() - 1 && l.bottom > box.top() + 1;
-                if (overlapsV && (l.right <= box.x() + 1 || l.x >= box.right() - 1) && !insideOther(l, cand, candidates)) {
+                if (overlapsV && (l.right <= box.x() + 1 || l.x >= box.right() - 1) && !enclosed.contains(l)) {
                     beside = true;
                     gap = Math.min(gap, l.right <= box.x() + 1 ? box.x() - l.right : l.x - box.right());
                 }
@@ -99,10 +116,11 @@ final class TextBoxFinder {
             if (inside.size() < 2 || !beside || gap < 6f || f != null && touchesSameFill(f, fills)) {
                 continue;
             }
-            flow.removeAll(inside);
+            taken.addAll(inside);
             out.add(item(cand, inside, gap));
             claimed.add(cand);
         }
+        flow.removeIf(taken::contains);
         return new Result(out, claimed);
     }
 
@@ -137,13 +155,21 @@ final class TextBoxFinder {
         return false;
     }
 
-    private static boolean insideOther(Line l, Container self, List<Container> candidates) {
-        for (Container c : candidates) {
-            Box b = c.box();
-            if (c != self && l.x >= b.x() - 1 && l.right <= b.right() + 1 && l.top >= b.top() - 2 && l.bottom <= b.bottom() + 2) {
-                return true;
+    // A line beside one candidate but inside another does not make the first a side box.
+    private static Set<Line> enclosed(List<Line> flow, List<Container> candidates) {
+        Set<Line> out = Collections.newSetFromMap(new IdentityHashMap<>());
+        for (Line l : flow) {
+            for (Container c : candidates) {
+                if (encloses(c.box(), l)) {
+                    out.add(l);
+                    break;
+                }
             }
         }
-        return false;
+        return out;
+    }
+
+    private static boolean encloses(Box b, Line l) {
+        return l.x >= b.x() - 1 && l.right <= b.right() + 1 && l.top >= b.top() - 2 && l.bottom <= b.bottom() + 2;
     }
 }

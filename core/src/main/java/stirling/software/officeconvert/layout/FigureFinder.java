@@ -226,6 +226,7 @@ final class FigureFinder {
             return List.of(all);
         }
         while (true) {
+            Polls.check();
             List<Box> merged = clusterOnce(current, gap);
             if (merged.size() == current.size()) {
                 return merged;

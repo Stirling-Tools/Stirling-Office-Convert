@@ -65,18 +65,24 @@ final class MathFinder {
         }
         List<Box> clusters = FigureFinder.cluster(boxes, bodySize * 0.35f);
         List<Box> out = new ArrayList<>();
-        for (Box c : clusters) {
+        List<Box> unrebuilt = new ArrayList<>(segments.size());
+        for (Line l : segments) {
+            unrebuilt.add(unrebuilt(l));
+        }
+        for (int ci = 0; ci < clusters.size(); ci++) {
+            Polls.check(ci);
+            Box c = clusters.get(ci);
             Box grown = c;
-            for (Line l : segments) {
-                Box u = unrebuilt(l);
+            for (int li = 0; li < segments.size(); li++) {
+                Box u = unrebuilt.get(li);
                 if (u == null) {
                     continue;
                 }
                 boolean inside = u.top() >= c.top() - 1 && u.bottom() <= c.bottom() + 1
                         && u.x() >= c.x() - bodySize && u.right() <= c.right() + bodySize;
                 float cy = (u.top() + u.bottom()) / 2f;
-                boolean number = l.text().matches("\\(\\d+(\\.\\d+)?[a-z]?\\)") && cy > c.top() && cy < c.bottom()
-                        && u.x() > c.right() && u.x() - c.right() < 200;
+                boolean number = !inside && cy > c.top() && cy < c.bottom() && u.x() > c.right()
+                        && u.x() - c.right() < 200 && EQUATION_NUMBER.matcher(segments.get(li).text()).matches();
                 if (inside || number) {
                     grown = grown.union(u);
                 }
