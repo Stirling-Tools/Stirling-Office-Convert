@@ -735,8 +735,9 @@ final class Downsample {
             Palette.rgbRow(rgb, y, row);
             for (int x = 0; x < rgb.getWidth(); x++) {
                 int c = row[x];
-                raster.setSample(x, y, 0, ((c >> 16 & 0xFF) * 299 + (c >> 8 & 0xFF) * 587 + (c & 0xFF) * 114) / 1000);
+                row[x] = ((c >> 16 & 0xFF) * 299 + (c >> 8 & 0xFF) * 587 + (c & 0xFF) * 114) / 1000;
             }
+            raster.setSamples(0, y, row.length, 1, 0, row);
         }
         return gray;
     }

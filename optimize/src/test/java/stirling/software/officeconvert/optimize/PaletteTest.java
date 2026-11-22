@@ -73,9 +73,11 @@ class PaletteTest {
         }
         BufferedImage indexed = new BufferedImage(53, 21, BufferedImage.TYPE_BYTE_INDEXED,
                 new IndexColorModel(8, 256, grey, grey, grey));
+        BufferedImage stray = noise(BufferedImage.TYPE_INT_RGB, 53, 21, 256, 5);
+        stray.getRaster().setDataElements(7, 3, new int[] {0xAB123456});
         for (BufferedImage image : new BufferedImage[] {noise(BufferedImage.TYPE_INT_RGB, 53, 21, 256, 1),
             noise(BufferedImage.TYPE_3BYTE_BGR, 53, 21, 256, 2), noise(BufferedImage.TYPE_BYTE_GRAY, 53, 21, 256, 3),
-            noise(BufferedImage.TYPE_INT_ARGB, 53, 21, 256, 4), indexed}) {
+            noise(BufferedImage.TYPE_INT_ARGB, 53, 21, 256, 4), indexed, stray}) {
             int[] row = new int[image.getWidth()];
             for (int y = 0; y < image.getHeight(); y++) {
                 Palette.rgbRow(image, y, row);

@@ -202,7 +202,15 @@ final class Palette {
 
     // Same values as getRGB(x, y), without its per-pixel array allocation
     static void rgbRow(BufferedImage image, int y, int[] row) {
-        image.getRGB(0, y, row.length, 1, row, 0, row.length);
+        if (image.getType() != BufferedImage.TYPE_INT_RGB) {
+            image.getRGB(0, y, row.length, 1, row, 0, row.length);
+            return;
+        }
+        // Packed RGB pixels: getRGB keeps the low 24 bits and reports them as opaque
+        image.getRaster().getDataElements(0, y, row.length, 1, row);
+        for (int x = 0; x < row.length; x++) {
+            row[x] = row[x] & 0xFFFFFF | 0xFF000000;
+        }
     }
 
     static int bitsFor(int colours) {
