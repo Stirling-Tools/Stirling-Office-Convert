@@ -1,5 +1,6 @@
 package stirling.software.officeconvert.lineart;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -115,6 +116,18 @@ class CodecsTest {
             }
         }
         return image;
+    }
+
+    @Test
+    void jbig2KeepsTheShorterOfTheGenericAndSymbolStreams() {
+        Bitmap text = LineArt.binarize(glyphs(901, 700, 4), LineArt.Options.defaults().method(LineArt.Method.FIXED));
+        Bitmap speckle = LineArt.binarize(noise(64, 64, 1), LineArt.Options.defaults().method(LineArt.Method.FIXED));
+        for (Bitmap bitmap : new Bitmap[] {text, speckle}) {
+            byte[] generic = Jbig2Generic.encode(bitmap);
+            byte[] symbols = Jbig2Symbols.encode(bitmap);
+            byte[] expected = symbols != null && symbols.length < generic.length ? symbols : generic;
+            assertArrayEquals(expected, Codecs.jbig2(bitmap).data());
+        }
     }
 
     @Test

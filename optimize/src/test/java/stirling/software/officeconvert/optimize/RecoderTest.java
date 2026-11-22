@@ -60,4 +60,19 @@ class RecoderTest {
         Recoder.Plan p = plan(raw, null);
         assertArrayEquals(Deflate.best(raw, PdfOptimizer.Effort.DEFAULT), p.data());
     }
+
+    @Test
+    void sizedReadsMatchReadNBytesWhateverTheDeclaredLength() throws Exception {
+        byte[] data = sample();
+        for (int length : new int[] {0, 1, 5000, data.length}) {
+            byte[] stream = java.util.Arrays.copyOf(data, length);
+            for (int limit : new int[] {1, 4999, 5000, 5001, data.length + 1}) {
+                for (long declared : new long[] {-1, 0, 1, length - 1L, length, length + 1L, Long.MAX_VALUE}) {
+                    byte[] expected = new java.io.ByteArrayInputStream(stream).readNBytes(limit);
+                    byte[] actual = Recoder.upTo(new java.io.ByteArrayInputStream(stream), limit, declared);
+                    assertArrayEquals(expected, actual, length + " bytes, limit " + limit + ", declared " + declared);
+                }
+            }
+        }
+    }
 }
