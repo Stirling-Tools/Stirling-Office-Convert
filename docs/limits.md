@@ -158,7 +158,8 @@ The library changes this JVM-wide state, which also affects other code in the sa
 
 - Apache POI's shared XML options (`POIXMLTypeLoader.DEFAULT_XML_OPTIONS`), on the first Office to PDF conversion:
   DOCTYPE declarations are refused and the library's own element-counting `XMLReader` is installed, so every other
-  POI user in the JVM parses through it from then on. A reader the host set first is never replaced.
+  POI user in the JVM parses through it from then on. A reader the host set first is never replaced;
+  Office conversions then fail with `IllegalStateException` rather than parse without the hardened reader.
 - Apache POI's zip file count (`ZipSecureFile.setMaxFileCount`), raised above its default only when a package needs
   more entries and never lowered again until the JVM restarts.
 - The ImageIO registry: the library's JPEG 2000 reader is registered and ordered ahead of any other on every
