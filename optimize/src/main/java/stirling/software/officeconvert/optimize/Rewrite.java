@@ -157,15 +157,22 @@ final class Rewrite {
                 info = -1;
             }
             Resolver resolver = new Resolver(source, index);
-            roles.resolve(resolver, root);
-            Resolver.Found dr = resolver.find(new Roles.Loc(root, new Object[] {COSName.ACRO_FORM, COSName.DR}));
-            r.removals = Cleanup.unusedResources(roles, resolver, source, index, dr == null ? null : dr.loc(),
-                    r.brotliBudget);
-            if (source.load(index.key(root)) instanceof COSDictionary catalogDict
-                    && !catalogDict.containsKey(COSName.THREADS)) {
-                r.removals = Cleanup.withoutBeads(r.removals, roles);
+            Resolver.Found dr;
+            // Read-only walks: unpack each object stream once instead of once per object read
+            source.keepContainers(true);
+            try {
+                roles.resolve(resolver, root);
+                dr = resolver.find(new Roles.Loc(root, new Object[] {COSName.ACRO_FORM, COSName.DR}));
+                r.removals = Cleanup.unusedResources(roles, resolver, source, index, dr == null ? null : dr.loc(),
+                        r.brotliBudget);
+                if (source.load(index.key(root)) instanceof COSDictionary catalogDict
+                        && !catalogDict.containsKey(COSName.THREADS)) {
+                    r.removals = Cleanup.withoutBeads(r.removals, roles);
+                }
+                r.removals = Cleanup.withoutDeadDestinations(r.removals, roles, index, source, root);
+            } finally {
+                source.keepContainers(false);
             }
-            r.removals = Cleanup.withoutDeadDestinations(r.removals, roles, index, source, root);
             r.prune();
             r.fonts = Fonts.of(roles, resolver, source, index, dr == null ? null : dr.loc(), r.recorder, r.removals,
                     r.brotliBudget);
