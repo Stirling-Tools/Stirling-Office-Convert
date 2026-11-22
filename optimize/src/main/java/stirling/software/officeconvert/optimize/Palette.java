@@ -206,7 +206,7 @@ final class Palette {
 
     // Same values as getRGB(x, y), without its per-pixel array allocation
     static void rgbRow(BufferedImage image, int y, int[] row) {
-        if (image.getType() != BufferedImage.TYPE_INT_RGB) {
+        if (image.getType() != BufferedImage.TYPE_INT_RGB || !image.getColorModel().getColorSpace().isCS_sRGB()) {
             image.getRGB(0, y, row.length, 1, row, 0, row.length);
             return;
         }
