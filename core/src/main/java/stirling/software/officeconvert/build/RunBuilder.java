@@ -10,6 +10,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
+import stirling.software.officeconvert.extract.FontInfo;
 import stirling.software.officeconvert.extract.Glyph;
 import stirling.software.officeconvert.layout.BreakUnits;
 import stirling.software.officeconvert.layout.DocStats;
@@ -173,9 +174,34 @@ final class RunBuilder {
 
     private static final float ROUNDED_SIZE = 0.004f;
 
-    private static String lookKey(Glyph g) {
-        return g.font.family() + "|" + g.bold + "|" + g.italic + "|" + Math.round(g.size * 2f) + "|" + scaleOf(g)
-                + (arabicStandIn(g) ? "|ar" : hebrew(g) ? "|he" : modeled(g) != null ? "|" + modeled(g) : "");
+    // Neighbouring glyphs share a look, so the last key prefix is reused instead of rebuilt per call
+    private FontInfo keyFont;
+    private boolean keyBold;
+    private boolean keyItalic;
+    private int keySize;
+    private int keyScale;
+    private String keyBase;
+
+    private String lookKey(Glyph g) {
+        int size = Math.round(g.size * 2f);
+        int scale = scaleOf(g);
+        if (keyBase == null || g.font != keyFont || g.bold != keyBold || g.italic != keyItalic || size != keySize
+                || scale != keyScale) {
+            keyFont = g.font;
+            keyBold = g.bold;
+            keyItalic = g.italic;
+            keySize = size;
+            keyScale = scale;
+            keyBase = g.font.family() + "|" + g.bold + "|" + g.italic + "|" + size + "|" + scale;
+        }
+        if (arabicStandIn(g)) {
+            return keyBase + "|ar";
+        }
+        if (hebrew(g)) {
+            return keyBase + "|he";
+        }
+        Character.UnicodeScript script = modeled(g);
+        return script == null ? keyBase : keyBase + "|" + script;
     }
 
     static boolean keepsPunctuationIn(List<Line> lines) {
@@ -204,7 +230,7 @@ final class RunBuilder {
         return g.font.substituted() ? ScriptWidths.script(g.text) : null;
     }
 
-    private static void scriptWidths(Map<String, float[]> sums, Word w) {
+    private void scriptWidths(Map<String, float[]> sums, Word w) {
         Glyph first = w.first();
         Character.UnicodeScript script = modeled(first);
         if (script == null || first.vertAlign != 0) {
@@ -281,7 +307,7 @@ final class RunBuilder {
         return ps == null || !NASKH_OR_NASTALIQ.matcher(ps).find();
     }
 
-    private static void arabicWidths(Map<String, float[]> sums, Word w) {
+    private void arabicWidths(Map<String, float[]> sums, Word w) {
         Map<String, List<Glyph>> groups = new HashMap<>();
         for (Glyph g : w.glyphs) {
             if (g.vertAlign == 0 && arabicStandIn(g)) {
@@ -445,7 +471,7 @@ final class RunBuilder {
         return out;
     }
 
-    private static float[] look(Map<String, float[]> sums, Glyph g) {
+    private float[] look(Map<String, float[]> sums, Glyph g) {
         float[] acc = sums.computeIfAbsent(lookKey(g), k -> new float[14]);
         acc[5] = g.font.substituted() ? 1 : acc[5];
         acc[13] = g.size;
@@ -972,7 +998,12 @@ final class RunBuilder {
     }
 
     private static boolean dotted(String text) {
-        return !text.isEmpty() && text.chars().allMatch(c -> c == '.');
+        for (int i = 0; i < text.length(); i++) {
+            if (text.charAt(i) != '.') {
+                return false;
+            }
+        }
+        return !text.isEmpty();
     }
 
     static boolean isFillRun(String text) {

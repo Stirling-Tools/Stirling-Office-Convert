@@ -68,6 +68,9 @@ public record RunStyle(
     }
 
     public RunStyle withMath(String m) {
+        if (java.util.Objects.equals(m, math)) {
+            return this;
+        }
         return new RunStyle(font, size, bold, italic, underline, strike, rgb, highlight, vertAlign, symbol, spacing, scale,
                 smallCaps, border, lineHeight, m);
     }
