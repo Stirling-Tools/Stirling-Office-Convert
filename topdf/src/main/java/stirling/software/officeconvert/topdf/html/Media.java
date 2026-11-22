@@ -7,15 +7,19 @@ import java.util.regex.Pattern;
 /** Media queries as Chrome answers them when it prints: the medium is print, the viewport is the page's text width. */
 final class Media {
 
-    private static final Pattern FEATURE = Pattern.compile("\\(\\s*([a-z-]+)\\s*(?::\\s*([^)]*))?\\)");
+    private static final Pattern FEATURE = Pattern.compile("\\(\\s*+([a-z-]++)\\s*+(?::\\s*+([^)]*+))?\\)");
 
-    private static final Pattern RANGE = Pattern.compile("\\(\\s*(width|height)\\s*(<=|>=|<|>|=)\\s*([^)]*)\\)");
+    private static final Pattern RANGE = Pattern.compile(
+            "\\(\\s*+(width|height)\\s*+(<=|>=|<|>|=)\\s*+([^)]*+)\\)");
+
+    // Each pattern scans to the next ')' from every '(', so a long query costs its length squared
+    static final int MAX_QUERY_CHARS = 1_000;
 
     private Media() {}
 
     static boolean matches(String query, float viewportPx) {
         String q = query.strip().toLowerCase(Locale.ROOT);
-        if (q.isEmpty()) {
+        if (q.isEmpty() || q.length() > MAX_QUERY_CHARS) {
             return true;
         }
         for (String one : Css.splitTopLevel(q, ',')) {

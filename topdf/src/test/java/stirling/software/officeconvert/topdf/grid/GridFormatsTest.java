@@ -2,6 +2,7 @@ package stirling.software.officeconvert.topdf.grid;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.ByteArrayOutputStream;
@@ -161,5 +162,18 @@ class GridFormatsTest {
         Path in = Files.write(dir.resolve("lines.slk"), "ID;PWXL\r\nC;Y1;X1;K\"Line one\u001B :Line two\"\r\nE\r\n"
                 .getBytes(StandardCharsets.US_ASCII));
         assertEquals("Line one\nLine two", Sylk.read(in).get(0, 0).value());
+    }
+
+    @Test
+    void wideBlankFieldsEndingInALetterAreTrimmedInLinearTime() throws IOException {
+        String value = " ".repeat(64_999) + "x";
+        byte[][] records = new byte[8][];
+        java.util.Arrays.fill(records, value.getBytes(StandardCharsets.US_ASCII));
+        Path in = dbf("blank.dbf", new Object[][] {{"NOTE", 'C', 65_000, 0}}, records);
+        Grid g = assertTimeoutPreemptively(java.time.Duration.ofSeconds(5), () -> Dbf.read(in));
+        assertEquals(value, g.get(1, 0).value());
+        assertEquals("ab", Dbf.trimEnd("ab \u0000\t\r\n\f\u000B"));
+        assertEquals("", Dbf.trimEnd(" \u0000"));
+        assertEquals("a\u00A0", Dbf.trimEnd("a\u00A0 "));
     }
 }
