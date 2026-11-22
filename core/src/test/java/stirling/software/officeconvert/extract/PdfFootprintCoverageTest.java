@@ -315,4 +315,30 @@ class PdfFootprintCoverageTest {
             assertEquals(content, pages - baseline() - PdfFootprint.SAMPLED_PAGE_BYTES - PdfFootprint.PAGE_BYTES);
         }
     }
+
+    @Test
+    void aSharedFormIsChargedOnEveryPageThatDrawsIt() throws IOException {
+        int bytes = 128 << 10;
+        long each = charged(text(bytes).length());
+        long fixed = 2 * (PdfFootprint.SAMPLED_PAGE_BYTES + PdfFootprint.PAGE_BYTES);
+        long content = each * PdfFootprint.CONTENT_BYTE_COST + 3 * each * PdfFootprint.KEPT_BYTE_COST;
+        for (boolean sharedResources : new boolean[] {true, false}) {
+            try (PDDocument doc = new PDDocument()) {
+                COSStream form = stream(doc, text(bytes));
+                form.setItem(COSName.TYPE, COSName.XOBJECT);
+                form.setItem(COSName.SUBTYPE, COSName.FORM);
+                COSDictionary shared = null;
+                for (int i = 0; i < 3; i++) {
+                    COSDictionary xobjects = new COSDictionary();
+                    xobjects.setItem(COSName.getPDFName("Fm0"), form);
+                    COSDictionary resources = new COSDictionary();
+                    resources.setItem(COSName.XOBJECT, xobjects);
+                    shared = sharedResources && shared != null ? shared : resources;
+                    page(doc).getCOSObject().setItem(COSName.RESOURCES, shared);
+                }
+                long pages = PdfFootprint.estimate(doc, 0, 0, 150f);
+                assertEquals(content, pages - baseline() - fixed, "shared resources: " + sharedResources);
+            }
+        }
+    }
 }

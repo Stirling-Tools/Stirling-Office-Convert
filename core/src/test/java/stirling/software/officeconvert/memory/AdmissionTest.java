@@ -644,7 +644,8 @@ class AdmissionTest {
                 })));
         long took = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
         assertEquals(2, attempts[0]);
-        assertTrue(took < 6_000, "the second wait gets only what the first left, took " + took + " ms");
+        // Shared: 2 s then the 2 s left, about 4 s; unshared it would be 2 s plus a fresh 4 s
+        assertTrue(took >= 3_500 && took < 5_000, "the second wait gets only what the first left, took " + took + " ms");
         second.close();
     }
 }

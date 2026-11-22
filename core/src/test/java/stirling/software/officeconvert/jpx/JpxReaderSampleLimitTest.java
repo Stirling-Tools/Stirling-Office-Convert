@@ -2,6 +2,7 @@ package stirling.software.officeconvert.jpx;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -22,7 +23,8 @@ class JpxReaderSampleLimitTest {
         try (MemoryCacheImageInputStream in = new MemoryCacheImageInputStream(new ByteArrayInputStream(data))) {
             reader.setInput(in);
             assertEquals(1 << 13, reader.getWidth(0));
-            assertThrows(IOException.class, () -> reader.read(0, null));
+            JpxException e = assertThrows(JpxException.class, () -> reader.read(0, null));
+            assertTrue(e.getMessage().endsWith("more than " + JpxImageReader.MAX_SAMPLES), e.getMessage());
         } finally {
             reader.dispose();
         }

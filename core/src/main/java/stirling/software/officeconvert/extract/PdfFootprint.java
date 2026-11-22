@@ -102,7 +102,7 @@ public final class PdfFootprint {
             if (i++ < first) {
                 continue;
             }
-            long contentBefore = scan.contentLeft;
+            long contentBefore = scan.read;
             try {
                 PDRectangle box = page.getCropBox();
                 scan.area = Math.max(scan.area, (double) box.getWidth() * box.getHeight());
@@ -117,7 +117,7 @@ public final class PdfFootprint {
             } catch (IOException | RuntimeException e) {
                 scan.unknown();
             }
-            long excess = Math.max(0, contentBefore - scan.contentLeft - PAGE_CONTENT_ALLOWANCE);
+            long excess = Math.max(0, scan.read - contentBefore - PAGE_CONTENT_ALLOWANCE);
             scan.busiest = Math.max(scan.busiest, excess);
             if (i - first <= SAMPLED_PAGES) {
                 scan.dense += excess;
@@ -319,6 +319,12 @@ public final class PdfFootprint {
 
         final Set<COSBase> seen = Collections.newSetFromMap(new IdentityHashMap<>());
 
+        // Content bytes under each resources dictionary or form, charged again each time a page draws it
+        final Map<COSBase, Long> held = new IdentityHashMap<>();
+
+        // Content bytes drawn so far, read or repeated
+        long read;
+
         int budget = MAX_SCANNED_OBJECTS;
 
         long contentLeft = MAX_SCANNED_CONTENT;
@@ -358,12 +364,27 @@ public final class PdfFootprint {
                 return;
             }
             if (!visit(resources)) {
+                repeat(resources);
                 return;
             }
+            long before = read;
+            walk(resources, depth);
+            held.put(resources, read - before);
+        }
+
+        void repeat(COSBase object) {
+            read = add(read, held.getOrDefault(object, 0L));
+        }
+
+        private void walk(COSDictionary resources, int depth) {
             COSDictionary xobjects = resources.getCOSDictionary(COSName.XOBJECT);
             if (xobjects != null) {
                 for (COSName name : xobjects.keySet()) {
-                    if (!(xobjects.getDictionaryObject(name) instanceof COSStream s) || !visit(s)) {
+                    if (!(xobjects.getDictionaryObject(name) instanceof COSStream s)) {
+                        continue;
+                    }
+                    if (!visit(s)) {
+                        repeat(s);
                         continue;
                     }
                     COSName subtype = s.getCOSName(COSName.SUBTYPE);
@@ -377,8 +398,12 @@ public final class PdfFootprint {
             COSDictionary patterns = resources.getCOSDictionary(COSName.PATTERN);
             if (patterns != null) {
                 for (COSName name : patterns.keySet()) {
-                    if (patterns.getDictionaryObject(name) instanceof COSStream s && visit(s)) {
-                        form(s, depth + 1);
+                    if (patterns.getDictionaryObject(name) instanceof COSStream s) {
+                        if (visit(s)) {
+                            form(s, depth + 1);
+                        } else {
+                            repeat(s);
+                        }
                     }
                 }
             }
@@ -387,8 +412,12 @@ public final class PdfFootprint {
                 for (COSName name : states.keySet()) {
                     if (states.getDictionaryObject(name) instanceof COSDictionary gs
                             && gs.getDictionaryObject(COSName.SMASK) instanceof COSDictionary mask
-                            && mask.getDictionaryObject(COSName.G) instanceof COSStream group && visit(group)) {
-                        form(group, depth + 1);
+                            && mask.getDictionaryObject(COSName.G) instanceof COSStream group) {
+                        if (visit(group)) {
+                            form(group, depth + 1);
+                        } else {
+                            repeat(group);
+                        }
                     }
                 }
             }
@@ -420,11 +449,13 @@ public final class PdfFootprint {
         }
 
         void form(COSStream form, int depth) {
+            long before = read;
             COSDictionary own = form.getCOSDictionary(COSName.RESOURCES);
             if (own != null) {
                 resources(own, depth);
             }
             stream(form);
+            held.put(form, read - before);
         }
 
         void annotations(COSArray annots) {
@@ -473,6 +504,7 @@ public final class PdfFootprint {
                 int want = (int) Math.min(buf.length - len, contentLeft);
                 int n = in.readNBytes(buf, len, want);
                 contentLeft -= n;
+                read += n;
                 len += n;
                 boolean full = len == buf.length;
                 if (!full && contentLeft <= 0 && in.read() >= 0) {

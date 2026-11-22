@@ -125,7 +125,7 @@ deep; anything it cannot see or read is charged as a large picture. Besides a fi
 picture, content past the first 16 KB of a page (its streams, forms, patterns and appearances) is charged for the
 glyphs, lines and words built from it: 96 bytes per byte on each of the first 60 pages, held for document statistics, and another 176 per byte
 (at most 64 MB) on the page with the most, while it is laid out. These figures were measured on dense text; vector
-pages cost less, so for them the estimate errs high. A form drawn many times is counted once.
+pages cost less, so for them the estimate errs high. A form is read once but charged on every page that draws it.
 
 ## Office input (Office to PDF)
 
