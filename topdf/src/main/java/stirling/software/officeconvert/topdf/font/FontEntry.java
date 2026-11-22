@@ -2,6 +2,9 @@ package stirling.software.officeconvert.topdf.font;
 
 import java.io.IOException;
 import java.lang.ref.SoftReference;
+import java.nio.ByteBuffer;
+import java.nio.channels.SeekableByteChannel;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 
@@ -192,14 +195,29 @@ final class FontEntry {
                     throw e;
                 }
                 broken = new IOException("The font " + describe() + " could not be read: " + e.getMessage(), e);
-                // Bytes in memory fail the same way every time; a file may be locked or briefly unreadable
-                retryAt = file == null || e instanceof RuntimeException ? Failures.NEVER : Failures.retryAt();
+                retryAt = parseFailure(e) ? Failures.NEVER : Failures.retryAt();
                 throw broken;
             }
             broken = null;
             program = new SoftReference<>(p);
         }
         return p;
+    }
+
+    // Bytes in memory, or a file that still reads, fail the same way every time; a locked file may not
+    private boolean parseFailure(Exception e) {
+        if (file == null || e instanceof RuntimeException) {
+            return true;
+        }
+        if (Failures.fileSystem(e)) {
+            return false;
+        }
+        try (SeekableByteChannel ch = Files.newByteChannel(file)) {
+            ch.position(Math.max(0, ch.size() - 1)).read(ByteBuffer.allocate(1));
+            return true;
+        } catch (IOException | RuntimeException unreadable) {
+            return false;
+        }
     }
 
     String describe() {

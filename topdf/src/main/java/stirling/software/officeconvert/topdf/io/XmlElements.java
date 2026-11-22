@@ -39,7 +39,7 @@ public final class XmlElements extends FilterInputStream {
 
     private int seen;
 
-    private static final int PROLOG = 256;
+    private static final int PROLOG = 1024;
 
     private static final byte[] EBCDIC_DECLARATION = {0x4C, 0x6F, (byte) 0xA7, (byte) 0x94};
 
@@ -133,7 +133,7 @@ public final class XmlElements extends FilterInputStream {
     private void prolog(int c) throws IOException {
         prolog[seen++] = (byte) c;
         if (seen == EBCDIC_DECLARATION.length && Arrays.equals(prolog, 0, seen, EBCDIC_DECLARATION, 0, seen)) {
-            throw unreadable("EBCDIC");
+            throw unreadable("it is in an EBCDIC encoding");
         }
         if (c == '>' || seen == prolog.length) {
             StringBuilder head = new StringBuilder();
@@ -144,9 +144,13 @@ public final class XmlElements extends FilterInputStream {
                 }
             }
             prolog = null;
+            // A declaration padded past the buffer could name its encoding where this check no longer looks
+            if (c != '>' && head.toString().startsWith("<?xml")) {
+                throw unreadable("its XML declaration is too long");
+            }
             Matcher m = ENCODING.matcher(head);
             if (m.find() && !countable(m.group(1))) {
-                throw unreadable(m.group(1));
+                throw unreadable("it is in the " + m.group(1) + " encoding, which is not supported");
             }
         }
     }
@@ -166,8 +170,8 @@ public final class XmlElements extends FilterInputStream {
         }
     }
 
-    private OfficeZip.DamagedPart unreadable(String encoding) {
-        String m = "The part " + part + " is in the " + encoding + " encoding, which is not supported";
+    private OfficeZip.DamagedPart unreadable(String why) {
+        String m = "The part " + part + " cannot be read: " + why;
         return new OfficeZip.DamagedPart(part, m, null);
     }
 }

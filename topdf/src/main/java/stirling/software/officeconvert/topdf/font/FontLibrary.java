@@ -81,7 +81,7 @@ public final class FontLibrary {
     // Font files the scan could not read, and when they are tried again
     private Scan scan;
 
-    private long rescanAt = Failures.NEVER;
+    private volatile long rescanAt = Failures.NEVER;
 
     private FontLibrary base;
 
@@ -111,7 +111,7 @@ public final class FontLibrary {
             if (e.postScriptName() != null) {
                 names.putIfAbsent(normalize(e.postScriptName()), e);
             }
-            if (e.usable()) {
+            if (e.unusable() == null && !e.failedForGood()) {
                 ok.add(e);
             }
         }
@@ -189,6 +189,11 @@ public final class FontLibrary {
     // Reads again only the files that failed, keeping the faces already found
     private FontLibrary rescanned(FontLibrary newBase) {
         Scan again = scanFiles(scan.unread());
+        if (again.entries().isEmpty() && newBase == base) {
+            // Nothing new: keep this library and its caches rather than rebuild it every minute
+            rescanAt = again.unread().isEmpty() ? Failures.NEVER : Failures.retryAt();
+            return this;
+        }
         List<FontEntry> found = new ArrayList<>(scan.entries());
         found.addAll(again.entries());
         return scanned(new Scan(found, again.unread()), newBase);
@@ -464,6 +469,7 @@ public final class FontLibrary {
         Optional<ColorEmoji> known = colorEmoji;
         if (known == null) {
             ColorEmoji found = null;
+            boolean pending = false;
             for (FontEntry e : entries) {
                 if (e.file() != null && e.offset() == 0 && !e.usable() && e.family() != null
                         && normalize(e.family()).contains("emoji")) {
@@ -471,11 +477,13 @@ public final class FontLibrary {
                     if (found != null) {
                         break;
                     }
+                    Long retry = ColorEmoji.retryAt(e.file());
+                    pending |= retry == null || retry != Failures.NEVER;
                 }
             }
             known = Optional.ofNullable(found);
-            // ColorEmoji keeps its own answers per file, so only a found font is worth pinning here
-            if (found != null) {
+            // A miss is kept only when no emoji file is waiting to be read again
+            if (found != null || !pending) {
                 colorEmoji = known;
             }
         }
@@ -803,7 +811,9 @@ public final class FontLibrary {
         List<Path> unread = new ArrayList<>();
         for (int i = 0; i < scanned.size(); i++) {
             if (scanned.get(i) == null) {
-                unread.add(list.get(i));
+                if (Files.exists(list.get(i))) {
+                    unread.add(list.get(i));
+                }
             } else {
                 out.addAll(scanned.get(i));
             }

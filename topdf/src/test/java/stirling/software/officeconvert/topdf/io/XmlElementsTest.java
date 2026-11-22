@@ -38,7 +38,11 @@ class XmlElementsTest {
     }
 
     private static byte[] asciiDeclaredEbcdic() {
-        byte[] head = "<?xml version=\"1.0\" encoding=\"IBM037\"?>".getBytes(StandardCharsets.US_ASCII);
+        return asciiDeclaredEbcdic("");
+    }
+
+    private static byte[] asciiDeclaredEbcdic(String padding) {
+        byte[] head = ("<?xml version=\"1.0\"" + padding + " encoding=\"IBM037\"?>").getBytes(StandardCharsets.US_ASCII);
         byte[] body = MANY.getBytes(Charset.forName("IBM037"));
         byte[] all = new byte[head.length + body.length];
         System.arraycopy(head, 0, all, 0, head.length);
@@ -58,7 +62,7 @@ class XmlElementsTest {
     @Test
     void refusesEncodingsThatHideElementStarts() {
         assumeTrue(Charset.isSupported("IBM037"));
-        for (byte[] xml : new byte[][] {ebcdic(), asciiDeclaredEbcdic()}) {
+        for (byte[] xml : new byte[][] {ebcdic(), asciiDeclaredEbcdic(), asciiDeclaredEbcdic(" ".repeat(5000))}) {
             assertThrows(OfficeZip.DamagedPart.class, () -> {
                 try (InputStream in = XmlElements.limit(new ByteArrayInputStream(xml), "/p.xml", 2)) {
                     SecureXml.parse(in);

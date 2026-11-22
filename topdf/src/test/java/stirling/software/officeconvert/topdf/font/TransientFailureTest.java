@@ -112,11 +112,25 @@ class TransientFailureTest {
     @Test
     void aFileThatCouldNotBeOpenedIsListedAsUnread() throws IOException {
         Path good = Files.write(dir.resolve("Good.ttf"), TestFonts.renamed("Good Face"));
-        Path missing = dir.resolve("Missing.ttf");
+        Path unopenable = Files.createDirectories(dir.resolve("Folder.ttf"));
+        Path gone = dir.resolve("Gone.ttf");
         Path junk = Files.write(dir.resolve("Junk.ttf"), new byte[64]);
-        FontLibrary.Scan scan = FontLibrary.scanFiles(List.of(good, missing, junk));
-        assertEquals(List.of(missing), scan.unread());
+        FontLibrary.Scan scan = FontLibrary.scanFiles(List.of(good, unopenable, gone, junk));
+        assertEquals(List.of(unopenable), scan.unread());
         assertEquals(1, scan.entries().size());
+    }
+
+    @Test
+    void aFontFileThatDoesNotParseIsKnownForGood() throws IOException {
+        Path file = Files.write(dir.resolve("Refused.otf"), PostScriptFonts.font("Refused Ps",
+                PostScriptFonts.largePrivateCff("RefusedPs", 4), 4, 'A', 'B', 'C'));
+        FontEntry e = FontScanner.scan(file).get(0);
+        FontLibrary lib = FontLibrary.of(List.of(e), Map.of(), Map.of());
+        assertNull(lib.exact("Refused Ps", false, false));
+        assertTrue(e.failedForGood());
+        long misses = Failures.misses();
+        assertNull(lib.exact("Refused Ps", false, false));
+        assertEquals(misses, Failures.misses());
     }
 
     @Test
@@ -128,9 +142,12 @@ class TransientFailureTest {
             assertTrue(lock.isValid());
             assertNull(FontLibrary.of(List.of(fonts)).exact("Locked Face", false, false));
         }
-        assertNull(FontLibrary.of(List.of(fonts)).exact("Locked Face", false, false), "inside the retry window");
+        FontLibrary waiting = FontLibrary.of(List.of(fonts));
+        assertNull(waiting.exact("Locked Face", false, false), "inside the retry window");
         later();
         assertNotNull(FontLibrary.of(List.of(fonts)).exact("Locked Face", false, false));
+        later();
+        assertTrue(FontLibrary.of(List.of(fonts)) == FontLibrary.of(List.of(fonts)));
     }
 
     @Test
