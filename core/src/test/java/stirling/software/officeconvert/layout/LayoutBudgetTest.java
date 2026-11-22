@@ -151,6 +151,43 @@ class LayoutBudgetTest {
         }
     }
 
+    @Test
+    void anInterruptLandsWhileAHeavyPageIsLaidOut() throws Exception {
+        java.util.Random random = new java.util.Random(7);
+        List<Glyph> glyphs = new ArrayList<>();
+        for (int i = 0; i < 80_000; i++) {
+            glyphs.add(glyph(String.valueOf((char) ('a' + i % 26)), random.nextFloat() * 600, random.nextFloat() * 780, 2));
+        }
+        List<Rule> rules = new ArrayList<>();
+        List<Fill> fills = new ArrayList<>();
+        for (int i = 0; i < 20_000; i++) {
+            float x = random.nextFloat() * 560;
+            float y = random.nextFloat() * 760;
+            rules.add(new Rule(i % 2 == 0, i % 2 == 0 ? y : x, i % 2 == 0 ? x : y, (i % 2 == 0 ? x : y) + 30, 0.5f, 0));
+            fills.add(new Fill(x, y, x + 40, y + 20, 0x88AACC));
+        }
+        PageData page = new PageData(0, 612, 792, 0, glyphs, List.of(), List.of(),
+                new PageGraphics(rules, fills, List.of(), List.of()), List.of());
+        PageAnalyzer analyzer = new PageAnalyzer(new DocStats(), true);
+        java.util.concurrent.atomic.AtomicReference<Throwable> ended = new java.util.concurrent.atomic.AtomicReference<>();
+        Thread worker = Thread.ofPlatform().stackSize(8L << 20).start(() -> {
+            try {
+                analyzer.analyze(page);
+            } catch (Throwable e) {
+                ended.set(e);
+            }
+        });
+        Thread.sleep(200);
+        worker.interrupt();
+        worker.join(Duration.ofSeconds(10));
+        StringBuilder where = new StringBuilder();
+        for (StackTraceElement e : worker.getStackTrace()) {
+            where.append(" at ").append(e);
+        }
+        assertTrue(!worker.isAlive(), "layout ignored the interrupt" + where);
+        assertTrue(ended.get() instanceof InterruptedIOException, String.valueOf(ended.get()));
+    }
+
     private static PageData page(List<Glyph> glyphs) {
         return new PageData(0, 612, 792, 0, glyphs, List.of(), List.of(),
                 new PageGraphics(List.of(), List.of(), List.of(), List.of()), List.of());
