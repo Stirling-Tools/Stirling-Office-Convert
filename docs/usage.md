@@ -932,6 +932,13 @@ further; the JDK default is 240 MB.
   with status 2. Write `.docx` or `.rtf` instead.
 - Input of a kind the library does not read, by extension or content, throws `UnsupportedFormatException`, an
   `IOException` subclass; a damaged or empty file of a kind it reads still throws a plain `IOException`.
+- `OfficeToPdf.Options` has three more components, `locale`, `zone` and `clock` (null keeps the host's value), so its
+  canonical constructor takes fifteen arguments. The twelve-argument constructor is kept; a record pattern over
+  `Options` needs the new components. A fixed clock gives byte-identical output for the same input.
+- Encrypted OOXML refuses a spin count above 1,000,000, and Office's built-in password is tried only up to 100,000.
+- With network access on, a redirect from `https` to `http` is refused.
+- OpenDocument, flat OPC, FB2 and OpenOffice.org 1.x XML parts are held to the element budget and the 100:1
+  inflation ratio that OOXML parts already had.
 
 ### 0.2.0
 

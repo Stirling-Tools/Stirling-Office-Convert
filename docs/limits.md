@@ -67,7 +67,7 @@ restart the process. The test app does this itself with `EXIT_WHEN_STUCK`.
 | Office to PDF timeout | 5 minutes (0 = none) | `OfficeToPdf.Options.timeout`, CLI `--timeout` | `OfficeToPdf.TimedOut` |
 | PDF to PDF/A timeout | 5 minutes (0 = none) | `PdfToPdfA.Options.timeout`, CLI `--timeout` | `PdfToPdfA.TimedOut` |
 | Office to PDF pages | 10,000 (0 = all) | `OfficeToPdf.Options.maxPages`, CLI `--max-pages` | stops there with a warning; a DOCX stops reading its body once page breaks reach it |
-| Office to PDF scratch space | 2 GB (0 = none) | `OfficeToPdf.Options.maxScratchBytes` | `OfficeToPdf.OutputTooLarge` |
+| Office to PDF scratch space (output cache; temporary copies of the input are not counted) | 2 GB (0 = none) | `OfficeToPdf.Options.maxScratchBytes` | `OfficeToPdf.OutputTooLarge` |
 | PDF to PDF/A pages | 10,000 (0 = all) | `PdfToPdfA.Options.maxPages`, CLI `--max-pages` | refused |
 | PDF to Office pages | all | `OfficeConvert.Settings` page range, CLI `--pages` | only the range is converted |
 | Office input size | 512 MB | **fixed** | refused before reading |
