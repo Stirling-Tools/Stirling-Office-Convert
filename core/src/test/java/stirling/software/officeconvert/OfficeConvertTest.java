@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -244,5 +245,21 @@ class OfficeConvertTest {
         }
         assertFalse(foreign.get(), "the worker wrote the caller's stream");
         assertEquals('P', bytes.toByteArray()[0]);
+    }
+
+    @Test
+    void aSocketTimeoutOnTheCallersStreamDoesNotInterruptTheCaller() throws IOException {
+        Path pdf = sample();
+        OutputStream slow = new OutputStream() {
+            @Override
+            public void write(int b) throws IOException {
+                throw new SocketTimeoutException("write timed out");
+            }
+        };
+        try (PDDocument doc = Loader.loadPDF(pdf.toFile())) {
+            assertThrows(SocketTimeoutException.class, () -> OfficeConvert.convert(doc, slow,
+                    OfficeConvert.Format.DOCX, OfficeConvert.Settings.defaults()));
+        }
+        assertFalse(Thread.interrupted());
     }
 }

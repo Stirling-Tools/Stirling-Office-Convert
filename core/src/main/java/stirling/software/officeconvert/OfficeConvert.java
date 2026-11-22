@@ -281,8 +281,8 @@ public final class OfficeConvert {
                 Files.copy(part, out);
                 out.flush();
             } catch (InterruptedIOException e) {
-                // the caller's own stream may have swallowed the interrupt that stopped it
-                if (!(e instanceof Admission.NeedsMemory || e instanceof Admission.Busy)) {
+                // the caller's own stream may have swallowed the interrupt that stopped it; not a socket timeout
+                if (e.getClass() == InterruptedIOException.class) {
                     Thread.currentThread().interrupt();
                 }
                 throw e;

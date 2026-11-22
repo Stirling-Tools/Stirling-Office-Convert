@@ -221,7 +221,7 @@ OfficeConvert.convert(Path.of("in.pdf"), Path.of("out.pptx"), Settings.defaults(
         .pictureFallback(true)        // keep a page that cannot be converted as a picture instead of failing
         .figureDpi(200)               // resolution of drawings turned into pictures
         .sheets(PdfToXlsx.Sheets.TABLE)   // spreadsheets: a sheet per table instead of per page
-        .pictures(Pictures.LOSSLESS)  // every pixel, no JPEG compression (see Pictures)
+        .pictures(Pictures.LOSSLESS)  // no lossy compression of pictures (see Pictures)
         .timeout(Duration.ofMinutes(2)));  // fail with OfficeConvert.TimedOut past this (default 5 minutes, ZERO = none)
 
 String text = OfficeConvert.text(Path.of("in.pdf"));                      // text in reading order
