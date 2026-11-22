@@ -16,6 +16,13 @@ import org.apache.pdfbox.util.Matrix;
 
 final class AnnotationFlatten {
 
+    /** Thrown before anything is written to the page. */
+    static final class NoAppearance extends IOException {
+        NoAppearance(String message) {
+            super(message);
+        }
+    }
+
     private AnnotationFlatten() {}
 
     static void run(PDDocument doc, PDPage page, COSDictionary dictionary) throws IOException {
@@ -30,12 +37,12 @@ final class AnnotationFlatten {
             return;
         }
         if (appearance == null || appearance.getBBox() == null) {
-            throw new IOException("An annotation could not be drawn into the page for PDF/A-1");
+            throw new NoAppearance("An annotation could not be drawn into the page for PDF/A-1");
         }
         Rectangle2D bounds = appearance.getMatrix().createAffineTransform()
                 .createTransformedShape(appearance.getBBox().toGeneralPath()).getBounds2D();
         if (bounds.getWidth() <= 0 || bounds.getHeight() <= 0) {
-            throw new IOException("An annotation appearance has no drawable bounds");
+            throw new NoAppearance("An annotation appearance has no drawable bounds");
         }
         float sx = (float) (rect.getWidth() / bounds.getWidth());
         float sy = (float) (rect.getHeight() / bounds.getHeight());

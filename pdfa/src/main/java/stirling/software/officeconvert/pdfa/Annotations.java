@@ -95,8 +95,13 @@ final class Annotations {
                 continue;
             }
             if (flatten) {
-                AnnotationFlatten.run(doc, page, a);
-                report.warn("Drew a %s annotation into the page, as PDF/A-1 does not allow its type", type);
+                try {
+                    AnnotationFlatten.run(doc, page, a);
+                    report.warn("Drew a %s annotation into the page, as PDF/A-1 does not allow its type", type);
+                } catch (AnnotationFlatten.NoAppearance e) {
+                    report.warn("Removed a %s annotation, which PDF/A-1 does not allow and which has no appearance",
+                            type);
+                }
                 continue;
             }
             flags = (flags | PRINT) & ~(INVISIBLE | HIDDEN | NO_VIEW | TOGGLE_NO_VIEW);
@@ -145,7 +150,8 @@ final class Annotations {
             }
             return;
         }
-        if (!needs) {
+        // A given N must still be a stream where no appearance is needed.
+        if (!needs && (ap == null || ap.getDictionaryObject(COSName.N) == null)) {
             return;
         }
         if ("Widget".equals(type) && COSName.BTN.equals(fieldType(a))) {
