@@ -39,8 +39,28 @@ final class Codecs {
     }
 
     static Encoded jbig2(Bitmap bitmap) {
-        byte[] generic = Jbig2Generic.encode(bitmap);
-        byte[] symbols = Jbig2Symbols.encode(bitmap);
+        // Both encoders only read the bitmap, so the symbol coder runs beside the generic one
+        FutureTask<byte[]> symbolsFuture = new FutureTask<>(() -> Jbig2Symbols.encode(bitmap));
+        Thread.ofVirtual().start(symbolsFuture);
+        byte[] generic;
+        byte[] symbols;
+        try {
+            generic = Jbig2Generic.encode(bitmap);
+            symbols = symbolsFuture.get();
+        } catch (InterruptedException stopped) {
+            Thread.currentThread().interrupt();
+            throw new UncheckedIOException(new InterruptedIOException("Conversion interrupted"));
+        } catch (ExecutionException failed) {
+            if (failed.getCause() instanceof RuntimeException e) {
+                throw e;
+            }
+            if (failed.getCause() instanceof Error e) {
+                throw e;
+            }
+            throw new CompletionException(failed.getCause());
+        } finally {
+            symbolsFuture.cancel(true);
+        }
         byte[] data = symbols != null && symbols.length < generic.length ? symbols : generic;
         return new Encoded(LineArt.Codec.JBIG2, data, COSName.JBIG2_DECODE, null);
     }
