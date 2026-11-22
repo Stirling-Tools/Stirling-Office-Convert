@@ -309,15 +309,24 @@ final class Rewrite {
     }
 
     private void prune() throws IOException {
-        for (Map.Entry<Integer, List<Cleanup.Removal>> e : removals.entrySet()) {
-            int id = e.getKey();
+        List<COSObjectKey> stored = new ArrayList<>();
+        for (int id : removals.keySet()) {
             if (index.kind(id) == Index.STREAM) {
                 continue;
             }
-            COSBase fresh = source.load(index.key(id));
-            Cleanup.apply(fresh, e.getValue());
-            recorder.record(id, fresh, null);
+            if (source.injected(index.key(id))) {
+                prune(id, source.load(index.key(id)));
+            } else {
+                stored.add(index.key(id));
+            }
         }
+        // Each key gets its own fresh object, but every object stream is unpacked only once
+        source.load(stored, (key, fresh) -> prune(index.id(key), fresh));
+    }
+
+    private void prune(int id, COSBase fresh) throws IOException {
+        Cleanup.apply(fresh, removals.get(id));
+        recorder.record(id, fresh, null);
     }
 
     private record Pending(int node, COSStream stream, Future<Done> plan, boolean windowed, Fonts.Rebuilt font) {}
