@@ -655,14 +655,23 @@ final class Cascade {
         }
         found = new ArrayList<>(4);
         if (work < MAX_MATCH_WORK) {
-            Set<Compiled> seen = Collections.newSetFromMap(new IdentityHashMap<>());
             long[] above = ancestry(e);
-            test(e, above, byId.get(e.id()), found, seen);
-            for (String c : e.classNames()) {
-                test(e, above, byClass.get(fold(c)), found, seen);
+            test(e, above, byId.get(e.id()), found);
+            Set<String> classes = e.classNames();
+            // Each rule sits in one bucket, so only two classes folding alike could test a rule twice
+            Set<String> seen = classes.size() > 1 ? new HashSet<>() : null;
+            for (String c : classes) {
+                String key = fold(c);
+                List<Compiled> rules = byClass.get(key);
+                if (seen == null || seen.add(key)) {
+                    test(e, above, rules, found);
+                } else if (rules != null && !rules.isEmpty()) {
+                    long left = work + rules.size();
+                    work = left <= MAX_MATCH_WORK ? left : Math.max(work, MAX_MATCH_WORK) + 1;
+                }
             }
-            test(e, above, byTag.get(e.normalName()), found, seen);
-            test(e, above, anyElement, found, seen);
+            test(e, above, byTag.get(e.normalName()), found);
+            test(e, above, anyElement, found);
             found.sort(Comparator.comparingInt(Hit::specificity).thenComparingInt(Hit::order));
             if (work - forgotten >= FORGET_EVERY) {
                 forget();
@@ -688,17 +697,11 @@ final class Cascade {
         return rulesLeftOut || work > MAX_MATCH_WORK;
     }
 
-    private void test(Element e, long[] above, List<Compiled> rules, List<Hit> found, Set<Compiled> seen) {
+    private void test(Element e, long[] above, List<Compiled> rules, List<Hit> found) {
         if (rules == null) {
             return;
         }
         for (Compiled c : rules) {
-            if (!seen.add(c)) {
-                if (++work > MAX_MATCH_WORK) {
-                    return;
-                }
-                continue;
-            }
             if (c.above() != null && !within(c.above(), above)) {
                 if (++work > MAX_MATCH_WORK) {
                     return;
@@ -723,13 +726,16 @@ final class Cascade {
     // Only structural pseudo-classes: text and regex ones (:matches, :contains, a deep :has) cost per element
     // and could be made to backtrack, and state ones (:hover) never match a printed page
     private static String usable(String selector) {
+        if (selector.indexOf(':') < 0 && selector.indexOf('[') < 0) {
+            return selector;
+        }
         // nothing on a printed page is hovered, focused or visited, so :not() of those always holds
         String s = wordAttributes(NOT_STATE.matcher(selector.replace(":link", "")).replaceAll(""));
         if (s == null || s.contains("::")) {
             return null;
         }
         // :has of one child compound costs a pass over the children, so layouts chosen by child count still match
-        Matcher m = PSEUDO.matcher(CHILD_HAS.matcher(s.replaceAll(QUOTED, "")).replaceAll(" $1"));
+        Matcher m = PSEUDO.matcher(CHILD_HAS.matcher(QUOTED.matcher(s).replaceAll("")).replaceAll(" $1"));
         while (m.find()) {
             if (!STRUCTURAL.contains(m.group(1).toLowerCase(Locale.ROOT))) {
                 return null;
@@ -764,7 +770,7 @@ final class Cascade {
     private static final Pattern WORD = Pattern.compile("[-_A-Za-z0-9]+");
 
     private static final Pattern PSEUDO = Pattern.compile("(?<!\\\\):([a-zA-Z-]+)");
-    private static final String QUOTED = "\"[^\"]*\"|'[^']*'";
+    private static final Pattern QUOTED = Pattern.compile("\"[^\"]*\"|'[^']*'");
     private static final Pattern CHILD_HAS = Pattern.compile(
             ":has[(][ ]*>[ ]*((?:[^\\s>+~,()]|[(][^()]{0,40}[)]){1,200})[ ]*[)]");
 
