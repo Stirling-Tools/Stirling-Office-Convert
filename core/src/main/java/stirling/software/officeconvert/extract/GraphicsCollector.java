@@ -172,6 +172,7 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
         }
         for (Fill dot : TouchingDots.keep(c.dots)) {
             c.fills.add(dot);
+            c.withinSegmentCap();
             c.paintOrder.put(dot, c.dotOrder.get(dot));
         }
         HiddenFills.removeRules(c.rules, c.fills, c.paintOrder, c.seeThrough);
@@ -284,6 +285,7 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
             }
             Fill fill = new Fill(minX, minY, maxX, maxY, rgb);
             fills.add(fill);
+            withinSegmentCap();
             paintOrder.put(fill, painted);
             seeThrough.add(fill);
         }
