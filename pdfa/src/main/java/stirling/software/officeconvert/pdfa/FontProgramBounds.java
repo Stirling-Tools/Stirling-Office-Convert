@@ -78,6 +78,7 @@ final class FontProgramBounds {
 
     private static FontProgram program(COSStream stream, COSName key, byte[] bytes) throws IOException {
         if (COSName.FONT_FILE2.equals(key)) {
+            // This pass bounds Type 1/CFF charstrings, not TrueType glyf composites.
             return null;
         }
         FontKind kind = WebFonts.sniff(bytes);
