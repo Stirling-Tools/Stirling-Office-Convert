@@ -177,7 +177,12 @@ class LayoutBudgetTest {
                 ended.set(e);
             }
         });
-        Thread.sleep(200);
+        // Interrupt only once the worker is inside a layout stage, past the entry check
+        long until = System.nanoTime() + Duration.ofSeconds(10).toNanos();
+        while (worker.isAlive() && !insideStage(worker) && System.nanoTime() < until) {
+            Thread.onSpinWait();
+        }
+        assertTrue(insideStage(worker), "the worker never reached a layout stage");
         worker.interrupt();
         worker.join(Duration.ofSeconds(10));
         StringBuilder where = new StringBuilder();
@@ -186,6 +191,17 @@ class LayoutBudgetTest {
         }
         assertTrue(!worker.isAlive(), "layout ignored the interrupt" + where);
         assertTrue(ended.get() instanceof InterruptedIOException, String.valueOf(ended.get()));
+    }
+
+    private static boolean insideStage(Thread worker) {
+        for (StackTraceElement e : worker.getStackTrace()) {
+            String c = e.getClassName();
+            if ((c.contains(".layout.") || c.contains(".table.")) && !c.endsWith(".PageAnalyzer")
+                    && !c.endsWith(".Polls")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static PageData page(List<Glyph> glyphs) {

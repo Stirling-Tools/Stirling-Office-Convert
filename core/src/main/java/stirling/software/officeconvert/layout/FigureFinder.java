@@ -247,6 +247,8 @@ final class FigureFinder {
         final float cell = 48f;
         Map<Long, List<Integer>> grid = new HashMap<>();
         for (int i = 0; i < n; i++) {
+            // One box can visit hundreds of crowded buckets, so poll per box
+            Polls.check();
             Box b = boxes.get(i);
             int x0 = (int) Math.floor((b.x() - gap) / cell);
             int x1 = (int) Math.floor((b.right() + gap) / cell);
