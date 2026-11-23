@@ -13,7 +13,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.TreeMap;
-import java.util.TreeSet;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -25,6 +24,7 @@ import stirling.software.officeconvert.extract.Glyph;
 import stirling.software.officeconvert.extract.HiddenContent;
 import stirling.software.officeconvert.extract.PageData;
 import stirling.software.officeconvert.extract.PageReader;
+import stirling.software.officeconvert.extract.PageSamples;
 import stirling.software.officeconvert.extract.PdfFiles;
 import stirling.software.officeconvert.extract.PdfFootprint;
 import stirling.software.officeconvert.extract.StreamGuard;
@@ -277,41 +277,7 @@ public final class SlideConversion {
     }
 
     static List<int[]> sampleRuns(int first, int last) {
-        int count = last - first + 1;
-        TreeSet<Integer> pages = new TreeSet<>();
-        if (count <= SAMPLE_ALL_BELOW) {
-            for (int i = first; i <= last; i++) {
-                pages.add(i);
-            }
-        } else {
-            for (int i = 0; i < 20; i++) {
-                pages.add(first + i);
-            }
-            for (int i = 0; i < 5; i++) {
-                pages.add(last - i);
-            }
-            for (int k = 1; k <= 15; k++) {
-                int page = first + (int) ((long) count * k / 16);
-                pages.add(page);
-                pages.add(Math.min(last, page + 1));
-            }
-        }
-        List<int[]> runs = new ArrayList<>();
-        int start = -1;
-        int prev = -2;
-        for (int p : pages) {
-            if (p != prev + 1) {
-                if (start >= 0) {
-                    runs.add(new int[] {start, prev});
-                }
-                start = p;
-            }
-            prev = p;
-        }
-        if (start >= 0) {
-            runs.add(new int[] {start, prev});
-        }
-        return runs;
+        return PageSamples.runs(first, last);
     }
 
     private static boolean autoHyphenated(PDDocument doc) {

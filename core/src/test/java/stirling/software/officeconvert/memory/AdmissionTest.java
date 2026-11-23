@@ -613,15 +613,21 @@ class AdmissionTest {
         Admission.Ticket large = apart(a, 200 * MB);
         used[0] = 0.95;
         Thread checker = Thread.ofPlatform().start(large::exhausted);
-        assertTimeoutPreemptively(Duration.ofSeconds(30), () -> {
-            assertTrue(collecting.await(1, TimeUnit.MINUTES));
-            assertEquals(2, a.status().running());
-            small.close();
-            assertEquals(1, a.running());
-        });
-        finish.countDown();
-        checker.join(Duration.ofMinutes(1));
-        large.close();
+        try {
+            assertTimeoutPreemptively(Duration.ofSeconds(30), () -> {
+                assertTrue(collecting.await(1, TimeUnit.MINUTES));
+                assertEquals(2, a.status().running());
+                small.close();
+                assertEquals(1, a.running());
+            });
+        } finally {
+            finish.countDown();
+            try {
+                checker.join(Duration.ofMinutes(1));
+            } finally {
+                large.close();
+            }
+        }
     }
 
     @Test

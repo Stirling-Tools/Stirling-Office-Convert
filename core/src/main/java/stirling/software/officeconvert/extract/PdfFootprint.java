@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -86,29 +87,40 @@ public final class PdfFootprint {
         int pages = Math.max(1, last - first + 1);
         long model = Math.min(pages, SAMPLED_PAGES) * SAMPLED_PAGE_BYTES + pages * PAGE_BYTES;
         Scan scan = new Scan();
-        int end = Math.min(last, first + MAX_SCANNED_PAGES - 1);
-        if (end < last) {
+        Set<Integer> sampled = new LinkedHashSet<>();
+        for (int[] run : PageSamples.runs(first, last)) {
+            for (int page = run[0]; page <= run[1]; page++) {
+                sampled.add(page);
+            }
+        }
+        List<Integer> scanned = new ArrayList<>(sampled);
+        for (int page = first; page <= last && scanned.size() < MAX_SCANNED_PAGES; page++) {
+            if (!sampled.contains(page)) {
+                scanned.add(page);
+            }
+        }
+        if (scanned.size() < pages) {
             scan.unknown();
         }
-        int i = 0;
-        for (PDPage page : doc.getPages()) {
-            if (i > end) {
-                break;
-            }
-            if (scan.budget <= 0) {
+        for (int index : scanned) {
+            if (scan.budget <= 0 || scan.contentLeft <= 0) {
+                if (sampled.contains(index)) {
+                    return Long.MAX_VALUE;
+                }
                 scan.unknown();
                 break;
             }
-            if (i++ < first) {
-                continue;
-            }
+            PDPage page = doc.getPage(index);
             long contentBefore = scan.read;
             try {
                 PDRectangle box = page.getCropBox();
                 scan.area = Math.max(scan.area, (double) box.getWidth() * box.getHeight());
+                List<COSStream> contents = contents(page);
                 PDResources resources = page.getResources();
-                scan.resources(resources == null ? null : resources.getCOSObject(), 0);
-                for (COSStream content : contents(page)) {
+                if (!contents.isEmpty()) {
+                    scan.resources(resources == null ? null : resources.getCOSObject(), 0);
+                }
+                for (COSStream content : contents) {
                     try (InputStream in = StreamGuard.head(content, scan.contentLeft)) {
                         scan.content(in);
                     }
@@ -117,16 +129,20 @@ public final class PdfFootprint {
             } catch (IOException | RuntimeException e) {
                 scan.unknown();
             }
+            if (scan.read == Long.MAX_VALUE || sampled.contains(index)
+                    && (scan.budget <= 0 || scan.contentLeft <= 0)) {
+                return Long.MAX_VALUE;
+            }
             long excess = Math.max(0, scan.read - contentBefore - PAGE_CONTENT_ALLOWANCE);
             scan.busiest = Math.max(scan.busiest, excess);
-            if (i - first <= SAMPLED_PAGES) {
-                scan.dense += excess;
+            if (sampled.contains(index)) {
+                scan.dense = add(scan.dense, excess);
             }
         }
         long render = renderBytes(scan.area, dpi) - renderBytes(scan.area, MEASURED_DPI);
-        long content = Math.min(MAX_CONTENT_CHARGE, scan.busiest * CONTENT_BYTE_COST) + scan.dense * KEPT_BYTE_COST;
-        long sum = model + scan.picture + Math.max(0, render) + content;
-        return sum < 0 ? Long.MAX_VALUE : sum;
+        long content = add(Math.min(MAX_CONTENT_CHARGE, multiply(scan.busiest, CONTENT_BYTE_COST)),
+                multiply(scan.dense, KEPT_BYTE_COST));
+        return add(add(add(model, scan.picture), Math.max(0, render)), content);
     }
 
     private static List<COSStream> contents(PDPage page) {
@@ -274,8 +290,12 @@ public final class PdfFootprint {
         return length <= 0 ? length : (length + step - 1) / step;
     }
 
-    private static long add(long a, long b) {
+    static long add(long a, long b) {
         return a > Long.MAX_VALUE - b ? Long.MAX_VALUE : a + b;
+    }
+
+    static long multiply(long a, long b) {
+        return b != 0 && a > Long.MAX_VALUE / b ? Long.MAX_VALUE : a * b;
     }
 
     static long inline(Map<String, String> params) {
@@ -319,7 +339,7 @@ public final class PdfFootprint {
 
         final Set<COSBase> seen = Collections.newSetFromMap(new IdentityHashMap<>());
 
-        // Content bytes under each resources dictionary or form, charged again each time a page draws it
+        // Content bytes under each resources dictionary or form, charged for each referencing page
         final Map<COSBase, Long> held = new IdentityHashMap<>();
 
         // Content bytes drawn so far, read or repeated
@@ -504,7 +524,7 @@ public final class PdfFootprint {
                 int want = (int) Math.min(buf.length - len, contentLeft);
                 int n = in.readNBytes(buf, len, want);
                 contentLeft -= n;
-                read += n;
+                read = add(read, n);
                 len += n;
                 boolean full = len == buf.length;
                 if (!full && contentLeft <= 0 && in.read() >= 0) {

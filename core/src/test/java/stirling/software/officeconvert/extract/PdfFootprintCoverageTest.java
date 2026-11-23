@@ -67,6 +67,12 @@ class PdfFootprintCoverageTest {
         return page;
     }
 
+    private static PDPage page(PDDocument doc, String content) throws IOException {
+        PDPage page = page(doc);
+        page.getCOSObject().setItem(COSName.CONTENTS, stream(doc, content));
+        return page;
+    }
+
     private static long baseline() throws IOException {
         try (PDDocument doc = new PDDocument()) {
             page(doc);
@@ -127,7 +133,7 @@ class PdfFootprintCoverageTest {
             xobjects.setItem(COSName.getPDFName("Fm0"), form);
             COSDictionary resources = new COSDictionary();
             resources.setItem(COSName.XOBJECT, xobjects);
-            page(doc).getCOSObject().setItem(COSName.RESOURCES, resources);
+            page(doc, "/Fm0 Do\n").getCOSObject().setItem(COSName.RESOURCES, resources);
             assertTrue(scannedWithin(doc) - baseline() >= PdfFootprint.UNSCANNED_PICTURE);
         }
     }
@@ -175,7 +181,7 @@ class PdfFootprintCoverageTest {
     @Test
     void aPageImageIsCountedAsItsRgbRaster() throws IOException {
         try (PDDocument doc = new PDDocument()) {
-            PDPage page = page(doc);
+            PDPage page = page(doc, "/Im0 Do\n");
             page.getCOSObject().setItem(COSName.RESOURCES, withImage(doc));
             assertEquals(PICTURE, extra(doc));
         }
@@ -190,7 +196,7 @@ class PdfFootprintCoverageTest {
             patterns.setItem(COSName.getPDFName("P0"), pattern);
             COSDictionary resources = new COSDictionary();
             resources.setItem(COSName.PATTERN, patterns);
-            page(doc).getCOSObject().setItem(COSName.RESOURCES, resources);
+            page(doc, "/Pattern cs /P0 scn 0 0 10 10 re f\n").getCOSObject().setItem(COSName.RESOURCES, resources);
             assertEquals(PICTURE, extra(doc));
         }
     }
@@ -206,7 +212,7 @@ class PdfFootprintCoverageTest {
             fonts.setItem(COSName.getPDFName("F0"), font);
             COSDictionary resources = new COSDictionary();
             resources.setItem(COSName.FONT, fonts);
-            page(doc).getCOSObject().setItem(COSName.RESOURCES, resources);
+            page(doc, "BT /F0 12 Tf (A) Tj ET\n").getCOSObject().setItem(COSName.RESOURCES, resources);
             assertEquals(PICTURE, extra(doc));
         }
     }
@@ -236,7 +242,7 @@ class PdfFootprintCoverageTest {
                 resources = new COSDictionary();
                 resources.setItem(COSName.XOBJECT, xobjects);
             }
-            page(doc).getCOSObject().setItem(COSName.RESOURCES, resources);
+            page(doc, "/Fm5 Do\n").getCOSObject().setItem(COSName.RESOURCES, resources);
             assertEquals(PICTURE, extra(doc));
         }
     }
@@ -267,7 +273,7 @@ class PdfFootprintCoverageTest {
             xobjects.setItem(COSName.getPDFName("Fm0"), form);
             COSDictionary resources = new COSDictionary();
             resources.setItem(COSName.XOBJECT, xobjects);
-            page(doc).getCOSObject().setItem(COSName.RESOURCES, resources);
+            page(doc, "/Fm0 Do\n").getCOSObject().setItem(COSName.RESOURCES, resources);
             assertTrue(extra(doc) >= PdfFootprint.UNSCANNED_PICTURE);
         }
     }
@@ -319,7 +325,8 @@ class PdfFootprintCoverageTest {
     @Test
     void aSharedFormIsChargedOnEveryPageThatDrawsIt() throws IOException {
         int bytes = 128 << 10;
-        long each = charged(text(bytes).length());
+        String draw = "/Fm0 Do\n";
+        long each = charged(text(bytes).length() + draw.length());
         long fixed = 2 * (PdfFootprint.SAMPLED_PAGE_BYTES + PdfFootprint.PAGE_BYTES);
         long content = each * PdfFootprint.CONTENT_BYTE_COST + 3 * each * PdfFootprint.KEPT_BYTE_COST;
         for (boolean sharedResources : new boolean[] {true, false}) {
@@ -334,11 +341,42 @@ class PdfFootprintCoverageTest {
                     COSDictionary resources = new COSDictionary();
                     resources.setItem(COSName.XOBJECT, xobjects);
                     shared = sharedResources && shared != null ? shared : resources;
-                    page(doc).getCOSObject().setItem(COSName.RESOURCES, shared);
+                    PDPage page = page(doc);
+                    page.getCOSObject().setItem(COSName.RESOURCES, shared);
+                    page.getCOSObject().setItem(COSName.CONTENTS, stream(doc, draw));
                 }
                 long pages = PdfFootprint.estimate(doc, 0, 0, 150f);
                 assertEquals(content, pages - baseline() - fixed, "shared resources: " + sharedResources);
             }
         }
     }
+    @Test
+    void aRetainedTailPageReceivesItsDenseContentCharge() throws IOException {
+        try (PDDocument doc = new PDDocument()) {
+            for (int i = 0; i < 60; i++) {
+                page(doc);
+            }
+            String content = text(32 << 10);
+            page(doc).getCOSObject().setItem(COSName.CONTENTS, stream(doc, content));
+            long fixed = 60 * PdfFootprint.SAMPLED_PAGE_BYTES + 61 * PdfFootprint.PAGE_BYTES;
+            long expected = charged(content.length()) * (PdfFootprint.CONTENT_BYTE_COST + PdfFootprint.KEPT_BYTE_COST);
+            assertEquals(expected, PdfFootprint.estimate(doc, 0, 0, 150f) - fixed);
+        }
+    }
+
+    @Test
+    void aBlankPageDoesNotChargeAnUnusedForm() throws IOException {
+        try (PDDocument doc = new PDDocument()) {
+            COSStream form = stream(doc, text(32 << 10));
+            form.setItem(COSName.TYPE, COSName.XOBJECT);
+            form.setItem(COSName.SUBTYPE, COSName.FORM);
+            COSDictionary xobjects = new COSDictionary();
+            xobjects.setItem(COSName.getPDFName("Fm0"), form);
+            COSDictionary resources = new COSDictionary();
+            resources.setItem(COSName.XOBJECT, xobjects);
+            page(doc).getCOSObject().setItem(COSName.RESOURCES, resources);
+            assertEquals(0, extra(doc));
+        }
+    }
+
 }
