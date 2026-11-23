@@ -636,7 +636,7 @@ class AdmissionTest {
                 () -> a.retrying(() -> {
                     if (++attempts[0] == 1) {
                         Thread.ofVirtual().start(() -> {
-                            LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(1_500));
+                            LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(2_000));
                             first.close();
                         });
                     }
