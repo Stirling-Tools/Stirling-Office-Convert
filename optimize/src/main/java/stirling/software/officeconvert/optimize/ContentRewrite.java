@@ -14,7 +14,10 @@ import java.util.Set;
 
 final class ContentRewrite {
 
-    private static final int MAX_OPS = 1 << 22;
+    private static final int MAX_OPS = 1 << 20;
+
+    // The parsed operator model retains 5 to 33 times its input (measured), densest for short operators.
+    static final long MAX_INPUT_BYTES = Math.max(1L << 20, Recoder.MAX_DECODED_BYTES / 32);
 
     private static final int MAX_DECIMALS = 6;
 
@@ -54,6 +57,9 @@ final class ContentRewrite {
     private ContentRewrite() {}
 
     static byte[] rewrite(byte[] in, boolean pageStart) {
+        if (in.length > MAX_INPUT_BYTES) {
+            return null;
+        }
         List<Op> ops = parse(in);
         if (ops == null) {
             return null;

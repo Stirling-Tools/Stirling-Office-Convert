@@ -334,9 +334,14 @@ class DownsampleTest {
         Path in = pdf(doc -> draw(doc, LosslessFactory.createFromImage(doc, printedPage(1200, 1200)), 288));
         PdfOptimizer.Options at72Dpi = PdfOptimizer.Options.defaults().images(new PdfOptimizer.Images(72, 0.3f));
 
-        long at150 = java.nio.file.Files.size(optimize(in, AT_150_DPI));
-        long at72 = java.nio.file.Files.size(optimize(in, at72Dpi));
+        Path at150Pdf = optimize(in, AT_150_DPI);
+        long at150 = java.nio.file.Files.size(at150Pdf);
+        int width150 = onlyImage(at150Pdf).getInt(COSName.WIDTH);
+        Path at72Pdf = optimize(in, at72Dpi);
+        long at72 = java.nio.file.Files.size(at72Pdf);
+        int width72 = onlyImage(at72Pdf).getInt(COSName.WIDTH);
 
+        assertTrue(width72 < width150, "width " + width72 + " >= " + width150);
         assertTrue(at72 <= at150, at72 + " > " + at150);
     }
 
