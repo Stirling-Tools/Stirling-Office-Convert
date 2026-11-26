@@ -16,8 +16,8 @@ final class ContentRewrite {
 
     private static final int MAX_OPS = 1 << 20;
 
-    // The operator model costs about twenty times its input; keep it inside the decoded-stream allowance.
-    private static final long MAX_INPUT_BYTES = Math.max(1L << 20, Recoder.MAX_DECODED_BYTES / 32);
+    // The parsed operator model retains 5 to 33 times its input (measured), densest for short operators.
+    static final long MAX_INPUT_BYTES = Math.max(1L << 20, Recoder.MAX_DECODED_BYTES / 32);
 
     private static final int MAX_DECIMALS = 6;
 

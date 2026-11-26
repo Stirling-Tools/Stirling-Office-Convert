@@ -223,6 +223,31 @@ class PdfOptimizerTest {
     }
 
     @Test
+    void contentOverTheRewriteCapIsStillMinifiedAndCompressed() throws Exception {
+        String unit = "BT  1 0 0 1 5 5 Tm  (a) Tj  ET\n";
+        byte[] content = unit.repeat((int) (ContentRewrite.MAX_INPUT_BYTES / unit.length()) + 1)
+                .getBytes(StandardCharsets.ISO_8859_1);
+        assertTrue(content.length > ContentRewrite.MAX_INPUT_BYTES);
+        Path in = RawPdf.page("", new String(content, StandardCharsets.ISO_8859_1)).write(dir, "big-content");
+        Path out = dir.resolve("out.pdf");
+        PdfOptimizer.optimize(in, out, REWRITE);
+        try (PDDocument d = Loader.loadPDF(out.toFile())) {
+            assertEquals(1, d.getNumberOfPages());
+            COSStream stream = (COSStream) d.getPage(0).getCOSObject().getDictionaryObject(COSName.CONTENTS);
+            assertEquals(COSName.FLATE_DECODE, stream.getFilters());
+            byte[] decoded;
+            try (InputStream s = stream.createInputStream()) {
+                decoded = s.readAllBytes();
+            }
+            byte[] minified = Content.minify(content);
+            assertNotNull(minified);
+            assertTrue(minified.length < content.length);
+            assertArrayEquals(minified, decoded);
+        }
+        assertTrue(Files.size(out) * 10 < Files.size(in), Files.size(out) + " vs " + Files.size(in));
+    }
+
+    @Test
     void treeKidsStayIndirect() throws Exception {
         RawPdf r = RawPdf.page("", "0 0 1 rg 10 10 50 50 re f");
         r.set(1, "<</Type/Catalog/Pages 2 0 R/Names<</Dests 5 0 R>>>>");

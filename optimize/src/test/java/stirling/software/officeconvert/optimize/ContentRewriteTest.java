@@ -1,6 +1,7 @@
 package stirling.software.officeconvert.optimize;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -101,5 +102,15 @@ class ContentRewriteTest {
     @Test
     void aStreamWithAnInlineImageIsLeftAlone() {
         assertNull(rewrite("q q BI /W 2 /H 1 /CS /G /BPC 8 ID xx EI Q Q", false));
+    }
+
+    @Test
+    void contentOverTheInputCapIsNotRewritten() {
+        String unit = "BT 1 0 0 1 5 5 Tm (a)Tj ET\n";
+        assertNotNull(rewrite(unit, false));
+        byte[] big = unit.repeat((int) (ContentRewrite.MAX_INPUT_BYTES / unit.length()) + 1)
+                .getBytes(StandardCharsets.ISO_8859_1);
+        assertTrue(big.length > ContentRewrite.MAX_INPUT_BYTES);
+        assertNull(ContentRewrite.rewrite(big, false));
     }
 }
