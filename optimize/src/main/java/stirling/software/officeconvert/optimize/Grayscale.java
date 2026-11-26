@@ -1122,9 +1122,11 @@ final class Grayscale {
         int width = rgb.getWidth();
         int height = rgb.getHeight();
         byte[] samples = new byte[width * height];
+        int[] row = new int[width];
         for (int y = 0; y < height; y++) {
+            Palette.rgbRow(rgb, y, row);
             for (int x = 0; x < width; x++) {
-                int c = rgb.getRGB(x, y);
+                int c = row[x];
                 samples[y * width + x] = (byte) (((c >> 16 & 0xFF) * 30 + (c >> 8 & 0xFF) * 59 + (c & 0xFF) * 11)
                         / 100);
             }

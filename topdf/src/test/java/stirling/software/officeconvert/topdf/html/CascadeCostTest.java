@@ -160,4 +160,42 @@ class CascadeCostTest {
         OfficeToPdf.Result r = convert("costly.html", "<style>" + css + "</style>" + body);
         assertTrue(r.warnings().contains(Cascade.LEFT_OUT_WARNING), r.warnings().toString());
     }
+
+    @Test
+    void classesFoldingAlikeApplyTheirRulesOnce() {
+        Document d = Jsoup.parse("<style>.a { color: red } .A.a { color: blue } p.a { margin-left: 3px }</style>"
+                + "<p class=\"A a\" id=t>x</p>");
+        Element t = d.getElementById("t");
+        Cascade c = new Cascade(d, 800);
+        assertEquals("blue", c.declared(t).get("color"));
+        assertEquals("3px", c.declared(t).get("margin-left"));
+        assertFalse(c.leftOutRules());
+    }
+
+    @Test
+    @Timeout(value = 120, unit = TimeUnit.SECONDS)
+    void aClassRepeatedInAnotherCaseStillCountsAsMatchingWork() {
+        StringBuilder css = new StringBuilder();
+        for (int i = 0; i < 6000; i++) {
+            css.append(".a { margin: ").append(i).append("px }\n");
+        }
+        Document once = Jsoup.parse("<style>" + css + "</style>" + "<p class=\"a\">x</p>".repeat(900));
+        Cascade plain = new Cascade(once, 800);
+        once.select("p").forEach(plain::declared);
+        assertFalse(plain.leftOutRules());
+        Document twice = Jsoup.parse("<style>" + css + "</style>" + "<p class=\"a A\">x</p>".repeat(900));
+        Cascade doubled = new Cascade(twice, 800);
+        twice.select("p").forEach(doubled::declared);
+        assertTrue(doubled.leftOutRules());
+    }
+
+    @Test
+    void selectorsWithoutPseudoClassesOrAttributesAreKeptAsWritten() {
+        Document d = Jsoup.parse("<style>div > p.x { color: red } p[title~=w] { color: green }"
+                + " p:hover { color: blue } .y::before { color: gray }</style>"
+                + "<div><p class=\"x y\" id=t>x</p></div><p title=\"v w\" id=u>y</p>");
+        Cascade c = new Cascade(d, 800);
+        assertEquals("red", c.declared(d.getElementById("t")).get("color"));
+        assertEquals("green", c.declared(d.getElementById("u")).get("color"));
+    }
 }

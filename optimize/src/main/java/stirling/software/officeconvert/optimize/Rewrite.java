@@ -157,15 +157,22 @@ final class Rewrite {
                 info = -1;
             }
             Resolver resolver = new Resolver(source, index);
-            roles.resolve(resolver, root);
-            Resolver.Found dr = resolver.find(new Roles.Loc(root, new Object[] {COSName.ACRO_FORM, COSName.DR}));
-            r.removals = Cleanup.unusedResources(roles, resolver, source, index, dr == null ? null : dr.loc(),
-                    r.brotliBudget);
-            if (source.load(index.key(root)) instanceof COSDictionary catalogDict
-                    && !catalogDict.containsKey(COSName.THREADS)) {
-                r.removals = Cleanup.withoutBeads(r.removals, roles);
+            Resolver.Found dr;
+            // Read-only walks: unpack each object stream once instead of once per object read
+            source.keepContainers(true);
+            try {
+                roles.resolve(resolver, root);
+                dr = resolver.find(new Roles.Loc(root, new Object[] {COSName.ACRO_FORM, COSName.DR}));
+                r.removals = Cleanup.unusedResources(roles, resolver, source, index, dr == null ? null : dr.loc(),
+                        r.brotliBudget);
+                if (source.load(index.key(root)) instanceof COSDictionary catalogDict
+                        && !catalogDict.containsKey(COSName.THREADS)) {
+                    r.removals = Cleanup.withoutBeads(r.removals, roles);
+                }
+                r.removals = Cleanup.withoutDeadDestinations(r.removals, roles, index, source, root);
+            } finally {
+                source.keepContainers(false);
             }
-            r.removals = Cleanup.withoutDeadDestinations(r.removals, roles, index, source, root);
             r.prune();
             r.fonts = Fonts.of(roles, resolver, source, index, dr == null ? null : dr.loc(), r.recorder, r.removals,
                     r.brotliBudget);
@@ -302,15 +309,24 @@ final class Rewrite {
     }
 
     private void prune() throws IOException {
-        for (Map.Entry<Integer, List<Cleanup.Removal>> e : removals.entrySet()) {
-            int id = e.getKey();
+        List<COSObjectKey> stored = new ArrayList<>();
+        for (int id : removals.keySet()) {
             if (index.kind(id) == Index.STREAM) {
                 continue;
             }
-            COSBase fresh = source.load(index.key(id));
-            Cleanup.apply(fresh, e.getValue());
-            recorder.record(id, fresh, null);
+            if (source.injected(index.key(id))) {
+                prune(id, source.load(index.key(id)));
+            } else {
+                stored.add(index.key(id));
+            }
         }
+        // Each key gets its own fresh object, but every object stream is unpacked only once
+        source.load(stored, (key, fresh) -> prune(index.id(key), fresh));
+    }
+
+    private void prune(int id, COSBase fresh) throws IOException {
+        Cleanup.apply(fresh, removals.get(id));
+        recorder.record(id, fresh, null);
     }
 
     private record Pending(int node, COSStream stream, Future<Done> plan, boolean windowed, Fonts.Rebuilt font) {}

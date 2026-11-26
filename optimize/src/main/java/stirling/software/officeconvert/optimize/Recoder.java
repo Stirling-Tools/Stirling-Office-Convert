@@ -3,6 +3,7 @@ package stirling.software.officeconvert.optimize;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -52,7 +53,7 @@ final class Recoder {
         }
         byte[] raw;
         try (InputStream in = s.createRawInputStream()) {
-            raw = in.readNBytes((int) MAX_RAW_BYTES + 1);
+            raw = upTo(in, (int) MAX_RAW_BYTES + 1, s.getLength());
         }
         if (raw.length > MAX_RAW_BYTES) {
             return null;
@@ -192,6 +193,28 @@ final class Recoder {
         return new Plan(best.data, replace, true);
     }
 
+    // Same bytes as readNBytes(limit), but one buffer sized from the declared length instead of 16 KB chunks
+    static byte[] upTo(InputStream in, int limit, long expected) throws IOException {
+        int size = (int) Math.min(Math.min(limit, in.available()), Math.max(0, expected));
+        byte[] head = new byte[size];
+        int n = in.readNBytes(head, 0, size);
+        if (n < size) {
+            return Arrays.copyOf(head, n);
+        }
+        if (size == limit) {
+            return head;
+        }
+        int next = in.read();
+        if (next < 0) {
+            return head;
+        }
+        byte[] tail = in.readNBytes(limit - size - 1);
+        byte[] all = Arrays.copyOf(head, size + 1 + tail.length);
+        all[size] = (byte) next;
+        System.arraycopy(tail, 0, all, size + 1, tail.length);
+        return all;
+    }
+
     static byte[] decoded(COSStream s, BrotliBudget budget) throws IOException {
         if (s.getLength() > MAX_RAW_BYTES || s.containsKey(COSName.F)) {
             return null;
@@ -203,7 +226,7 @@ final class Recoder {
         }
         byte[] data;
         try (InputStream in = s.createRawInputStream()) {
-            data = in.readNBytes((int) MAX_RAW_BYTES + 1);
+            data = upTo(in, (int) MAX_RAW_BYTES + 1, s.getLength());
         }
         if (data.length > MAX_RAW_BYTES) {
             return null;

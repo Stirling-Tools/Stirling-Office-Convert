@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 import org.jsoup.nodes.Element;
 import org.jsoup.nodes.Node;
@@ -27,6 +28,13 @@ import stirling.software.officeconvert.topdf.docx.BlockFlow;
 /** Lays nested HTML blocks out as the flat run of paragraphs and tables a page holds: margins collapse into the space
  * before the next paragraph, and padding and nesting add up to its indents. */
 final class Flow {
+
+    // Compiled once: String.matches compiles its pattern again on every call, once per element here
+    private static final Pattern OUT_OF_FLOW = Pattern.compile("(?i)absolute|fixed");
+
+    private static final Pattern HEADING = Pattern.compile("h[1-6]");
+
+    private static final Pattern SHARE = Pattern.compile("[0-9]{1,3}([.][0-9]{1,4})?%");
 
     @FunctionalInterface
     interface Out {
@@ -237,7 +245,7 @@ final class Flow {
         Map<String, String> nd = ctx.declared(next, look);
         boolean flows = nd.getOrDefault("float", "none").strip().equalsIgnoreCase("none")
                 && nd.getOrDefault("display", "block").strip().equalsIgnoreCase("block")
-                && !nd.getOrDefault("position", "").strip().matches("(?i)absolute|fixed");
+                && !OUT_OF_FLOW.matcher(nd.getOrDefault("position", "").strip()).matches();
         return flows ? next : null;
     }
 
@@ -728,7 +736,7 @@ final class Flow {
         String outerHeading = headingStyle;
         blockLook = look;
         blockFrame = inner;
-        if (tag.matches("h[1-6]")) {
+        if (HEADING.matcher(tag).matches()) {
             headingStyle = "Heading" + tag.charAt(1);
         }
         boolean list = tag.equals("ul") || tag.equals("ol") || tag.equals("menu");
@@ -1112,7 +1120,7 @@ final class Flow {
             Map<String, String> od = only == null ? Map.of() : ctx.declared(only, look);
             Integer color = Css.color(od.get("background-color"));
             String share = od.getOrDefault("width", "").strip();
-            if (color != null && color >= 0 && padLeft + padRight < 1 && share.matches("[0-9]{1,3}([.][0-9]{1,4})?%")) {
+            if (color != null && color >= 0 && padLeft + padRight < 1 && SHARE.matcher(share).matches()) {
                 float done = Math.min(1, Float.parseFloat(share.substring(0, share.length() - 1)) / 100f) * width;
                 if (width - done < 1) {
                     cell.shading = color;

@@ -102,6 +102,10 @@ final class Source {
         injected.put(key, object);
     }
 
+    boolean injected(COSObjectKey key) {
+        return injected.containsKey(key);
+    }
+
     boolean rebuilt() {
         return bruteForce() != null;
     }

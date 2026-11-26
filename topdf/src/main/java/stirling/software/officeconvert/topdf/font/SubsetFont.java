@@ -31,6 +31,7 @@ import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSInteger;
 import org.apache.pdfbox.cos.COSName;
+import org.apache.pdfbox.io.RandomAccessReadBuffer;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.common.PDStream;
@@ -158,7 +159,8 @@ final class SubsetFont {
         gidToCid.forEach((gid, cid) -> cidToGid.put(cid, gid));
         toUnicode(gidToCid);
         PDStream file = new PDStream(document, new ByteArrayInputStream(subset), COSName.FLATE_DECODE);
-        TrueTypeFont embedded = new TTFParser().parseEmbedded(new ByteArrayInputStream(subset));
+        // parseEmbedded(InputStream) grows a buffer to read what is already in memory, several MB for a CJK subset
+        TrueTypeFont embedded = new TTFParser(true).parse(new RandomAccessReadBuffer(subset));
         if (!embeddingPermitted(embedded)) {
             throw new IOException("This font does not permit embedding");
         }
