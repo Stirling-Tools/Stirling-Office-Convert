@@ -40,7 +40,7 @@ final class CMapFixer {
     private static final Pattern CID_RANGE = Pattern.compile(
             "<([0-9A-Fa-f]+)>\\s*<([0-9A-Fa-f]+)>\\s*(\\d+)");
 
-    private static final Pattern USE_CMAP_OPERATOR = Pattern.compile("/([^\s/]+)\s+usecmap");
+    private static final Pattern USE_CMAP_OPERATOR = Pattern.compile("/([^\\s/]+)\\s+usecmap");
 
     private static final Pattern DECLARED_WMODE = Pattern.compile("/WMode\\s+([01])\\s+def");
 
@@ -358,7 +358,7 @@ final class CMapFixer {
     }
 
     // Adds the predefined CMaps a CMap uses until a codespace is found, so 3 and 4 byte codes keep their length.
-    private static String withPredefined(String text) throws IOException {
+    static String withPredefined(String text) throws IOException {
         String out = text;
         String piece = text;
         for (int i = 0; piece != null && i < 4 && !out.contains("begincodespacerange"); i++) {
