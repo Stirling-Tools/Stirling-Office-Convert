@@ -84,7 +84,8 @@ Every page render goes through one guarded renderer, so these limits hold for pa
 | Limit | Value | When reached |
 |---|---|---|
 | Content operators per page | 5,000,000 | the rest of the page is skipped with a warning; PDF/A flattening fails |
-| Characters / straight lines and filled boxes per page (PDF to Office) | 200,000 / 50,000 | the page is kept as a picture with the picture fallback, otherwise the conversion fails |
+| Characters per page (PDF to Office) | 200,000 | the page is kept as a picture with the picture fallback, otherwise the conversion fails |
+| Straight lines and filled boxes per page (PDF to Office) | 50,000 | further lines and boxes are kept as a picture of the area they cover |
 | Form XObjects per page | 50,000 | further forms are skipped; PDF/A flattening fails |
 | Interrupt and memory check | every 1,024 operators | the conversion stops at the timeout or under memory pressure |
 | Annotations drawn per page | 10,000 | the rest are not drawn; PDF/A removes them with a warning |

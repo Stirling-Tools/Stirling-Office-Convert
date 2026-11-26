@@ -56,8 +56,10 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
 
     private static final int MAX_IMAGES = 10_000;
 
-    // Layout compares rules and fills pairwise, so past this the page is kept as a picture, like glyphs.
+    // Layout compares rules and fills pairwise, so past this further shapes are drawn as pictures, like paths past the point budget.
     private static final int MAX_PAGE_SEGMENTS = 50_000;
+
+    private static final int DOT_POINTS = 5;
 
     private static final Point2D.Float CURVE = new Point2D.Float(Float.NaN, Float.NaN);
 
@@ -171,8 +173,11 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
             BrokenOperators.brokenStream(e);
         }
         for (Fill dot : TouchingDots.keep(c.dots)) {
+            if (c.atSegmentCap()) {
+                c.pastBudget.add(dot.x(), dot.top(), dot.right(), dot.bottom(), DOT_POINTS);
+                continue;
+            }
             c.fills.add(dot);
-            c.withinSegmentCap();
             c.paintOrder.put(dot, c.dotOrder.get(dot));
         }
         HiddenFills.removeRules(c.rules, c.fills, c.paintOrder, c.seeThrough);
@@ -268,7 +273,7 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
             return false;
         }
         int rgb = onPaper(PdfColours.toRgb(colour, 0xFFFF00), highlight.getConstantOpacity());
-        for (int q = 0; q + 8 <= quads.length; q += 8) {
+        for (int q = 0; q + 8 <= quads.length && !atSegmentCap(); q += 8) {
             float minX = Float.MAX_VALUE;
             float minY = Float.MAX_VALUE;
             float maxX = -Float.MAX_VALUE;
@@ -285,7 +290,6 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
             }
             Fill fill = new Fill(minX, minY, maxX, maxY, rgb);
             fills.add(fill);
-            withinSegmentCap();
             paintOrder.put(fill, painted);
             seeThrough.add(fill);
         }
@@ -646,7 +650,7 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
         PDGraphicsState gs = getGraphicsState();
         if (thick >= RULE_STENCIL_THICK || length < RULE_STENCIL_RATIO * Math.max(thick, 0.1f)
                 || (long) image.getWidth() * image.getHeight() > RULE_STENCIL_PIXELS
-                || stencilRules >= MAX_IMAGES || gs.getNonStrokingColorSpace() instanceof PDPattern
+                || stencilRules >= MAX_IMAGES || atSegmentCap() || gs.getNonStrokingColorSpace() instanceof PDPattern
                 || gs.getSoftMask() != null || !ImageBudget.affordable(image) || !solid(image)) {
             return false;
         }
@@ -663,7 +667,6 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
                 Math.max(far - near, 0.1f),
                 onPaper(PdfColours.toRgb(gs.getNonStrokingColor(), 0), gs.getNonStrokeAlphaConstant()));
         rules.add(rule);
-        withinSegmentCap();
         stencilRules++;
         paintOrder.put(rule, painted++);
         return true;
@@ -793,6 +796,12 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
             return;
         }
         if (pointBudget <= 0) {
+            if (!onlyRectangles) {
+                pastBudget(fill, stroke);
+            }
+            return;
+        }
+        if (atSegmentCap()) {
             pastBudget(fill, stroke);
             return;
         }
@@ -824,7 +833,6 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
         }
         rules.addAll(shapes.rules());
         fills.addAll(shapes.fills());
-        withinSegmentCap();
         BlendMode blend = gs.getBlendMode();
         boolean blended = gs.getSoftMask() != null
                 || blend != null && blend != BlendMode.NORMAL && blend != BlendMode.COMPATIBLE;
@@ -867,14 +875,12 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
         painted++;
     }
 
-    private void withinSegmentCap() {
-        if (rules.size() + fills.size() > MAX_PAGE_SEGMENTS) {
-            throw new PageTooComplexException("More than " + MAX_PAGE_SEGMENTS + " lines and boxes on one page");
-        }
+    private boolean atSegmentCap() {
+        return rules.size() + fills.size() >= MAX_PAGE_SEGMENTS;
     }
 
     private void pastBudget(boolean fill, boolean stroke) {
-        if (onlyRectangles || !stroke && PdfColours.toRgb(getGraphicsState().getNonStrokingColor(), 0xFFFFFF) == 0xFFFFFF) {
+        if (!stroke && PdfColours.toRgb(getGraphicsState().getNonStrokingColor(), 0xFFFFFF) == 0xFFFFFF) {
             return;
         }
         float[] box = paintedBox(stroke);

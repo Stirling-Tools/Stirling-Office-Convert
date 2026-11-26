@@ -1,14 +1,18 @@
 package stirling.software.officeconvert.layout;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.InterruptedIOException;
 import java.time.Duration;
+import java.util.AbstractList;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.Test;
 
@@ -153,7 +157,7 @@ class LayoutBudgetTest {
 
     @Test
     void anInterruptLandsWhileAHeavyPageIsLaidOut() throws Exception {
-        java.util.Random random = new java.util.Random(7);
+        Random random = new Random(7);
         List<Glyph> glyphs = new ArrayList<>();
         for (int i = 0; i < 80_000; i++) {
             glyphs.add(glyph(String.valueOf((char) ('a' + i % 26)), random.nextFloat() * 600, random.nextFloat() * 780, 2));
@@ -167,9 +171,9 @@ class LayoutBudgetTest {
             fills.add(new Fill(x, y, x + 40, y + 20, 0x88AACC));
         }
         PageData page = new PageData(0, 612, 792, 0, glyphs, List.of(), List.of(),
-                new PageGraphics(rules, fills, List.of(), List.of()), List.of());
+                new PageGraphics(rules, new InterruptInsideAStage<>(fills), List.of(), List.of()), List.of());
         PageAnalyzer analyzer = new PageAnalyzer(new DocStats(), true);
-        java.util.concurrent.atomic.AtomicReference<Throwable> ended = new java.util.concurrent.atomic.AtomicReference<>();
+        AtomicReference<Throwable> ended = new AtomicReference<>();
         Thread worker = Thread.ofPlatform().stackSize(8L << 20).start(() -> {
             try {
                 analyzer.analyze(page);
@@ -177,31 +181,43 @@ class LayoutBudgetTest {
                 ended.set(e);
             }
         });
-        // Interrupt only once the worker is inside a layout stage, past the entry check
-        long until = System.nanoTime() + Duration.ofSeconds(10).toNanos();
-        while (worker.isAlive() && !insideStage(worker) && System.nanoTime() < until) {
-            Thread.onSpinWait();
-        }
-        assertTrue(insideStage(worker), "the worker never reached a layout stage");
-        worker.interrupt();
-        worker.join(Duration.ofSeconds(10));
+        worker.join(Duration.ofSeconds(30));
         StringBuilder where = new StringBuilder();
         for (StackTraceElement e : worker.getStackTrace()) {
             where.append(" at ").append(e);
         }
-        assertTrue(!worker.isAlive(), "layout ignored the interrupt" + where);
+        assertFalse(worker.isAlive(), "layout ignored the interrupt" + where);
         assertTrue(ended.get() instanceof InterruptedIOException, String.valueOf(ended.get()));
     }
 
-    private static boolean insideStage(Thread worker) {
-        for (StackTraceElement e : worker.getStackTrace()) {
-            String c = e.getClassName();
-            if ((c.contains(".layout.") || c.contains(".table.")) && !c.endsWith(".PageAnalyzer")
-                    && !c.endsWith(".Polls")) {
-                return true;
-            }
+    private static final class InterruptInsideAStage<T> extends AbstractList<T> {
+
+        private final List<T> items;
+        private boolean interrupted;
+
+        InterruptInsideAStage(List<T> items) {
+            this.items = items;
         }
-        return false;
+
+        @Override
+        public T get(int index) {
+            if (!interrupted && insideStage()) {
+                interrupted = true;
+                Thread.currentThread().interrupt();
+            }
+            return items.get(index);
+        }
+
+        @Override
+        public int size() {
+            return items.size();
+        }
+    }
+
+    private static boolean insideStage() {
+        return StackWalker.getInstance().walk(frames -> frames.map(StackWalker.StackFrame::getClassName)
+                .anyMatch(c -> (c.contains(".layout.") || c.contains(".table.")) && !c.endsWith(".PageAnalyzer")
+                        && !c.endsWith(".Polls") && !c.contains("LayoutBudgetTest")));
     }
 
     private static PageData page(List<Glyph> glyphs) {
