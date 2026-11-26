@@ -20,6 +20,7 @@ import javax.imageio.ImageWriteParam;
 import javax.imageio.ImageWriter;
 import javax.imageio.plugins.jpeg.JPEGImageWriteParam;
 import javax.imageio.stream.ImageOutputStream;
+import javax.imageio.stream.MemoryCacheImageOutputStream;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -471,8 +472,10 @@ final class MediaEncoder {
             g.drawImage(bi, 0, 0, null);
             g.dispose();
         }
-        if (!ImageIO.write(src, "png", out)) {
-            throw new IOException("No PNG writer");
+        try (ImageOutputStream ios = new MemoryCacheImageOutputStream(out)) {
+            if (!ImageIO.write(src, "png", ios)) {
+                throw new IOException("No PNG writer");
+            }
         }
         return new Encoded(out.toByteArray(), "png", bi.getWidth(), bi.getHeight());
     }
@@ -485,7 +488,7 @@ final class MediaEncoder {
         }
         ImageWriter writer = writers.next();
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        try (ImageOutputStream ios = ImageIO.createImageOutputStream(out)) {
+        try (ImageOutputStream ios = new MemoryCacheImageOutputStream(out)) {
             writer.setOutput(ios);
             ImageWriteParam param = writer.getDefaultWriteParam();
             param.setCompressionMode(ImageWriteParam.MODE_EXPLICIT);

@@ -22,6 +22,7 @@ import javax.imageio.ImageIO;
 import javax.imageio.ImageWriteParam;
 import javax.imageio.ImageWriter;
 import javax.imageio.stream.ImageOutputStream;
+import javax.imageio.stream.MemoryCacheImageOutputStream;
 
 final class Gradient {
 
@@ -235,7 +236,9 @@ final class Gradient {
 
     private static byte[] png(BufferedImage img) throws IOException {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        ImageIO.write(img, "png", out);
+        try (ImageOutputStream ios = new MemoryCacheImageOutputStream(out)) {
+            ImageIO.write(img, "png", ios);
+        }
         return out.toByteArray();
     }
 
@@ -275,7 +278,7 @@ final class Gradient {
     private static byte[] jpeg(BufferedImage img) throws IOException {
         ImageWriter writer = ImageIO.getImageWritersByFormatName("jpeg").next();
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        try (ImageOutputStream ios = ImageIO.createImageOutputStream(out)) {
+        try (ImageOutputStream ios = new MemoryCacheImageOutputStream(out)) {
             writer.setOutput(ios);
             ImageWriteParam p = writer.getDefaultWriteParam();
             p.setCompressionMode(ImageWriteParam.MODE_EXPLICIT);

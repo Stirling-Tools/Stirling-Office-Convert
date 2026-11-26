@@ -8,6 +8,9 @@ import java.io.IOException;
 import javax.imageio.ImageIO;
 import javax.imageio.ImageReader;
 import javax.imageio.stream.ImageInputStream;
+import javax.imageio.stream.ImageOutputStream;
+import javax.imageio.stream.MemoryCacheImageInputStream;
+import javax.imageio.stream.MemoryCacheImageOutputStream;
 
 import com.twelvemonkeys.imageio.plugins.webp.WebPImageReaderSpi;
 
@@ -34,7 +37,7 @@ final class WebP {
             return null;
         }
         ImageReader reader = new WebPImageReaderSpi().createReaderInstance(null);
-        try (ImageInputStream in = ImageIO.createImageInputStream(new ByteArrayInputStream(b))) {
+        try (ImageInputStream in = new MemoryCacheImageInputStream(new ByteArrayInputStream(b))) {
             reader.setInput(in, true, true);
             if ((long) reader.getWidth(0) * reader.getHeight(0) > MAX_PIXELS) {
                 return null;
@@ -48,8 +51,10 @@ final class WebP {
             }
             ByteArrayOutputStream bytes = new ByteArrayOutputStream();
             String format = opaque ? "jpeg" : "png";
-            if (!ImageIO.write(out, format, bytes)) {
-                return null;
+            try (ImageOutputStream ios = new MemoryCacheImageOutputStream(bytes)) {
+                if (!ImageIO.write(out, format, ios)) {
+                    return null;
+                }
             }
             return new MediaBytes(bytes.toByteArray(), format, img.getWidth(), img.getHeight());
         } catch (IOException | RuntimeException e) {

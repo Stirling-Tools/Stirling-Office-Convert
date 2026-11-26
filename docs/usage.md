@@ -253,8 +253,9 @@ stay available for options the facade leaves out, such as untyped spreadsheet ce
 
 Zip entries in DOCX, PPTX, XLSX, ODT, ODP, ODS, EPUB and Markdown packages are all dated 1980-02-01, a date zip
 holds without a zone-dependent extra field. The created and modified dates in document properties are the current
-time, or a fixed time in epoch seconds from the system property `stirling.officeconvert.sourceDateEpoch` or the
-`SOURCE_DATE_EPOCH` environment variable, for byte-reproducible output.
+time, or a fixed time in epoch seconds from the system property `stirling.officeconvert.sourceDateEpoch`, for
+byte-reproducible output. The `SOURCE_DATE_EPOCH` environment variable is deliberately not read, so a server that
+inherits it from its build image does not date every document with the build time.
 
 ### Pictures
 
@@ -935,8 +936,8 @@ further; the JDK default is 240 MB.
 - Line-art conversion leaves a signed PDF unchanged with a warning, as the optimizer does, instead of invalidating its
   signatures. `LineArt.Options` gains `timeout` (default 5 minutes, `LineArt.TimedOut`) and `maxImages` (default
   10,000; later images are left as they were), and `DEFAULT_MAX_PIXELS` drops from 1 G to 300 M pixels per image.
-- PDF-to-Office packages date their zip entries 1980-02-01, and document-property dates honour
-  `SOURCE_DATE_EPOCH` (see Library use).
+- PDF-to-Office packages date their zip entries 1980-02-01, and document-property dates honour the
+  `stirling.officeconvert.sourceDateEpoch` system property (see Library use).
 - Word 97-2003 `.doc` output is removed: `OfficeConvert.Format.of("x.doc")` throws `IllegalArgumentException`,
   `OfficeConvert.convert` to a `.doc` name throws `UnsupportedFormatException`, and the CLI's `--format doc` exits
   with status 2. Write `.docx` or `.rtf` instead.

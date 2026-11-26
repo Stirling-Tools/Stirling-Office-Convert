@@ -22,6 +22,9 @@ import java.util.TreeSet;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 import javax.imageio.ImageIO;
+import javax.imageio.stream.ImageOutputStream;
+import javax.imageio.stream.MemoryCacheImageInputStream;
+import javax.imageio.stream.MemoryCacheImageOutputStream;
 
 import stirling.software.officeconvert.Pictures;
 import stirling.software.officeconvert.model.Picture;
@@ -117,7 +120,7 @@ public final class OdpWriter implements SlideSink {
         }
         Object data = mediaData.get(pic.media.name());
         byte[] bytes = data instanceof byte[] b ? b : spill.read((SpillFile.Block) data);
-        BufferedImage img = ImageIO.read(new ByteArrayInputStream(bytes));
+        BufferedImage img = ImageIO.read(new MemoryCacheImageInputStream(new ByteArrayInputStream(bytes)));
         if (img == null) {
             return pic.media.name();
         }
@@ -133,8 +136,10 @@ public final class OdpWriter implements SlideSink {
         BufferedImage part = img.getSubimage(x, y, w, h);
         boolean jpeg = !lossless && pic.media.contentType().equals("image/jpeg") && !part.getColorModel().hasAlpha();
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        if (!ImageIO.write(part, jpeg ? "jpeg" : "png", out)) {
-            return pic.media.name();
+        try (ImageOutputStream ios = new MemoryCacheImageOutputStream(out)) {
+            if (!ImageIO.write(part, jpeg ? "jpeg" : "png", ios)) {
+                return pic.media.name();
+            }
         }
         return media(out.toByteArray(), jpeg ? "jpeg" : "png", w, h, key).name();
     }

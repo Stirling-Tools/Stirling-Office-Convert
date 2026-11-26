@@ -12,6 +12,8 @@ import java.util.Map;
 import java.util.Set;
 
 import javax.imageio.ImageIO;
+import javax.imageio.stream.ImageOutputStream;
+import javax.imageio.stream.MemoryCacheImageOutputStream;
 
 import stirling.software.officeconvert.model.Inline;
 import stirling.software.officeconvert.model.Picture;
@@ -137,8 +139,10 @@ final class Backgrounds {
             g.dispose();
         }
         ByteArrayOutputStream png = new ByteArrayOutputStream();
-        if (!ImageIO.write(canvas, "png", png)) {
-            return null;
+        try (ImageOutputStream ios = new MemoryCacheImageOutputStream(png)) {
+            if (!ImageIO.write(canvas, "png", ios)) {
+                return null;
+            }
         }
         return new Picture(images.png(png.toByteArray(), cw, ch, key), width, height);
     }

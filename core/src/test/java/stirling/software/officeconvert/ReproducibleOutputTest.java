@@ -2,6 +2,7 @@ package stirling.software.officeconvert;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.ByteArrayInputStream;
@@ -91,6 +92,25 @@ class ReproducibleOutputTest {
         } finally {
             restore(old);
         }
+    }
+
+    @Test
+    void theSourceDateEpochEnvironmentVariableIsIgnored() throws Exception {
+        String java = Path.of(System.getProperty("java.home"), "bin", "java").toString();
+        ProcessBuilder pb = new ProcessBuilder(java, "-cp", System.getProperty("java.class.path"),
+                ReproducibleOutputTest.class.getName());
+        pb.environment().put("SOURCE_DATE_EPOCH", EPOCH);
+        pb.environment().remove("JAVA_TOOL_OPTIONS");
+        pb.redirectErrorStream(true);
+        Process process = pb.start();
+        String printed = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8).strip();
+        assertEquals(0, process.waitFor(), printed);
+        assertNotEquals(EPOCH, printed);
+        assertTrue(Long.parseLong(printed) > Long.parseLong(EPOCH), printed);
+    }
+
+    public static void main(String[] args) {
+        System.out.print(Timestamps.now().getEpochSecond());
     }
 
     private static byte[] convert(String ext, Locale locale, String zone) throws Exception {
