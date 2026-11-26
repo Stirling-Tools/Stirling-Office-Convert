@@ -21,13 +21,26 @@ final class FormatCode {
 
     private FormatCode() {}
 
+    /** Excel's own limit on a number format code; longer ones are cut, which also bounds the shared caches. */
+    static final int MAX_CHARS = 255;
+
+    static final int MAX_CACHED = 1024;
+
+    static String clamp(String format) {
+        return format == null || format.length() <= MAX_CHARS ? format : format.substring(0, MAX_CHARS);
+    }
+
     private static final Map<String, List<String>> SECTIONS = new ConcurrentHashMap<>();
 
+    // Only short keys are kept across conversions, so a document cannot pin long strings in the JVM
     static List<String> sections(String format) {
         List<String> known = SECTIONS.get(format);
         if (known == null) {
             known = List.copyOf(split(format));
-            if (SECTIONS.size() >= 1024) {
+            if (format.length() > MAX_CHARS) {
+                return known;
+            }
+            if (SECTIONS.size() >= MAX_CACHED) {
                 SECTIONS.clear();
             }
             SECTIONS.put(format, known);

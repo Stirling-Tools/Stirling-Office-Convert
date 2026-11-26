@@ -11,8 +11,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 // Excel's number and date format codes, applied to the cached value the way Excel displays it
 final class ExcelFormat {
@@ -74,7 +72,10 @@ final class ExcelFormat {
             Locale[] locale = {Locale.US};
             List<Token> tokens = List.copyOf(tokens(section, locale));
             known = new Parsed(tokens, locale[0], dated(tokens), fraction(tokens));
-            if (PARSED.size() >= 1024) {
+            if (section.length() > FormatCode.MAX_CHARS) {
+                return known;
+            }
+            if (PARSED.size() >= FormatCode.MAX_CACHED) {
                 PARSED.clear();
             }
             PARSED.put(section, known);
@@ -194,7 +195,28 @@ final class ExcelFormat {
         return out;
     }
 
-    private static final Pattern NUMERALS = Pattern.compile("\\[\\$[^\\]-]*-([0-9A-Fa-f]{7,8})\\]");
+    // The hex of the first [$sym-XXXXXXXX]; every [$ before one ']' or '-' ends the same way, so each is tried once
+    static String numeralsTag(String s) {
+        for (int at = s.indexOf("[$"); at >= 0; ) {
+            int stop = at + 2;
+            while (stop < s.length() && s.charAt(stop) != ']' && s.charAt(stop) != '-') {
+                stop++;
+            }
+            if (stop >= s.length()) {
+                return null;
+            }
+            int hex = stop + 1;
+            while (hex < s.length() && hex - stop <= 8 && Character.digit(s.charAt(hex), 16) >= 0
+                    && s.charAt(hex) < 0x80) {
+                hex++;
+            }
+            if (s.charAt(stop) == '-' && hex - stop - 1 >= 7 && hex < s.length() && s.charAt(hex) == ']') {
+                return s.substring(stop + 1, hex);
+            }
+            at = s.indexOf("[$", stop + 1);
+        }
+        return null;
+    }
 
     // The zero of each numeral system a locale tag's top byte names (02 Arabic-Indic, 04 Devanagari, 0D Thai, ...)
     private static final int[] ZEROS = {0, 0, 0x0660, 0x06F0, 0x0966, 0x09E6, 0x0A66, 0x0AE6, 0x0B66, 0x0BE6, 0x0C66,
@@ -205,11 +227,11 @@ final class ExcelFormat {
         if (text == null || section.indexOf('[') < 0) {
             return text;
         }
-        Matcher m = NUMERALS.matcher(section);
-        if (!m.find()) {
+        String tag = numeralsTag(section);
+        if (tag == null) {
             return text;
         }
-        int system = (int) (Long.parseLong(m.group(1), 16) >>> 24);
+        int system = (int) (Long.parseLong(tag, 16) >>> 24);
         int zero = system < ZEROS.length ? ZEROS[system] : 0;
         if (zero == 0) {
             return text;
@@ -345,6 +367,8 @@ final class ExcelFormat {
         String fraction = decimals(tokens, point, exponent, frac);
         String exponentText = exponent < 0 ? "" : exponent(tokens, exponent, exp, expDigits);
         boolean integerDone = false;
+        int lastIntDigit = lastDigit(tokens, intEnd);
+        int lastDigit = lastDigit(tokens, tokens.size());
         for (int i = 0; i < tokens.size(); i++) {
             Token t = tokens.get(i);
             boolean inInteger = i < intEnd;
@@ -387,9 +411,9 @@ final class ExcelFormat {
                 }
                 case GENERAL -> out.append(ValueFormatter.general(value < 0 && minus ? value : Math.abs(value), 11));
                 case LITERAL -> {
-                    boolean between = inInteger && integerDone && hasDigitAfter(tokens, i, intEnd);
+                    boolean between = inInteger && integerDone && i < lastIntDigit;
                     if (!between && !(point >= 0 && i > point && (exponent < 0 || i < exponent))
-                            && !(exponent >= 0 && i > exponent && hasDigitAfter(tokens, i, tokens.size()))) {
+                            && !(exponent >= 0 && i > exponent && i < lastDigit)) {
                         out.append(t.text);
                     }
                 }
@@ -409,13 +433,14 @@ final class ExcelFormat {
         return false;
     }
 
-    private static boolean hasDigitAfter(List<Token> tokens, int i, int end) {
-        for (int k = i + 1; k < end; k++) {
+    // Index of the last digit placeholder before end, so "a digit follows i" is one compare, not a rescan per token
+    private static int lastDigit(List<Token> tokens, int end) {
+        for (int k = end - 1; k >= 0; k--) {
             if (tokens.get(k).kind == Kind.DIGIT) {
-                return true;
+                return k;
             }
         }
-        return false;
+        return -1;
     }
 
     static String plain(double v, int decimals) {
@@ -478,8 +503,8 @@ final class ExcelFormat {
             }
         }
         String d = digits;
-        while (d.length() < zeros) {
-            d = "0" + d;
+        if (d.length() < zeros) {
+            d = "0".repeat(zeros - d.length()) + d;
         }
         if (grouping && !d.isEmpty()) {
             StringBuilder g = new StringBuilder();
@@ -497,20 +522,21 @@ final class ExcelFormat {
             pad.append((char) (FormatCode.SPACE_BASE + '0'));
         }
         boolean literals = false;
-        for (int i = firstDigit; i < intEnd; i++) {
-            if (tokens.get(i).kind == Kind.LITERAL && hasDigitAfter(tokens, i, intEnd)) {
-                literals = true;
-            }
+        int last = lastDigit(tokens, intEnd);
+        for (int i = firstDigit; i < last && !literals; i++) {
+            literals = tokens.get(i).kind == Kind.LITERAL;
         }
         if (!literals || grouping) {
             return pad + d;
         }
-        StringBuilder out = new StringBuilder();
+        // Filled right to left, then joined in reverse: inserting at the front costs the length so far each time
+        List<String> parts = new ArrayList<>();
         int di = digits.length();
-        for (int k = intEnd - 1; k >= firstDigit; k--) {
+        // From the last digit: a literal after it is a suffix, which the caller writes
+        for (int k = last; k >= firstDigit; k--) {
             Token t = tokens.get(k);
             if (t.kind == Kind.LITERAL) {
-                out.insert(0, t.text);
+                parts.add(t.text);
                 continue;
             }
             if (t.kind != Kind.DIGIT) {
@@ -518,16 +544,20 @@ final class ExcelFormat {
             }
             if (k == firstDigit) {
                 if (di > 0) {
-                    out.insert(0, digits, 0, di);
+                    parts.add(digits.substring(0, di));
                     di = 0;
                 } else {
-                    out.insert(0, placeholder(t.text.charAt(0)));
+                    parts.add(placeholder(t.text.charAt(0)));
                 }
             } else if (di > 0) {
-                out.insert(0, digits.charAt(--di));
+                parts.add(String.valueOf(digits.charAt(--di)));
             } else {
-                out.insert(0, placeholder(t.text.charAt(0)));
+                parts.add(placeholder(t.text.charAt(0)));
             }
+        }
+        StringBuilder out = new StringBuilder();
+        for (int k = parts.size() - 1; k >= 0; k--) {
+            out.append(parts.get(k));
         }
         return out.toString();
     }
@@ -583,9 +613,10 @@ final class ExcelFormat {
             out.append('0');
         }
         out.append(n);
+        int last = lastDigit(tokens, tokens.size());
         for (int i = at + 1; i < tokens.size(); i++) {
             Token t = tokens.get(i);
-            if (t.kind == Kind.LITERAL && hasDigitAfter(tokens, i, tokens.size())) {
+            if (t.kind == Kind.LITERAL && i < last) {
                 out.append(t.text);
             }
         }

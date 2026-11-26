@@ -25,6 +25,7 @@ import org.jsoup.parser.Parser;
 
 import stirling.software.officeconvert.topdf.html.HtmlDocument;
 import stirling.software.officeconvert.topdf.html.HtmlRefs;
+import stirling.software.officeconvert.topdf.io.InterruptibleChars;
 
 final class EpubBook {
 
@@ -40,8 +41,6 @@ final class EpubBook {
     private static final Pattern SELF_CLOSED = Pattern.compile("<([A-Za-z][A-Za-z0-9:_-]*)(\\s[^<>]*?)?/>");
 
     private static final Pattern XML_DECLARATION = Pattern.compile("^\\s*<\\?xml[^>]*>");
-
-    private static final Pattern DOCTYPE = Pattern.compile("<!DOCTYPE[^>]*>", Pattern.CASE_INSENSITIVE);
 
     private EpubBook() {}
 
@@ -517,8 +516,8 @@ final class EpubBook {
 
     static String xhtmlAsHtml(String xhtml) {
         String s = XML_DECLARATION.matcher(xhtml).replaceFirst("");
-        s = DOCTYPE.matcher(s).replaceFirst("");
-        Matcher m = SELF_CLOSED.matcher(s);
+        s = withoutDoctype(s);
+        Matcher m = SELF_CLOSED.matcher(InterruptibleChars.of(s));
         StringBuilder out = new StringBuilder(s.length() + 64);
         while (m.find()) {
             String tag = m.group(1);
@@ -529,6 +528,17 @@ final class EpubBook {
         }
         m.appendTail(out);
         return out.toString();
+    }
+
+    // A regex scans to the next '>' from every <!DOCTYPE; with none after the first, none can close at all
+    static String withoutDoctype(String s) {
+        for (int at = s.indexOf("<!"); at >= 0; at = s.indexOf("<!", at + 2)) {
+            if (s.regionMatches(true, at + 2, "DOCTYPE", 0, 7)) {
+                int end = s.indexOf('>', at + 9);
+                return end < 0 ? s : s.substring(0, at) + s.substring(end + 1);
+            }
+        }
+        return s;
     }
 
     private static final Set<String> DRAWN = Set.of("path", "rect", "circle", "ellipse", "line", "polyline",

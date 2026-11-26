@@ -261,7 +261,7 @@ final class StyleCache {
         int formatIndex = style.getDataFormat();
         String formatString;
         try {
-            formatString = style.getDataFormatString();
+            formatString = FormatCode.clamp(style.getDataFormatString());
         } catch (RuntimeException e) {
             formatString = "General";
         }
