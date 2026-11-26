@@ -120,6 +120,13 @@ final class GlyphCollector extends PDFStreamEngine {
     }
 
     private final FontResolver fonts;
+    // The TeX maths name test is a regex, so it runs once per resolved font rather than per glyph
+    private FontInfo texChecked;
+    private boolean texMath;
+    private COSDictionary scaledFont;
+    private float scale;
+    private COSDictionary measuredFont;
+    private float[] measured;
     private final PageSink sink;
     private final UnicodeRecovery recovery;
     private final Map<org.apache.pdfbox.cos.COSDictionary, float[]> metrics = new WeakHashMap<>();
@@ -827,8 +834,7 @@ final class GlyphCollector extends PDFStreamEngine {
         if (drawnSize > 0 && pdFont.toUnicode(codes[0], TextPositions.GLYPHS) != null) {
             drawnSize = Float.NaN;
         }
-        float size = drawnSize > 0 && drawnSize < 400f ? drawnSize
-                : fontSize(tp, type3Scale(pdFont) * outlineScale(pdFont));
+        float size = drawnSize > 0 && drawnSize < 400f ? drawnSize : fontSize(tp, fontScale(pdFont));
         float[] m = metrics(pdFont);
         float space = spaceWidth(tp, pdFont, size, m[2]);
 
@@ -881,7 +887,11 @@ final class GlyphCollector extends PDFStreamEngine {
                         bold,
                         italic);
         g.hscale = horizontalScale(tp);
-        if (FontNames.isTexMath(font.postScriptName())) {
+        if (font != texChecked) {
+            texChecked = font;
+            texMath = FontNames.isTexMath(font.postScriptName());
+        }
+        if (texMath) {
             g.hang = hang(tp, size);
         }
         boolean dingbat = font.symbolic() && pdFont.isEmbedded()
@@ -1090,6 +1100,16 @@ final class GlyphCollector extends PDFStreamEngine {
         return tone >= 0 ? tone : PdfColours.toRgb(colour, 0);
     }
 
+    // Glyphs run in one font, so its scale and metrics are kept for the next glyph instead of looked up again
+    private float fontScale(PDFont font) {
+        COSDictionary key = font == null ? null : font.getCOSObject();
+        if (key == null || key != scaledFont) {
+            scale = type3Scale(font) * outlineScale(font);
+            scaledFont = key;
+        }
+        return scale;
+    }
+
     private float type3Scale(PDFont font) {
         if (!(font instanceof PDType3Font t3)) {
             return 1f;
@@ -1108,8 +1128,11 @@ final class GlyphCollector extends PDFStreamEngine {
         if (font == null) {
             return new float[] {0.8f, 0.2f, Float.NaN};
         }
+        if (font.getCOSObject() == measuredFont) {
+            return measured;
+        }
         final PDFont f = font;
-        return metrics.computeIfAbsent(
+        float[] found = metrics.computeIfAbsent(
                 font.getCOSObject(),
                 key -> {
                     float ascent = 0.8f;
@@ -1127,6 +1150,9 @@ final class GlyphCollector extends PDFStreamEngine {
                     }
                     return new float[] {ascent, descent, GlyphShapes.spaceEm(f)};
                 });
+        measuredFont = font.getCOSObject();
+        measured = found;
+        return found;
     }
 
     private static float spaceWidth(TextPosition tp, PDFont font, float size, float spaceEm) {

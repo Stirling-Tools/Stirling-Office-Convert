@@ -33,6 +33,7 @@ import org.apache.pdfbox.util.Vector;
 
 import stirling.software.officeconvert.extract.GuardedRenderer;
 import stirling.software.officeconvert.extract.HiddenContent;
+import stirling.software.officeconvert.extract.PageTokens;
 import stirling.software.officeconvert.extract.RgbGroup;
 import stirling.software.officeconvert.extract.StrictFilters;
 import stirling.software.officeconvert.layout.Box;
@@ -43,6 +44,7 @@ final class ArtRenderer extends PDFRenderer {
     private List<int[]> groups = List.of();
     private long operators;
     private final HiddenContent hidden;
+    private final PageTokens tokens = new PageTokens();
 
     ArtRenderer(PDDocument document) {
         super(document);
@@ -120,11 +122,15 @@ final class ArtRenderer extends PDFRenderer {
         private int nested;
 
         Drawer(PageDrawerParameters parameters) throws IOException {
-            super(parameters, "drawing slide art");
+            super(parameters, "drawing slide art", tokens);
         }
 
         @Override
         protected void processOperator(Operator operator, List<COSBase> operands) throws IOException {
+            if (replays(operator)) {
+                super.processOperator(operator, operands);
+                return;
+            }
             operators++;
             Operator painted = hidden.painted(operator, operands, getResources());
             if (painted != null) {

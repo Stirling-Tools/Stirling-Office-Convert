@@ -33,13 +33,12 @@ final class SubstituteMetrics {
             return Float.NaN;
         }
         Metrics metrics = FONTS.computeIfAbsent(name, Metrics::new);
-        String key = family + "|" + ((bold ? 1 : 0) | (italic ? 2 : 0)) + "|";
         float total = 0;
         for (int i = 0; i < text.length(); i++) {
             char c = text.charAt(i);
             float w = metrics.width(c);
             if (Float.isNaN(w)) {
-                Short extra = EXTRA.get(key + (int) c);
+                Short extra = EXTRA.get(family + "|" + ((bold ? 1 : 0) | (italic ? 2 : 0)) + "|" + (int) c);
                 w = extra == null ? Float.NaN : extra;
             }
             total += w;

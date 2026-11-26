@@ -56,3 +56,15 @@ tasks.register<JavaExec>("glyphRefs") {
         notice.asFile.parentFile.mkdirs()
     }
 }
+
+tasks.register<JavaExec>("conversionBench") {
+    description = "Times PDF to Office conversions of generated documents; pass -PbenchArgs=\"<dir> <warmups> <runs> [doc:format ...]\""
+    group = "verification"
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("stirling.software.officeconvert.ConversionBench")
+    jvmArgs("-Xmx2g", "-XX:+UseSerialGC")
+    val benchArgs = providers.gradleProperty("benchArgs")
+    argumentProviders.add(CommandLineArgumentProvider {
+        benchArgs.orNull?.split(" ")?.filter { it.isNotBlank() } ?: listOf(layout.buildDirectory.dir("bench").get().asFile.path)
+    })
+}

@@ -117,7 +117,15 @@ final class LineTraits {
             return -1;
         }
         String t = l.words.getFirst().text;
-        return t.matches("[0-9]{1,4}") ? Integer.parseInt(t) : -1;
+        if (t.isEmpty() || t.length() > 4) {
+            return -1;
+        }
+        for (int i = 0; i < t.length(); i++) {
+            if (t.charAt(i) < '0' || t.charAt(i) > '9') {
+                return -1;
+            }
+        }
+        return Integer.parseInt(t);
     }
 
     private static boolean numberColumn(Line l) {
