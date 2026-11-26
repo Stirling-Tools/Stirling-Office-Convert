@@ -61,7 +61,7 @@ final class DeviceNReduction {
             }
         }
         if (unknown) {
-            report.warn("A DeviceN colour space has more colourants than " + level.label()
+            report.unverified("A DeviceN colour space has more colourants than " + level.label()
                     + " allows and an alternate space that could not be read");
         }
         if (tints.isEmpty()) {
@@ -81,7 +81,7 @@ final class DeviceNReduction {
         report.warn("Drew DeviceN colours with more colourants than " + level.label()
                 + " allows in their alternate colour space");
         if (r.lost) {
-            report.warn("Some DeviceN colours with more colourants than " + level.label()
+            report.unverified("Some DeviceN colours with more colourants than " + level.label()
                     + " allows could not be converted");
         }
     }

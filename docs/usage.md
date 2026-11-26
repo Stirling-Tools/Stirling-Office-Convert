@@ -312,7 +312,8 @@ preferred on purpose: it is bounded, interruptible and faster. Every conversion 
 `PDDocument` methods of `OfficeConvert`, the `PdfTo*` classes, `OfficeToPdf` and `PdfToPdfA`) puts it first again, so
 a host that calls `ImageIO.scanForPlugins()` later cannot reorder it for the next conversion. To keep another reader
 first, start the JVM with `-Dstirling.officeconvert.jpxReader=imageio`; the conversions then leave that reader in
-front of this one. A picture drawn small is decoded at a lower resolution level. One image is held to 134 million
+front of this one. A picture drawn small is decoded at a lower resolution level. The registered ImageIO reader holds
+one image to 67 million samples; a direct `JpxDecoder` call holds it to 134 million
 samples by default (`JpxOptions`, which refuses a negative reduction, a sample limit below one or an empty region), a
 tile to 2 million code-blocks, and an interrupted thread stops decoding. PDF to Office leaves out a JPEG 2000 picture
 of more than 67 million samples, judged from its codestream header before anything decodes it. `JpxDecoder` also
@@ -524,18 +525,21 @@ one of these names that is really an Office package or RTF converts as what it i
 Memory is shared out across the JVM, by both directions (`stirling.software.officeconvert.memory.Admission` in the
 core module, which the topdf module now depends on). Before a document is laid out, an estimate of the heap it needs
 is taken from its structure alone: for Office files the markup that becomes runs, cells and shapes and the largest
-picture to decode (`OfficeToPdf.memoryEstimate(path)`); for a loaded PDF the pages to read, the largest picture and
-the largest figure to render (`OfficeConvert.memoryEstimate(pdf, format, settings)`). Conversions start only while
+picture to decode (`OfficeToPdf.memoryEstimate(path)`); for a loaded PDF the pages to read, the content of its densest
+page, the largest picture and the largest figure to render (`OfficeConvert.memoryEstimate(pdf, format, settings)`). Conversions start only while
 their estimates fit in 60 % of the heap (`-Dstirling.officeconvert.memoryBudgetPercent`), at most
 `-Dstirling.officeconvert.maxConcurrent` run at once (by default two per processor, but no more than one per 192 MB
 of budget, and at least two), and none starts while the heap after its last collection is over 75 % full or, in a Linux container, while
 the memory that cannot be reclaimed (tmpfs included, page cache not) plus the heap the JVM may still commit is over
 85 % of the limit. A document larger than the whole budget runs alone, or with
 `-Dstirling.officeconvert.refuseOversize=true` is refused at once with `Admission.TooLarge`. The wait counts towards the
-timeout, and a conversion that waits longer than `-Dstirling.officeconvert.maxWaitSeconds` (default 600, 0 = no limit)
-fails with `Admission.Busy` ("The converter is busy; try again later"). A conversion that already holds memory never
-waits again for a nested step (such as an eBook cover). A host can set all four at once with
-`Admission.configure(new Admission.Limits(percent, maxConcurrent, maxWait, refuseOversize))`, where `maxConcurrent` 0 is
+timeout, and a conversion that waits longer than `-Dstirling.officeconvert.maxWaitSeconds` (default 0, no limit of its
+own) fails with `Admission.Busy` ("The converter is busy; try again later"); with the default a conversion whose
+timeout is 0 can wait forever. A conversion that already holds memory never
+waits again for a nested step (such as an eBook cover). A host can set them all at once with
+`Admission.configure(new Admission.Limits(percent, maxConcurrent, maxWait, refuseOversize, readmitStopped))`
+(`readmitStopped`, `-Dstirling.officeconvert.readmitStopped`, retries a conversion stopped for memory while others ran;
+see [limits](limits.md#memory-admission)), where `maxConcurrent` 0 is
 automatic and `Limits.defaults()` reads the properties; conversions already running keep their memory and slot, and
 the new limits apply to those that start or are waiting. `Admission.jvm().status()` reports the budget, the bytes
 held, the conversions running, the slots, how many are stuck and the share of the heap in use. A worker that ignores its timeout is abandoned after a short wait and counted as
@@ -736,9 +740,22 @@ PdfToPdfA.convert(pdDocument, outputStream, options);     // an open document, w
 
 `convert(PDDocument, ...)` converts the document it is given in place: afterwards it holds the PDF/A changes (output
 intent, metadata, fonts, rewritten content), whether the call succeeds or fails, so load a fresh copy if the original
-is still needed. After a timeout the converter waits up to ten seconds for its worker to stop. If third-party
-work ignores interruption, that worker can still use the document after the call returns; do not reuse or close
-that instance. Prefer the file-based overload for documents that need a strict timeout.
+is still needed. It passes the same memory admission as the file-based overload, and writes to a temporary file that
+is copied to the stream only once the conversion has succeeded, so a conversion that fails or times out writes nothing
+to it; if the stream itself fails while the result is copied or flushed, it can hold part or all of the output.
+After a timeout the converter waits up to ten seconds for its worker to stop. If third-party work ignores
+interruption, that worker can still use the document after the call returns; do not reuse or close that instance
+until `Admission.jvm().status().stuck()` is 0. Prefer the file-based overload for documents that need a strict timeout.
+
+`Result.warnings()` keeps up to 200 distinct messages; names taken from the file (annotation and action types,
+structure types) are clipped, at most 20 messages of one kind and 100 in all name the file, and anything past that is
+counted in a last "N more warnings omitted" line. `Result.unverified()` lists rules the output may still break because
+the converter could not fix them (an invalid ICC profile with no replacement, DeviceN colours it could not convert);
+validate the file before trusting its label when it is not empty. A content stream PDFBox cannot read to the end is
+cut at the last whole operation before the bad token, with open graphics states, text objects and marked content
+closed, and the conversion warns that what followed is lost; a stream that cannot be decoded is emptied with a
+warning. Either way the kept content is what every later check sees, so fonts, colours and operators are checked on
+exactly what is written.
 
 - Fonts. Every font a page uses is embedded. A font without a program is drawn from a metric-compatible stand-in
   from the font library (Liberation, URW base 35, Carlito and the rest of the production set; `fonts` takes a
@@ -755,7 +772,7 @@ that instance. Prefer the file-based overload for documents that need a strict t
   its bytes show. CMaps PDF/A does not accept are embedded (part 1), merged with the CMap they refer to, or rewritten
   for the codes in use, with CIDs past 65,535 and, for parts 2 and 3, CID 0 (.notdef) moved to free CIDs; an unknown
   CMap name is read as Identity. CharSet and CIDSet are written for part 1 and dropped for parts 2 and 3. For the u and a levels every shown code gets a ToUnicode value, a private-use one (u) or
-  U+FFFD (a) when the PDF gives no clue; a ToUnicode map with ranges across a byte boundary is written again.
+  U+FFFD (a) when the PDF gives no clue, with a warning that such text cannot be searched; a ToUnicode map with ranges across a byte boundary is written again.
 - Colour. An sRGB output intent with an ICC profile generated in code (version 2, so it serves part 1 too) is added
   unless the PDF already has a usable one. Device CMYK is given a `DefaultCMYK` space with the CC0 CMYK profile that
   PDFBox ships (its own DeviceCMYK profile), so nothing is converted; it is added only when a page uses device CMYK.
@@ -790,8 +807,8 @@ that instance. Prefer the file-based overload for documents that need a strict t
   and invalid object metadata. Parts 2 and 3 keep valid predefined properties in page, image and font metadata;
   unsupported properties are removed individually, with a warning, while the other properties remain.
   Annotations without an appearance get one; LZW streams and inline images with filters PDF/A does not allow are
-  recompressed with Flate; forms that borrow their parent's resources get their own; encryption is removed (give the
-  password for a protected file).
+  recompressed with Flate; forms that borrow their parent's resources get their own; encryption is removed, with a
+  warning (give the password for a protected file).
 - Embedded files: removed for part 1, kept for part 2 only when they validate as PDF/A-1 or PDF/A-2, and for part 4
   when they validate as PDF/A-1, PDF/A-2 or PDF/A-4. Part 3 keeps arbitrary file types with a MIME type, a modification
   date, an `AFRelationship` and the catalog's `AF` array. Eligible files are listed in the embedded-file name tree
@@ -799,7 +816,7 @@ that instance. Prefer the file-based overload for documents that need a strict t
   and Unix streams gain standard references, and retained attachment bytes are not rewritten. Incompatible variants
   are removed with warnings without discarding other eligible variants of the same file. A bounded prefix check rejects
   non-PDF variants before applying the PDF verification limit. Attachment checks allow up to
-  16 MiB of PDF bytes, 100,000 parsed values, 64 levels of object nesting and 8 MiB of decoded object and cross-reference
+  32 PDF files and 128 MiB in all per conversion, nested ones included, 16 MiB of PDF bytes each, 100,000 parsed values, 64 levels of object nesting and 8 MiB of decoded object and cross-reference
   streams. Exceeding a verification budget, or failing to decode a retained attachment for lossless recompression,
   fails the conversion instead of silently dropping or emptying its data. The path-based API leaves an existing
   output file unchanged on failure.
@@ -825,7 +842,7 @@ every image on a page must sit in marked content that the structure tree refers 
 needs alternative text; and the document needs a language. Untagged drawings, and marked drawings no element refers
 to, become artifacts; a missing document language is taken from the structure; a parent tree that does not match the
 structure is rebuilt from it. Anything else (untagged text or images, figures without alternative text, no language
-anywhere) fails with an `IOException` naming the problem and the pages, rather than claiming level a. Limits and failure contract follow the other converters: a 1 GB input limit, `maxPages`
+anywhere, forms nested more than 12 deep or unreadable, so their tagging cannot be checked) fails with an `IOException` naming the problem and the pages, rather than claiming level a. Limits and failure contract follow the other converters: a 1 GB input limit, `maxPages`
 (10,000 by default) refuses longer documents rather than cutting them, the timeout and thread interrupts stop the work,
 and the output is moved into place only when complete.
 

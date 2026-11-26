@@ -1,5 +1,6 @@
 package stirling.software.officeconvert.jpx;
 
+import java.io.ByteArrayOutputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -20,19 +21,13 @@ final class MarkerSet {
 
     final List<Poc> pocs = new ArrayList<>();
 
-    final TreeMap<Integer, byte[]> packed = new TreeMap<>();
+    final TreeMap<Integer, ByteArrayOutputStream> packed = new TreeMap<>();
 
     byte[] packedHeaders() {
-        int total = 0;
-        for (byte[] p : packed.values()) {
-            total += p.length;
+        ByteArrayOutputStream all = new ByteArrayOutputStream();
+        for (ByteArrayOutputStream p : packed.values()) {
+            all.writeBytes(p.toByteArray());
         }
-        byte[] all = new byte[total];
-        int at = 0;
-        for (byte[] p : packed.values()) {
-            System.arraycopy(p, 0, all, at, p.length);
-            at += p.length;
-        }
-        return all;
+        return all.toByteArray();
     }
 }

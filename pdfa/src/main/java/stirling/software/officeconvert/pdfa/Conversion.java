@@ -32,8 +32,9 @@ final class Conversion {
         PdfALevel level = options.level();
         pageLimit(doc.getNumberOfPages(), options);
         Report report = new Report();
-        if (doc.isEncrypted()) {
+        if (doc.isEncrypted() || doc.getDocument().getEncryptionDictionary() != null) {
             doc.setAllSecurityToBeRemoved(true);
+            report.warn("Removed the encryption and any password or permission restrictions, which PDF/A does not allow");
         }
         doc.getDocument().setEncryptionDictionary(null);
         if (PdfFiles.repairPageTree(doc) || PdfFiles.repairs(doc).pageTree()) {
@@ -42,6 +43,7 @@ final class Conversion {
         int pages = doc.getNumberOfPages();
         pageLimit(pages, options);
         FontProgramBounds.run(doc);
+        ContentFixer.salvage(ContentGraph.of(doc), report);
         if (level.tagged()) {
             try {
                 Tagging.run(doc, level, report);
@@ -107,7 +109,7 @@ final class Conversion {
         PdfFiles.stopIfInterrupted();
         save(doc, out, level);
         return new PdfToPdfA.Result(options.level(), pages, report.warnings(), report.flattenedPages(),
-                report.substitutedFonts(), level);
+                report.substitutedFonts(), level, report.unverified());
     }
 
     private static PdfALevel reduced(PdfALevel level, PdfToPdfA.Options options, Report report, LevelANotMet e)
@@ -134,7 +136,8 @@ final class Conversion {
         doc.setVersion(level.pdfVersion());
         doc.getDocumentCatalog().getCOSObject().removeItem(COSName.VERSION);
         COSArray id = doc.getDocument().getDocumentID();
-        if (id == null || id.size() != 2 || !(id.getObject(0) instanceof COSString)) {
+        if (id == null || id.size() != 2 || !(id.getObject(0) instanceof COSString)
+                || !(id.getObject(1) instanceof COSString)) {
             byte[] h = digest(doc);
             COSArray a = new COSArray();
             a.add(new COSString(h));

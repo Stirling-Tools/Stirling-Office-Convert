@@ -78,7 +78,7 @@ final class HeaderPictures {
                 String v = part.substring(colon + 1).trim().toLowerCase(Locale.ROOT);
                 double k = v.endsWith("in") ? 72 : v.endsWith("cm") ? 72 / 2.54 : v.endsWith("mm") ? 72 / 25.4
                         : v.endsWith("px") ? 0.75 : 1;
-                String num = v.replaceAll("[a-z%]+$", "");
+                String num = v.substring(0, unitStart(v));
                 try {
                     return Math.max(0, Math.min(2000, Double.parseDouble(num) * k));
                 } catch (NumberFormatException e) {
@@ -87,5 +87,14 @@ final class HeaderPictures {
             }
         }
         return 0;
+    }
+
+    // Walked back by hand: a trailing-run regex rescans from every letter, quadratic in "aaaa...a1"
+    static int unitStart(String v) {
+        int end = v.length();
+        while (end > 0 && (v.charAt(end - 1) >= 'a' && v.charAt(end - 1) <= 'z' || v.charAt(end - 1) == '%')) {
+            end--;
+        }
+        return end;
     }
 }

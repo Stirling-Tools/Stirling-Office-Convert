@@ -1,8 +1,10 @@
 package stirling.software.officeconvert.layout;
 
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.Comparator;
-import java.util.Iterator;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Set;
 import java.util.function.ToIntFunction;
@@ -17,28 +19,94 @@ final class Decorations {
     private Decorations() {}
 
     static void underlines(List<Line> segments, List<Rule> rules) {
-        Iterator<Rule> it = rules.iterator();
-        while (it.hasNext()) {
-            Rule r = it.next();
-            if (!r.horizontal() || r.length() < 2f || framed(r, rules)) {
+        List<Rule> verticals = new ArrayList<>();
+        for (Rule r : rules) {
+            if (!r.horizontal()) {
+                verticals.add(r);
+            }
+        }
+        verticals.sort(Comparator.comparingDouble(Rule::pos));
+        Rows rows = Rows.of(segments);
+        Set<Rule> applied = Collections.newSetFromMap(new IdentityHashMap<>());
+        for (int i = 0; i < rules.size(); i++) {
+            Polls.check(i);
+            Rule r = rules.get(i);
+            if (!r.horizontal() || r.length() < 2f || framed(r, verticals)) {
                 continue;
             }
-            if (apply(r, segments)) {
-                it.remove();
+            if (apply(r, segments, rows.near(r.pos() - rows.maxSize / 2f - 1f, r.pos() + rows.maxSize / 2f + 1f))) {
+                applied.add(r);
             }
         }
+        rules.removeIf(applied::contains);
     }
 
-    private static boolean framed(Rule r, List<Rule> rules) {
-        boolean left = false;
-        boolean right = false;
-        for (Rule v : rules) {
-            if (!v.horizontal() && v.start() <= r.pos() + FRAME_SLACK && v.end() >= r.pos() - FRAME_SLACK) {
-                left |= Math.abs(v.pos() - r.start()) <= FRAME_SLACK;
-                right |= Math.abs(v.pos() - r.end()) <= FRAME_SLACK;
+    private static boolean framed(Rule r, List<Rule> verticals) {
+        return meetsVertical(r, r.start(), verticals) && meetsVertical(r, r.end(), verticals);
+    }
+
+    private static boolean meetsVertical(Rule r, float x, List<Rule> verticals) {
+        int lo = 0;
+        int hi = verticals.size();
+        while (lo < hi) {
+            int mid = (lo + hi) >>> 1;
+            if (verticals.get(mid).pos() < x - FRAME_SLACK - 1f) {
+                lo = mid + 1;
+            } else {
+                hi = mid;
             }
         }
-        return left && right;
+        for (int i = lo; i < verticals.size() && verticals.get(i).pos() <= x + FRAME_SLACK + 1f; i++) {
+            Rule v = verticals.get(i);
+            if (v.start() <= r.pos() + FRAME_SLACK && v.end() >= r.pos() - FRAME_SLACK
+                    && Math.abs(v.pos() - x) <= FRAME_SLACK) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Segment indices sorted by baseline, so a rule or fill is only compared with rows near it.
+    private record Rows(int[] order, float[] baselines, int[] odd, float maxSize) {
+
+        static Rows of(List<Line> segments) {
+            List<Integer> ok = new ArrayList<>();
+            List<Integer> odd = new ArrayList<>();
+            float max = 0;
+            for (int i = 0; i < segments.size(); i++) {
+                Line l = segments.get(i);
+                if (Float.isFinite(l.baseline) && Float.isFinite(l.size) && l.size >= 0) {
+                    ok.add(i);
+                    max = Math.max(max, l.size);
+                } else {
+                    odd.add(i);
+                }
+            }
+            ok.sort(Comparator.comparingDouble(i -> segments.get(i).baseline));
+            float[] baselines = new float[ok.size()];
+            for (int i = 0; i < baselines.length; i++) {
+                baselines[i] = segments.get(ok.get(i)).baseline;
+            }
+            return new Rows(ok.stream().mapToInt(Integer::intValue).toArray(), baselines,
+                    odd.stream().mapToInt(Integer::intValue).toArray(), max);
+        }
+
+        /** Indices, in list order, of rows whose baseline lies in the range, plus any unmeasurable row. */
+        int[] near(float lo, float hi) {
+            int from = Arrays.binarySearch(baselines, lo);
+            from = from < 0 ? -from - 1 : from;
+            while (from > 0 && baselines[from - 1] >= lo) {
+                from--;
+            }
+            int to = from;
+            while (to < baselines.length && baselines[to] <= hi) {
+                to++;
+            }
+            int[] out = Arrays.copyOf(Arrays.copyOfRange(order, from, to), to - from + odd.length);
+            System.arraycopy(odd, 0, out, to - from, odd.length);
+            Arrays.sort(out);
+            return out;
+        }
     }
 
     private static final float FRAME_SLACK = 1.5f;
@@ -53,8 +121,9 @@ final class Decorations {
         return starts && ends;
     }
 
-    private static boolean apply(Rule r, List<Line> segments) {
-        for (Line seg : segments) {
+    private static boolean apply(Rule r, List<Line> segments, int[] near) {
+        for (int at : near) {
+            Line seg = segments.get(at);
             float size = seg.size;
             if (r.thickness() > Math.max(1.6f, size * 0.14f)) {
                 continue;
@@ -105,14 +174,17 @@ final class Decorations {
     }
 
     static void highlights(List<Line> segments, List<Fill> fills) {
-        Iterator<Fill> it = fills.iterator();
-        while (it.hasNext()) {
-            Fill f = it.next();
+        Rows rows = Rows.of(segments);
+        Set<Fill> applied = Collections.newSetFromMap(new IdentityHashMap<>());
+        for (int i = 0; i < fills.size(); i++) {
+            Polls.check(i);
+            Fill f = fills.get(i);
             if (isWhite(f.rgb())) {
                 continue;
             }
             boolean used = false;
-            for (Line seg : segments) {
+            for (int at : rows.near(f.top() - 1f, f.bottom() + 0.3f * rows.maxSize + 1f)) {
+                Line seg = segments.get(at);
                 float h = f.height();
                 if (h < seg.size * 0.7f || h > seg.size * 2.2f) {
                     continue;
@@ -142,21 +214,25 @@ final class Decorations {
                 used = true;
             }
             if (used) {
-                it.remove();
+                applied.add(f);
             }
         }
+        fills.removeIf(applied::contains);
     }
 
     static void pills(List<Line> segments, List<VectorMark> marks, Set<Object> used) {
         List<VectorMark> boxes = new ArrayList<>();
         List<Integer> hosts = new ArrayList<>();
-        for (VectorMark m : marks) {
+        Rows rows = Rows.of(segments);
+        for (int mi = 0; mi < marks.size(); mi++) {
+            Polls.check(mi);
+            VectorMark m = marks.get(mi);
             if (used.contains(m) || m.shading() || m.round() || !m.stroked() && !m.filled()
                     || !m.stroked() && (isWhite(m.rgb()) || !pale(m.rgb()))) {
                 continue;
             }
             int at = -1;
-            for (int i = 0; i < segments.size(); i++) {
+            for (int i : rows.near(m.top() - 1f, m.bottom() + rows.maxSize + 1f)) {
                 Line seg = segments.get(i);
                 if (seg.baseline >= m.top() && seg.baseline - seg.size <= m.bottom() && seg.x < m.right() && seg.right > m.x()) {
                     if (at >= 0 || !holdsPill(m, seg)) {
@@ -172,6 +248,7 @@ final class Decorations {
             }
         }
         for (int k = 0; k < boxes.size(); k++) {
+            Polls.check(k);
             VectorMark m = boxes.get(k);
             int at = hosts.get(k);
             Line host = segments.get(at);

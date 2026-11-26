@@ -119,8 +119,8 @@ final class Tagging {
         for (String type : types) {
             if (!standard.contains(type) && !resolves(roles, type, standard)) {
                 roles.setName(type, "NonStruct");
-                report.warn("Mapped the structure type " + type + ", which has no standard meaning in "
-                        + level.label() + ", to NonStruct");
+                report.warn("Mapped the structure type %s, which has no standard meaning in " + level.label()
+                        + ", to NonStruct", type);
             }
         }
     }

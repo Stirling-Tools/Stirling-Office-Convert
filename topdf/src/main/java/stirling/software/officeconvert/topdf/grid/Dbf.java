@@ -125,11 +125,20 @@ public final class Dbf {
         return clipperLength == record && plainLength != record ? clipper : plain;
     }
 
+    // A trailing-run regex rescans from every blank, quadratic in a wide field of blanks ending in a letter
+    static String trimEnd(String s) {
+        int end = s.length();
+        while (end > 0 && " \t\n\u000B\f\r\u0000".indexOf(s.charAt(end - 1)) >= 0) {
+            end--;
+        }
+        return s.substring(0, end);
+    }
+
     private static Grid.Cell cell(Field f, byte[] b, int at, Charset cs) {
         String raw = new String(b, at, f.length(), f.type() == 'C' ? cs : StandardCharsets.ISO_8859_1);
         switch (f.type()) {
             case 'C' -> {
-                String s = raw.replaceAll("[\\s\u0000]+$", "");
+                String s = trimEnd(raw);
                 return s.isEmpty() ? null : new Grid.Cell(s, null, false, false, null);
             }
             case 'N', 'F' -> {

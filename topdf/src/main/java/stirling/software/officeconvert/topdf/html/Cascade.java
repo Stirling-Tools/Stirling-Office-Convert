@@ -21,6 +21,8 @@ import org.jsoup.select.Collector;
 import org.jsoup.select.Evaluator;
 import org.jsoup.select.QueryParser;
 
+import stirling.software.officeconvert.topdf.io.InterruptibleChars;
+
 /** The declarations each element gets from the document's style sheets, then its own style attribute. Rules are
  * indexed by the id, class or tag their last step needs, as browsers do, so an element is only tested against rules
  * that can match it. */
@@ -250,8 +252,9 @@ final class Cascade {
         String s = Css.stripComments(sheet);
         StringBuilder out = new StringBuilder(s.length());
         int i = 0;
-        Matcher cs = CHARSET.matcher(s);
-        Matcher m = IMPORT.matcher(s);
+        CharSequence chars = InterruptibleChars.of(s);
+        Matcher cs = CHARSET.matcher(chars);
+        Matcher m = IMPORT.matcher(chars);
         while (true) {
             while (i < s.length() && Character.isWhitespace(s.charAt(i))) {
                 i++;
@@ -290,7 +293,7 @@ final class Cascade {
         }
         long used = 0;
         int i = 0;
-        Matcher m = DATA_URL.matcher(text);
+        Matcher m = DATA_URL.matcher(InterruptibleChars.of(text));
         while (i < text.length()) {
             boolean data = m.find(i);
             int plain = data ? m.end() : text.length();
@@ -324,30 +327,63 @@ final class Cascade {
         return sheetChars > MAX_SHEET_CHARS ? null : rebased(text, ref);
     }
 
-    private static final Pattern URL = Pattern.compile("url\\(\\s*([\"']?)([^\"')]*)\\1\\s*\\)",
-            Pattern.CASE_INSENSITIVE);
-
     private static final Pattern SCHEME = Pattern.compile("^[a-zA-Z][a-zA-Z0-9+.-]*:.*", Pattern.DOTALL);
 
+    // url( value ) by hand: a regex rescans to the next quote or ')' from every url(, quadratic in url(url(url(
     static String rebased(String sheet, String ref) {
         if (sheet.indexOf('(') < 0) {
             return sheet;
         }
-        Matcher m = URL.matcher(sheet);
-        StringBuilder out = new StringBuilder(sheet.length());
-        while (m.find()) {
-            String v = m.group(2).strip();
-            String replacement = m.group();
+        int n = sheet.length();
+        StringBuilder out = new StringBuilder(n);
+        int copied = 0;
+        int stop = -1;
+        for (int at = urlOpen(sheet, 0); at >= 0; at = urlOpen(sheet, at)) {
+            int i = spaces(sheet, at + 4);
+            char quote = i < n && (sheet.charAt(i) == '"' || sheet.charAt(i) == '\'') ? sheet.charAt(i) : 0;
+            int from = quote == 0 ? i : i + 1;
+            if (stop < from) {
+                stop = from;
+                while (stop < n && "\"')".indexOf(sheet.charAt(stop)) < 0) {
+                    stop++;
+                }
+            }
+            if (stop >= n) {
+                break;
+            }
+            int close = quote == 0 ? stop : sheet.charAt(stop) == quote ? spaces(sheet, stop + 1) : n;
+            if (close >= n || sheet.charAt(close) != ')') {
+                at++;
+                continue;
+            }
+            String v = sheet.substring(from, stop).strip();
             if (!v.isEmpty() && !v.startsWith("#") && !SCHEME.matcher(v).matches()) {
                 String resolved = HtmlRefs.resolve(ref, v);
                 if (resolved != null && resolved.indexOf('"') < 0 && resolved.indexOf('\\') < 0) {
-                    replacement = "url(\"" + (SCHEME.matcher(resolved).matches() ? resolved : "/" + resolved) + "\")";
+                    out.append(sheet, copied, at).append("url(\"")
+                            .append(SCHEME.matcher(resolved).matches() ? resolved : "/" + resolved).append("\")");
+                    copied = close + 1;
                 }
             }
-            m.appendReplacement(out, Matcher.quoteReplacement(replacement));
+            at = close + 1;
         }
-        m.appendTail(out);
-        return out.toString();
+        return copied == 0 ? sheet : out.append(sheet, copied, n).toString();
+    }
+
+    private static int urlOpen(String s, int from) {
+        for (int p = s.indexOf('(', from + 3); p >= 0; p = s.indexOf('(', p + 1)) {
+            if (s.regionMatches(true, p - 3, "url", 0, 3)) {
+                return p - 3;
+            }
+        }
+        return -1;
+    }
+
+    private static int spaces(String s, int i) {
+        while (i < s.length() && " \t\n\u000B\f\r".indexOf(s.charAt(i)) >= 0) {
+            i++;
+        }
+        return i;
     }
 
     // Filed under what the selector's last compound step needs: its id, else a class, else its tag

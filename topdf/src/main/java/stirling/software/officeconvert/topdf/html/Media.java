@@ -7,9 +7,13 @@ import java.util.regex.Pattern;
 /** Media queries as Chrome answers them when it prints: the medium is print, the viewport is the page's text width. */
 final class Media {
 
-    private static final Pattern FEATURE = Pattern.compile("\\(\\s*([a-z-]+)\\s*(?::\\s*([^)]*))?\\)");
+    private static final Pattern FEATURE = Pattern.compile("\\(\\s*+([a-z-]++)\\s*+(?::\\s*+([^)]*+))?\\)");
 
-    private static final Pattern RANGE = Pattern.compile("\\(\\s*(width|height)\\s*(<=|>=|<|>|=)\\s*([^)]*)\\)");
+    private static final Pattern RANGE = Pattern.compile(
+            "\\(\\s*+(width|height)\\s*+(<=|>=|<|>|=)\\s*+([^)]*+)\\)");
+
+    // Each pattern scans to the next ')' from every '(', so a long query costs its length squared
+    static final int MAX_QUERY_CHARS = 1_000;
 
     private Media() {}
 
@@ -18,15 +22,17 @@ final class Media {
         if (q.isEmpty()) {
             return true;
         }
+        // Past the limit only the media type is judged, so a long screen query still stays out
+        boolean features = q.length() <= MAX_QUERY_CHARS;
         for (String one : Css.splitTopLevel(q, ',')) {
-            if (one(one.strip(), viewportPx)) {
+            if (one(one.strip(), viewportPx, features)) {
                 return true;
             }
         }
         return false;
     }
 
-    private static boolean one(String q, float viewportPx) {
+    private static boolean one(String q, float viewportPx, boolean features) {
         boolean not = q.startsWith("not ");
         String rest = q;
         if (not) {
@@ -36,6 +42,9 @@ final class Media {
         }
         String type = rest.startsWith("(") ? "all" : rest.split("[\\s(]", 2)[0];
         boolean result = "all".equals(type) || "print".equals(type);
+        if (!features) {
+            return not != result;
+        }
         Matcher r = RANGE.matcher(rest);
         while (r.find()) {
             result &= range(r.group(1), r.group(2), r.group(3), viewportPx);

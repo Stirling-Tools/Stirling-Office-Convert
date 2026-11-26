@@ -78,8 +78,10 @@ class MemoryAdmissionTest {
             inner.getCOSObject().setItem(COSName.XOBJECT, new org.apache.pdfbox.cos.COSDictionary());
             inner.getCOSObject().getCOSDictionary(COSName.XOBJECT).setItem("Im1", picture(pictured, 4000, 3000));
             form.setResources(inner);
-            PDResources outer = pictured.getPage(0).getResources();
-            outer.add(form);
+            try (PDPageContentStream draw = new PDPageContentStream(pictured, pictured.getPage(0),
+                    PDPageContentStream.AppendMode.APPEND, false)) {
+                draw.drawForm(form);
+            }
             long withPicture = estimate(pictured);
             assertTrue(withPicture - small >= 7L * 4000 * 3000, small + " " + withPicture);
             assertEquals(small, OfficeConvert.memoryEstimate(one, OfficeConvert.Format.PPTX,

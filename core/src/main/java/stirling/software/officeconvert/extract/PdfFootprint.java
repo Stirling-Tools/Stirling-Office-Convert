@@ -4,9 +4,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -25,8 +27,8 @@ import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import stirling.software.officeconvert.memory.Admission;
 
 /** The heap a conversion of a loaded PDF is likely to need, from its page tree and picture dictionaries alone: the
- * pages sampled for document statistics, what PDFBox keeps of every page read, the largest picture that is decoded and
- * figures rendered finer than usual. Nothing is decoded or drawn. */
+ * pages sampled for document statistics, what PDFBox keeps of every page read, the layout of the page with the most
+ * content, the largest picture that is decoded and figures rendered finer than usual. Nothing is decoded or drawn. */
 public final class PdfFootprint {
 
     static final int SAMPLED_PAGES = 60;
@@ -36,6 +38,18 @@ public final class PdfFootprint {
     static final long PAGE_BYTES = 112L << 10;
 
     static final long MAX_RENDER_PIXELS = 16_000_000L;
+
+    // The fixed page costs cover a page with this much content; past it, glyphs, lines and words grow with the bytes
+    static final long PAGE_CONTENT_ALLOWANCE = 16L << 10;
+
+    // Measured on dense text pages laid out to DOCX, XLSX and PPTX: about 173 heap bytes per byte while a page is laid out
+    static final long CONTENT_BYTE_COST = 176;
+
+    // A page stops being read at 200,000 characters, which this covers; vector content costs less per byte
+    static final long MAX_CONTENT_CHARGE = 64L << 20;
+
+    // What stays held of each dense sampled page for document statistics: measured 26 to 104 bytes per byte
+    static final long KEPT_BYTE_COST = 96;
 
     // The page costs were measured with figures drawn at this resolution; only a finer one costs more
     static final float MEASURED_DPI = 150f;
@@ -74,40 +88,57 @@ public final class PdfFootprint {
         int pages = Math.max(1, last - first + 1);
         long model = Math.min(pages, SAMPLED_PAGES) * SAMPLED_PAGE_BYTES + pages * PAGE_BYTES;
         Scan scan = new Scan();
-        int end = Math.min(last, first + MAX_SCANNED_PAGES - 1);
-        if (end < last) {
+        Set<Integer> sampled = new LinkedHashSet<>();
+        for (int[] run : PageSamples.runs(first, last)) {
+            for (int page = run[0]; page <= run[1]; page++) {
+                sampled.add(page);
+            }
+        }
+        List<Integer> scanned = new ArrayList<>(sampled);
+        for (int page = first; page <= last && scanned.size() < MAX_SCANNED_PAGES; page++) {
+            if (!sampled.contains(page)) {
+                scanned.add(page);
+            }
+        }
+        if (scanned.size() < pages) {
             scan.unknown();
         }
-        int i = 0;
-        for (PDPage page : doc.getPages()) {
-            if (i > end) {
-                break;
-            }
-            if (scan.budget <= 0) {
+        for (int index : scanned) {
+            if (scan.budget <= 0 || scan.contentLeft <= 0) {
+                if (sampled.contains(index)) {
+                    return Long.MAX_VALUE;
+                }
                 scan.unknown();
                 break;
             }
-            if (i++ < first) {
-                continue;
-            }
+            PDPage page = doc.getPage(index);
+            long contentBefore = scan.read;
             try {
                 PDRectangle box = page.getCropBox();
                 scan.area = Math.max(scan.area, (double) box.getWidth() * box.getHeight());
+                List<COSStream> contents = contents(page);
                 PDResources resources = page.getResources();
-                scan.resources(resources == null ? null : resources.getCOSObject(), 0);
-                for (COSStream content : contents(page)) {
-                    try (InputStream in = StreamGuard.head(content, scan.contentLeft)) {
-                        scan.content(in);
-                    }
+                if (!contents.isEmpty()) {
+                    scan.draw(resources == null ? null : resources.getCOSObject(), contents, 0);
                 }
                 scan.annotations(page.getCOSObject().getCOSArray(COSName.ANNOTS));
-            } catch (IOException | RuntimeException e) {
+            } catch (RuntimeException e) {
                 scan.unknown();
+            }
+            if (scan.read == Long.MAX_VALUE || sampled.contains(index)
+                    && (scan.budget <= 0 || scan.contentLeft <= 0)) {
+                return Long.MAX_VALUE;
+            }
+            long excess = Math.max(0, scan.read - contentBefore - PAGE_CONTENT_ALLOWANCE);
+            scan.busiest = Math.max(scan.busiest, excess);
+            if (sampled.contains(index)) {
+                scan.dense = add(scan.dense, Math.min(MAX_CONTENT_CHARGE, multiply(excess, KEPT_BYTE_COST)));
             }
         }
         long render = renderBytes(scan.area, dpi) - renderBytes(scan.area, MEASURED_DPI);
-        long sum = model + scan.picture + Math.max(0, render);
-        return sum < 0 ? Long.MAX_VALUE : sum;
+        long content = add(Math.min(MAX_CONTENT_CHARGE, multiply(scan.busiest, CONTENT_BYTE_COST)),
+                scan.dense);
+        return add(add(add(model, scan.picture), Math.max(0, render)), content);
     }
 
     private static List<COSStream> contents(PDPage page) {
@@ -255,8 +286,12 @@ public final class PdfFootprint {
         return length <= 0 ? length : (length + step - 1) / step;
     }
 
-    private static long add(long a, long b) {
+    static long add(long a, long b) {
         return a > Long.MAX_VALUE - b ? Long.MAX_VALUE : a + b;
+    }
+
+    static long multiply(long a, long b) {
+        return b != 0 && a > Long.MAX_VALUE / b ? Long.MAX_VALUE : a * b;
     }
 
     static long inline(Map<String, String> params) {
@@ -300,9 +335,19 @@ public final class PdfFootprint {
 
         final Set<COSBase> seen = Collections.newSetFromMap(new IdentityHashMap<>());
 
+        // Content bytes under each resources dictionary or form, charged for each referencing page
+        final Map<COSBase, Long> held = new IdentityHashMap<>();
+
+        // Content bytes drawn so far, read or repeated
+        long read;
+
         int budget = MAX_SCANNED_OBJECTS;
 
         long contentLeft = MAX_SCANNED_CONTENT;
+
+        long busiest;
+
+        long dense;
 
         long picture;
 
@@ -319,7 +364,7 @@ public final class PdfFootprint {
         }
 
         boolean visit(COSBase object) {
-            if (object == null) {
+            if (object == null || seen.contains(object)) {
                 return false;
             }
             if (budget-- <= 0) {
@@ -329,33 +374,78 @@ public final class PdfFootprint {
             return seen.add(object);
         }
 
-        void resources(COSDictionary resources, int depth) {
+        void draw(COSDictionary resources, List<COSStream> streams, int depth) {
+            Drawn drawn = new Drawn(resources == null ? null : resources.getCOSDictionary(COSName.XOBJECT));
+            for (COSStream stream : streams) {
+                try (InputStream in = StreamGuard.head(stream, contentLeft)) {
+                    content(in, drawn);
+                } catch (IOException | RuntimeException e) {
+                    unknown();
+                    drawn.all = true;
+                }
+            }
+            resources(resources, depth, drawn);
+        }
+
+        void resources(COSDictionary resources, int depth, Drawn drawn) {
+            if (resources == null) {
+                return;
+            }
             if (depth > MAX_NESTING) {
                 unknown();
                 return;
             }
-            if (!visit(resources)) {
+            if (seen.contains(resources)) {
+                repeat(resources);
+            } else if (visit(resources)) {
+                long before = read;
+                walk(resources, depth);
+                held.put(resources, read - before);
+            }
+            xobjects(drawn, depth);
+        }
+
+        private void xobjects(Drawn drawn, int depth) {
+            if (drawn.xobjects == null) {
                 return;
             }
+            for (COSName name : drawn.all ? drawn.xobjects.keySet() : drawn.names) {
+                if (!(drawn.xobjects.getDictionaryObject(name) instanceof COSStream s)) {
+                    continue;
+                }
+                if (seen.contains(s)) {
+                    repeat(s);
+                    continue;
+                }
+                if (COSName.FORM.equals(s.getCOSName(COSName.SUBTYPE)) && visit(s)) {
+                    form(s, depth + 1);
+                }
+            }
+        }
+
+        void repeat(COSBase object) {
+            read = add(read, held.getOrDefault(object, 0L));
+        }
+
+        private void walk(COSDictionary resources, int depth) {
             COSDictionary xobjects = resources.getCOSDictionary(COSName.XOBJECT);
             if (xobjects != null) {
                 for (COSName name : xobjects.keySet()) {
-                    if (!(xobjects.getDictionaryObject(name) instanceof COSStream s) || !visit(s)) {
-                        continue;
-                    }
-                    COSName subtype = s.getCOSName(COSName.SUBTYPE);
-                    if (COSName.IMAGE.equals(subtype)) {
+                    if (xobjects.getDictionaryObject(name) instanceof COSStream s
+                            && COSName.IMAGE.equals(s.getCOSName(COSName.SUBTYPE)) && visit(s)) {
                         picture(decoded(s));
-                    } else if (COSName.FORM.equals(subtype)) {
-                        form(s, depth + 1);
                     }
                 }
             }
             COSDictionary patterns = resources.getCOSDictionary(COSName.PATTERN);
             if (patterns != null) {
                 for (COSName name : patterns.keySet()) {
-                    if (patterns.getDictionaryObject(name) instanceof COSStream s && visit(s)) {
-                        form(s, depth + 1);
+                    if (patterns.getDictionaryObject(name) instanceof COSStream s) {
+                        if (visit(s)) {
+                            form(s, depth + 1);
+                        } else {
+                            repeat(s);
+                        }
                     }
                 }
             }
@@ -364,8 +454,12 @@ public final class PdfFootprint {
                 for (COSName name : states.keySet()) {
                     if (states.getDictionaryObject(name) instanceof COSDictionary gs
                             && gs.getDictionaryObject(COSName.SMASK) instanceof COSDictionary mask
-                            && mask.getDictionaryObject(COSName.G) instanceof COSStream group && visit(group)) {
-                        form(group, depth + 1);
+                            && mask.getDictionaryObject(COSName.G) instanceof COSStream group) {
+                        if (visit(group)) {
+                            form(group, depth + 1);
+                        } else {
+                            repeat(group);
+                        }
                     }
                 }
             }
@@ -381,27 +475,22 @@ public final class PdfFootprint {
         }
 
         void type3(COSDictionary font, int depth) {
-            COSDictionary own = font.getCOSDictionary(COSName.RESOURCES);
-            if (own != null) {
-                resources(own, depth);
-            }
+            List<COSStream> glyphs = new ArrayList<>();
             COSDictionary procs = font.getCOSDictionary(COSName.CHAR_PROCS);
-            if (procs == null) {
-                return;
-            }
-            for (COSName glyph : procs.keySet()) {
-                if (procs.getDictionaryObject(glyph) instanceof COSStream proc && visit(proc)) {
-                    stream(proc);
+            if (procs != null) {
+                for (COSName glyph : procs.keySet()) {
+                    if (procs.getDictionaryObject(glyph) instanceof COSStream proc && visit(proc)) {
+                        glyphs.add(proc);
+                    }
                 }
             }
+            draw(font.getCOSDictionary(COSName.RESOURCES), glyphs, depth);
         }
 
         void form(COSStream form, int depth) {
-            COSDictionary own = form.getCOSDictionary(COSName.RESOURCES);
-            if (own != null) {
-                resources(own, depth);
-            }
-            stream(form);
+            long before = read;
+            draw(form.getCOSDictionary(COSName.RESOURCES), List.of(form), depth);
+            held.put(form, read - before);
         }
 
         void annotations(COSArray annots) {
@@ -430,15 +519,7 @@ public final class PdfFootprint {
             }
         }
 
-        void stream(COSStream stream) {
-            try (InputStream in = StreamGuard.head(stream, contentLeft)) {
-                content(in);
-            } catch (IOException | RuntimeException e) {
-                unknown();
-            }
-        }
-
-        void content(InputStream in) throws IOException {
+        void content(InputStream in, Drawn drawn) throws IOException {
             if (buffer == null) {
                 buffer = new byte[CHUNK + INLINE_WINDOW];
             }
@@ -450,6 +531,7 @@ public final class PdfFootprint {
                 int want = (int) Math.min(buf.length - len, contentLeft);
                 int n = in.readNBytes(buf, len, want);
                 contentLeft -= n;
+                read = add(read, n);
                 len += n;
                 boolean full = len == buf.length;
                 if (!full && contentLeft <= 0 && in.read() >= 0) {
@@ -458,7 +540,9 @@ public final class PdfFootprint {
                 }
                 int limit = full ? len - INLINE_WINDOW : len;
                 for (int i = from; i < limit && i + 1 < len; i++) {
-                    if (buf[i] == 'B' && buf[i + 1] == 'I' && (i == 0 ? start : boundary(buf[i - 1]))
+                    if (buf[i] == '/') {
+                        drawn.name(buf, i + 1, len);
+                    } else if (buf[i] == 'B' && buf[i + 1] == 'I' && (i == 0 ? start : boundary(buf[i - 1]))
                             && (i + 2 >= len || boundary(buf[i + 2]))) {
                         inline(buf, i + 2, len, !full);
                     }
@@ -501,6 +585,68 @@ public final class PdfFootprint {
                 }
                 params.put(key.substring(1), value);
             }
+        }
+    }
+
+    static final class Drawn {
+
+        private static final int MAX_NAME = 256;
+
+        final COSDictionary xobjects;
+
+        final Set<COSName> names = new LinkedHashSet<>();
+
+        boolean all;
+
+        private final Map<String, COSName> byName = new HashMap<>();
+
+        Drawn(COSDictionary xobjects) {
+            this.xobjects = xobjects;
+            if (xobjects != null) {
+                for (COSName name : xobjects.keySet()) {
+                    byName.put(name.getName(), name);
+                }
+            }
+        }
+
+        void name(byte[] buf, int from, int end) {
+            if (byName.isEmpty()) {
+                return;
+            }
+            int to = from;
+            while (to < end && !boundary(buf[to])) {
+                if (to - from >= MAX_NAME) {
+                    return;
+                }
+                to++;
+            }
+            if (to == from) {
+                return;
+            }
+            byte[] raw = unescape(buf, from, to);
+            COSName hit = byName.get(new String(raw, StandardCharsets.ISO_8859_1));
+            if (hit == null) {
+                hit = byName.get(new String(raw, StandardCharsets.UTF_8));
+            }
+            if (hit != null) {
+                names.add(hit);
+            }
+        }
+
+        private static byte[] unescape(byte[] buf, int from, int to) {
+            byte[] out = new byte[to - from];
+            int n = 0;
+            for (int i = from; i < to; i++) {
+                int hi = i + 2 < to && buf[i] == '#' ? Character.digit(buf[i + 1], 16) : -1;
+                int lo = hi >= 0 ? Character.digit(buf[i + 2], 16) : -1;
+                if (lo >= 0) {
+                    out[n++] = (byte) (hi << 4 | lo);
+                    i += 2;
+                } else {
+                    out[n++] = buf[i];
+                }
+            }
+            return Arrays.copyOf(out, n);
         }
     }
 

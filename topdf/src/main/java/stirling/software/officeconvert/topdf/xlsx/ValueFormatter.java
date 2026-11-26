@@ -6,14 +6,11 @@ import java.math.MathContext;
 import java.math.RoundingMode;
 import java.util.List;
 import java.util.Locale;
-import java.util.regex.Pattern;
 
 import org.apache.poi.ss.usermodel.DataFormatter;
 import org.apache.poi.ss.usermodel.DateUtil;
 
 final class ValueFormatter {
-
-    private static final Pattern BRACKETS = Pattern.compile("\\[[^\\]]*\\]");
 
     private final DataFormatter formatter = new DataFormatter(Locale.US);
 
@@ -97,7 +94,7 @@ final class ValueFormatter {
     }
 
     private CellText text(List<TextRun> runs, CellFormat format) {
-        String section = FormatCode.textSection(format.formatString());
+        String section = FormatCode.textSection(FormatCode.clamp(format.formatString()));
         Color color = null;
         if (section != null && !section.equals("@")) {
             color = FormatCode.color(section);
@@ -112,7 +109,7 @@ final class ValueFormatter {
 
     CellText number(double value, CellFormat format) {
         FontSpec font = format.font();
-        String fmt = dates.builtin(format.formatIndex(), format.formatString());
+        String fmt = FormatCode.clamp(dates.builtin(format.formatIndex(), format.formatString()));
         if (Double.isNaN(value) || Double.isInfinite(value)) {
             return new CellText(CellText.Kind.ERROR, List.of(new TextRun("#NUM!", font)), null, false, value);
         }
@@ -126,7 +123,7 @@ final class ValueFormatter {
         int index = FormatCode.numberSectionIndex(fmt, value);
         String section = FormatCode.sections(fmt).get(index);
         Color color = FormatCode.color(section);
-        boolean generalSection = FormatCode.isGeneral(BRACKETS.matcher(section).replaceAll(""));
+        boolean generalSection = FormatCode.isGeneral(withoutTags(section, false));
         String text;
         try {
             if (ExcelFormat.isDate(section)) {
@@ -153,9 +150,29 @@ final class ValueFormatter {
         return new CellText(CellText.Kind.NUMBER, List.of(new TextRun(text, font)), color, generalSection, value);
     }
 
+    // Drops [..] tags and, if asked, "..." literals by hand: a regex rescans to the end from every unclosed '['
+    static String withoutTags(String section, boolean quotes) {
+        StringBuilder out = new StringBuilder(section.length());
+        boolean bracketsClose = true;
+        boolean quotesClose = quotes;
+        for (int i = 0; i < section.length(); i++) {
+            char c = section.charAt(i);
+            char close = c == '[' && bracketsClose ? ']' : c == '"' && quotesClose ? '"' : 0;
+            int end = close == 0 ? -1 : section.indexOf(close, i + 1);
+            if (end >= 0) {
+                i = end;
+                continue;
+            }
+            bracketsClose &= close != ']';
+            quotesClose &= close != '"';
+            out.append(c);
+        }
+        return out.toString();
+    }
+
     // Excel keeps a fraction that rounds to nothing as blank space as wide as its placeholders
     static String blankFraction(String section) {
-        String plain = section.replaceAll("\\[[^\\]]*\\]|\"[^\"]*\"", "");
+        String plain = withoutTags(section, true);
         int slash = plain.indexOf('/');
         if (slash < 1 || !placeholder(plain.charAt(slash - 1))) {
             return "";

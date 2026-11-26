@@ -31,6 +31,8 @@ final class StructureCheck {
 
     private int orphans;
 
+    private int unchecked;
+
     private int artifacts;
 
     private StructureCheck() {}
@@ -62,6 +64,10 @@ final class StructureCheck {
             problems.add(count(c.orphans, "marked content item") + " that no structure element refers to ("
                     + pages(c.orphanPages) + ")");
         }
+        if (c.unchecked > 0) {
+            problems.add(count(c.unchecked, "form") + " nested more than 12 deep or unreadable, whose tagging could "
+                    + "not be checked");
+        }
         if (!tree.figuresWithoutAlt.isEmpty()) {
             TreeSet<Integer> where = new TreeSet<>();
             for (COSDictionary f : tree.figuresWithoutAlt) {
@@ -79,7 +85,7 @@ final class StructureCheck {
                 problems.add("no document language");
             } else {
                 cat.setString(COSName.LANG, guess);
-                report.warn("Set the document language to " + guess + " from its structure");
+                report.warn("Set the document language to %s from its structure", guess);
             }
         }
         if (!problems.isEmpty()) {
@@ -118,6 +124,7 @@ final class StructureCheck {
         if (t.images > 0) {
             imagePages.add(number);
         }
+        unchecked += t.unchecked;
         orphans += t.orphans;
         if (t.orphans > 0) {
             orphanPages.add(number);

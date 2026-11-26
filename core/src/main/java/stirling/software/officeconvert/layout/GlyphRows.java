@@ -160,33 +160,29 @@ final class GlyphRows {
     }
 
     private static void mergeSatellites(List<Row> rows) {
-        boolean changed = true;
-        while (changed) {
-            changed = false;
-            for (int i = 0; i < rows.size(); i++) {
-                Row s = rows.get(i);
-                Row host = null;
-                for (int d = -2; d <= 2; d++) {
-                    int j = i + d;
-                    if (d == 0 || j < 0 || j >= rows.size()) {
-                        continue;
-                    }
-                    Row m = rows.get(j);
-                    if (isSatelliteOf(s, m) && (host == null || m.maxSize() > host.maxSize())) {
-                        host = m;
-                    }
+        for (int i = 0; i < rows.size(); i++) {
+            Row s = rows.get(i);
+            Row host = null;
+            for (int d = -2; d <= 2; d++) {
+                int j = i + d;
+                if (d == 0 || j < 0 || j >= rows.size()) {
+                    continue;
                 }
-                if (host != null) {
-                    int script = s.baseline < host.baseline ? 1 : -1;
-                    for (Glyph g : s.glyphs) {
-                        g.vertAlign = script;
-                        host.glyphs.add(g);
-                    }
-                    host.glyphs.sort(BY_X);
-                    rows.remove(i);
-                    changed = true;
-                    break;
+                Row m = rows.get(j);
+                if (isSatelliteOf(s, m) && (host == null || m.maxSize() > host.maxSize())) {
+                    host = m;
                 }
+            }
+            if (host != null) {
+                int script = s.baseline < host.baseline ? 1 : -1;
+                for (Glyph g : s.glyphs) {
+                    g.vertAlign = script;
+                    host.glyphs.add(g);
+                }
+                host.glyphs.sort(BY_X);
+                rows.remove(i);
+                // Only rows within reach of the removed row and its host can change, so resume there.
+                i = Math.max(-1, i - 5);
             }
         }
     }

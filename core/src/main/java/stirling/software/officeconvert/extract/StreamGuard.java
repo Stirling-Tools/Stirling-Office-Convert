@@ -51,8 +51,10 @@ public final class StreamGuard {
                     if (BrotliStreams.uses(s)) {
                         BrotliStreams.decode(s, cos);
                     }
-                    if (!COSName.IMAGE.equals(s.getCOSName(COSName.SUBTYPE)) && overflows(s)) {
+                    // The subtype is the document's claim, so a stream labelled as an image is checked too.
+                    if (overflows(s)) {
                         empty(s);
+                        FITS.put(s, false);
                         emptied++;
                     }
                 }

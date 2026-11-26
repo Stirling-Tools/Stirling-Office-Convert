@@ -2,8 +2,11 @@ package stirling.software.officeconvert.table;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
+import stirling.software.officeconvert.layout.Polls;
 import stirling.software.officeconvert.table.PageContent.FillBox;
 import stirling.software.officeconvert.table.PageContent.PdfWord;
 import stirling.software.officeconvert.table.PageContent.Ruling;
@@ -72,7 +75,9 @@ public final class TableDetection {
             framed.add(new ArrayList<>());
         }
         List<PdfWord> free = new ArrayList<>();
+        int wi = 0;
         for (PdfWord w : content.words()) {
+            Polls.check(wi++);
             if (smallest(lattices, w) >= 0) {
                 continue;
             }
@@ -93,22 +98,21 @@ public final class TableDetection {
 
         List<Found> out = new ArrayList<>();
         for (DraftTable draft : drafts) {
+            Polls.check();
             ExtractedTable assembled = TableAssembler.assemble(draft, fills);
+            Map<Long, ExtractedCell> byPlace = new HashMap<>();
+            for (ExtractedCell ec : assembled.cells()) {
+                byPlace.putIfAbsent(place(ec.row(), ec.col()), ec);
+            }
             List<FoundCell> cells = new ArrayList<>();
             List<DraftTable.Cell> sorted = new ArrayList<>(draft.cells());
             sorted.sort(
                     Comparator.comparingInt(DraftTable.Cell::row)
                             .thenComparingInt(DraftTable.Cell::col));
             for (DraftTable.Cell c : sorted) {
-                CellStyle style = CellStyle.PLAIN;
-                String text = "";
-                for (ExtractedCell ec : assembled.cells()) {
-                    if (ec.row() == c.row() && ec.col() == c.col()) {
-                        style = ec.style();
-                        text = ec.text();
-                        break;
-                    }
-                }
+                ExtractedCell ec = byPlace.get(place(c.row(), c.col()));
+                CellStyle style = ec == null ? CellStyle.PLAIN : ec.style();
+                String text = ec == null ? "" : ec.text();
                 cells.add(
                         new FoundCell(
                                 c.row(),
@@ -143,6 +147,10 @@ public final class TableDetection {
                             draft.bottom()));
         }
         return out;
+    }
+
+    private static long place(int row, int col) {
+        return (long) row << 32 | col & 0xFFFFFFFFL;
     }
 
     private static int smallest(List<LatticeFinder.Found> regions, PdfWord w) {

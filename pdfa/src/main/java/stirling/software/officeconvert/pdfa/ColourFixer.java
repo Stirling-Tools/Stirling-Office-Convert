@@ -329,7 +329,7 @@ final class ColourFixer {
             default -> null;
         };
         if (replacement == null) {
-            report.warn("An ICC colour profile is not valid for PDF/A and has no replacement");
+            report.unverified("An ICC colour profile is not valid for PDF/A and has no replacement");
             return;
         }
         for (COSName k : new COSName[] {COSName.FILTER, COSName.DECODE_PARMS, COSName.ALTERNATE, COSName.RANGE,
@@ -340,7 +340,9 @@ final class ColourFixer {
             out.write(replacement);
         }
         s.setInt(COSName.N, n);
-        report.warn("Replaced an ICC colour profile that PDF/A does not accept");
+        report.warn(h != null && ("Lab ".equals(h.colourSpace()) || "XYZ ".equals(h.colourSpace()))
+                ? "Replaced a Lab or XYZ ICC colour profile, which PDF/A does not accept, with sRGB, so its colours change"
+                : "Replaced an ICC colour profile that PDF/A does not accept");
     }
 
     static byte[] read(COSStream s) {

@@ -62,6 +62,9 @@ public final class Admission {
 
     private static final long READMIT_WAIT_NANOS = 300_000_000_000L;
 
+    // A stopped conversion that has not ended by then no longer keeps another from being chosen
+    static final long STOP_GRACE_NANOS = 5_000_000_000L;
+
     private static final Heap JVM_HEAP = memory(ContainerMemory.find());
 
     private static final Admission JVM = new Admission(Runtime.getRuntime().maxMemory(), Limits.defaults(), JVM_HEAP);
@@ -201,6 +204,8 @@ public final class Admission {
 
     private long lastGc;
 
+    long stopGraceNanos = STOP_GRACE_NANOS;
+
     Admission(long maxHeap, int percent, int slots, Heap heap) {
         this(maxHeap, new Limits(percent, slots, Duration.ZERO, false), heap);
     }
@@ -293,6 +298,7 @@ public final class Admission {
 
     private <T> T retry(Attempt<T> attempt) throws IOException {
         boolean callerHolds = open(CURRENT.get()) != null;
+        long waited = 0;
         for (int tries = 1;; tries++) {
             try {
                 return attempt.run();
@@ -300,9 +306,11 @@ public final class Admission {
                 if (callerHolds || !limits.readmitStopped() || tries >= MAX_READMISSIONS || !stoppedWhileShared(e)) {
                     throw e;
                 }
-                if (!awaitRoom()) {
+                long before = System.nanoTime();
+                if (!awaitRoom(waited)) {
                     throw e;
                 }
+                waited += System.nanoTime() - before;
             }
         }
     }
@@ -317,13 +325,14 @@ public final class Admission {
         return false;
     }
 
-    private boolean awaitRoom() throws InterruptedIOException {
+    // Every retry shares one wait, so the time spent outside the conversions' timeouts stays bounded
+    private boolean awaitRoom(long waited) throws InterruptedIOException {
         try {
             lock.lockInterruptibly();
             try {
                 int before = running.size();
                 long start = System.nanoTime();
-                long limit = waitNanos > 0 ? Math.min(waitNanos, READMIT_WAIT_NANOS) : READMIT_WAIT_NANOS;
+                long limit = (waitNanos > 0 ? Math.min(waitNanos, READMIT_WAIT_NANOS) : READMIT_WAIT_NANOS) - waited;
                 while (!running.isEmpty() && running.size() >= before) {
                     if (System.nanoTime() - start >= limit) {
                         return false;
@@ -355,6 +364,8 @@ public final class Admission {
         private long checked;
 
         private volatile boolean stopped;
+
+        private long stoppedAt;
 
         private volatile boolean shared;
 
@@ -513,7 +524,15 @@ public final class Admission {
         long now = System.nanoTime();
         if (now - lastGc >= GC_NANOS) {
             lastGc = now;
-            heap.reclaim(true);
+            lock.unlock();
+            try {
+                heap.reclaim(true);
+            } finally {
+                lock.lock();
+            }
+            if (!running.isEmpty()) {
+                return true;
+            }
         }
         return heap.outside() > CONTAINER_ALONE;
     }
@@ -527,37 +546,64 @@ public final class Admission {
         }
         lock.lock();
         try {
-            boolean alone = running.size() < 2;
-            double limit = alone ? CRITICAL_ALONE : CRITICAL;
-            double outsideLimit = alone ? CONTAINER_ALONE : CRITICAL;
-            if (heap.used(false) <= limit && outside <= outsideLimit) {
+            if (!over(heap.used(false), outside)) {
                 return false;
             }
-            for (Ticket r : running) {
-                if (r.stopped) {
-                    return r == t;
-                }
+            Ticket stopping = stopping();
+            if (stopping != null) {
+                return stopping == t;
             }
             long now = System.nanoTime();
             if (now - lastGc < GC_NANOS) {
                 return false;
             }
             lastGc = now;
-            if (heap.used(true) <= limit && outside <= outsideLimit) {
+        } finally {
+            lock.unlock();
+        }
+        // A full collection would hold up every enter and close in the JVM, so it runs with the lock released
+        double collected = heap.used(true);
+        lock.lock();
+        try {
+            if (!over(collected, outside)) {
                 return false;
             }
-            Ticket largest = t;
+            Ticket stopping = stopping();
+            if (stopping != null) {
+                return stopping == t;
+            }
+            Ticket largest = null;
             for (Ticket r : running) {
-                if (r.held > largest.held) {
+                if (!r.stopped && !ABANDONED.contains(r.owner) && (largest == null || r.held > largest.held)) {
                     largest = r;
                 }
             }
-            largest.shared = !alone;
+            if (largest == null) {
+                return false;
+            }
+            largest.shared = running.size() >= 2;
+            largest.stoppedAt = System.nanoTime();
             largest.stopped = true;
             return largest == t;
         } finally {
             lock.unlock();
         }
+    }
+
+    private boolean over(double used, double outside) {
+        boolean alone = running.size() < 2;
+        return used > (alone ? CRITICAL_ALONE : CRITICAL) || outside > (alone ? CONTAINER_ALONE : CRITICAL);
+    }
+
+    // The conversion already giving way, unless its worker was abandoned or it has had its grace to end
+    private Ticket stopping() {
+        long now = System.nanoTime();
+        for (Ticket r : running) {
+            if (r.stopped && !ABANDONED.contains(r.owner) && now - r.stoppedAt < stopGraceNanos) {
+                return r;
+            }
+        }
+        return null;
     }
 
     public int running() {

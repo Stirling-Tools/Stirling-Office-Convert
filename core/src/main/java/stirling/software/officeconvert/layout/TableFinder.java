@@ -245,6 +245,8 @@ final class TableFinder {
                     found.add(trimmed);
                 }
             }
+        } catch (Polls.Stopped e) {
+            throw e;
         } catch (RuntimeException e) {
             return List.of();
         }

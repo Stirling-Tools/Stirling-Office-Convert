@@ -29,7 +29,7 @@ class HeadingTierLimitTest {
     }
 
     @Test
-    void aChapterLabelTierLeavesRoomForSixHeadingTiers() {
+    void aChapterLabelTierLeavesRoomForSixHeadingTiers() throws Exception {
         DocStats stats = new DocStats();
         for (int page = 0; page < 3; page++) {
             baseline = 0;

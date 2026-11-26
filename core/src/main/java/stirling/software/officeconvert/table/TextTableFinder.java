@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
+import stirling.software.officeconvert.layout.Polls;
 import stirling.software.officeconvert.table.DraftTable.Borders;
 import stirling.software.officeconvert.table.PageContent.FillBox;
 import stirling.software.officeconvert.table.PageContent.PdfWord;
@@ -21,6 +22,7 @@ final class TextTableFinder {
         }
         List<DraftTable> tables = new ArrayList<>();
         for (TextBlocks.Block block : TextBlocks.find(lines)) {
+            Polls.check();
             List<ChunkedLine> blockLines =
                     lines.subList(block.start(), block.end() + block.trailing() + 1);
             DraftTable table = build(page, blockLines, block.trailing(), rules, fills);

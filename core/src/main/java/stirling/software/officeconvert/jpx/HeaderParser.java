@@ -1,6 +1,6 @@
 package stirling.software.officeconvert.jpx;
 
-import java.util.Arrays;
+import java.io.ByteArrayOutputStream;
 
 final class HeaderParser {
 
@@ -118,20 +118,7 @@ final class HeaderParser {
             throw new JpxException("Misplaced JPEG 2000 packed packet headers");
         }
         int index = b.u8();
-        byte[] data = new byte[length - 3];
-        for (int i = 0; i < data.length; i++) {
-            data[i] = (byte) b.u8();
-        }
-        byte[] old = into.packed.get(index);
-        if (old != null) {
-            data = concat(old, data);
-        }
-        into.packed.put(index, data);
-    }
-
-    private static byte[] concat(byte[] a, byte[] b) {
-        byte[] r = Arrays.copyOf(a, a.length + b.length);
-        System.arraycopy(b, 0, r, a.length, b.length);
-        return r;
+        // Appended to one buffer per index: copying the joined bytes per segment is quadratic.
+        b.copyTo(into.packed.computeIfAbsent(index, i -> new ByteArrayOutputStream()), length - 3);
     }
 }

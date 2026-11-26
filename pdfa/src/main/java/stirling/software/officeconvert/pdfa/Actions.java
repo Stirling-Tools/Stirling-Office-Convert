@@ -76,7 +76,7 @@ final class Actions {
             kept = filter(next, level, report, done, depth + 1);
         }
         if (!ok) {
-            report.warn("Removed " + (type.isEmpty() ? "an unknown" : "a " + type) + " action, which PDF/A does not allow");
+            report.warn("Removed " + (type.isEmpty() ? "an unknown" : "a %s") + " action, which PDF/A does not allow", type);
             return kept;
         }
         if (kept == null) {
@@ -97,7 +97,7 @@ final class Actions {
         for (COSName key : new java.util.ArrayList<>(aa.keySet())) {
             if (triggers != null && !triggers.contains(key.getName())) {
                 aa.removeItem(key);
-                report.warn("Removed a " + key.getName() + " trigger action, which " + level.label() + " does not allow");
+                report.warn("Removed a %s trigger action, which " + level.label() + " does not allow", key.getName());
             } else {
                 filterKey(aa, key, level, report);
             }

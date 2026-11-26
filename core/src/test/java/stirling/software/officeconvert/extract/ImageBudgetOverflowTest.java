@@ -47,11 +47,14 @@ class ImageBudgetOverflowTest {
     }
 
     private static byte[] jpx(int width, int height, int components) {
-        ByteBuffer header = ByteBuffer.allocate(42);
-        header.putInt(0xFF4FFF51).putShort((short) 41).putShort((short) 0);
+        ByteBuffer header = ByteBuffer.allocate(42 + 3 * components);
+        header.putInt(0xFF4FFF51).putShort((short) (38 + 3 * components)).putShort((short) 0);
         header.putInt(width).putInt(height).putInt(0).putInt(0);
         header.putInt(width).putInt(height).putInt(0).putInt(0);
         header.putShort((short) components);
+        for (int c = 0; c < components; c++) {
+            header.put((byte) 7).put((byte) 1).put((byte) 1);
+        }
         return header.array();
     }
 }

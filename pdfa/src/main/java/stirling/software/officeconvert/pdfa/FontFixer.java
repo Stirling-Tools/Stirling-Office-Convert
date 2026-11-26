@@ -279,9 +279,12 @@ final class FontFixer {
                 if (library == null) {
                     library = libraries.get();
                 }
-                report.substituted(substitute(doc, font, codes, level, library, bytesPerCode));
+                FontRebuild.Rebuilt r = substitute(doc, font, codes, level, library, bytesPerCode, true);
+                report.substituted(r.note());
+                invented(r.invented());
             } else {
-                FontRebuild.rebuild(doc, font, codes, FontRebuild.Mode.OWN, null, level, bytesPerCode);
+                invented(FontRebuild.rebuild(doc, font, codes, FontRebuild.Mode.OWN, null, level, bytesPerCode)
+                        .invented());
             }
         } catch (IOException | RuntimeException e) {
             PdfFiles.stopIfInterrupted();
@@ -585,6 +588,7 @@ final class FontFixer {
         COSBase declared = font.getCOSObject().getDictionaryObject(COSName.TO_UNICODE);
         boolean complete = declared != null && ToUnicodeWriter.wellFormed(declared)
                 && !ToUnicodeWriter.usesOther(declared);
+        int invented = 0;
         for (int code : codes) {
             PdfFiles.stopIfInterrupted();
             String t = UnicodeGuess.text(font, code, bytesPerCode);
@@ -596,6 +600,7 @@ final class FontFixer {
                 t = fallback(font, code, t);
                 if (t.equals(ToUnicodeWriter.unknown(code, level))) {
                     silent.computeIfAbsent(font.getCOSObject(), k -> new TreeSet<>()).add(code);
+                    invented++;
                 }
             } else {
                 t = UnicodeGuess.searchable(font, code, t);
@@ -604,6 +609,14 @@ final class FontFixer {
         }
         if (!complete) {
             font.getCOSObject().setItem(COSName.TO_UNICODE, ToUnicodeWriter.preserve(doc, map, font, bytesPerCode));
+        }
+        invented(invented);
+    }
+
+    private void invented(int count) {
+        if (count > 0) {
+            report.warn("Gave characters whose text is unknown " + (level.tagged() ? "U+FFFD" : "private-use code points")
+                    + " in the Unicode map " + level.label() + " needs, so that text cannot be searched or read");
         }
     }
 

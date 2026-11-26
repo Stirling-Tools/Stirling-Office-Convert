@@ -51,6 +51,8 @@ final class EmbeddedFiles {
 
     private final Map<COSStream, Boolean> compatible = new IdentityHashMap<>();
 
+    private final AttachedPdfA.Budget budget = new AttachedPdfA.Budget();
+
     private final List<COSDictionary> retained = new ArrayList<>();
 
     private EmbeddedFiles(PDDocument doc, PdfALevel level, Report report) {
@@ -284,7 +286,11 @@ final class EmbeddedFiles {
     private boolean compatible(COSStream stream) throws IOException {
         Boolean known = compatible.get(stream);
         if (known == null) {
-            known = AttachedPdfA.check(stream, level.part() == 4);
+            try {
+                known = AttachedPdfA.check(stream, level.part() == 4, budget);
+            } catch (AttachedPdfA.Spent e) {
+                known = false;
+            }
             compatible.put(stream, known);
         }
         return known;

@@ -37,6 +37,9 @@ final class TaggedContent {
 
     int orphans;
 
+    // Forms nested too deeply or unreadable: their content cannot be shown to be tagged.
+    int unchecked;
+
     final Set<Integer> mcids = new HashSet<>();
 
     private final Set<Integer> referenced;
@@ -155,6 +158,7 @@ final class TaggedContent {
         }
         formsWithMarks.put(form, Boolean.FALSE);
         if (depth >= MAX_FORM_DEPTH) {
+            unchecked++;
             return false;
         }
         boolean structured = form.containsKey(COSName.STRUCT_PARENTS) || byOwner.containsKey(form);
@@ -165,8 +169,10 @@ final class TaggedContent {
         try {
             rewritten = inner.scan(ContentTokens.parse(List.of(form)), res == null ? parentResources : res);
         } catch (IOException e) {
+            unchecked++;
             return false;
         }
+        unchecked += inner.unchecked;
         if (structured) {
             if (rewritten != null) {
                 try {

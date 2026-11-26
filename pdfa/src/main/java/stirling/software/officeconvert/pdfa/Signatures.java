@@ -41,7 +41,7 @@ final class Signatures {
         if (owners.isEmpty() && !signedPerms) {
             return;
         }
-        flatten(doc, owners);
+        boolean drawn = flatten(doc, owners);
         for (COSDictionary d : owners) {
             d.removeItem(COSName.V);
         }
@@ -51,13 +51,13 @@ final class Signatures {
             acro.removeItem(SIG_FLAGS);
         }
         report.warn("Removed digital signatures, which no longer match the file once it is rewritten as PDF/A, and "
-                + "drew their appearances into the pages");
+                + (drawn ? "drew their appearances into the pages" : "could not draw their appearances into the pages"));
     }
 
-    private static void flatten(PDDocument doc, List<COSDictionary> owners) throws IOException {
+    private static boolean flatten(PDDocument doc, List<COSDictionary> owners) throws IOException {
         PDAcroForm acro = doc.getDocumentCatalog().getAcroForm(null);
         if (acro == null) {
-            return;
+            return true;
         }
         Set<COSDictionary> signed = Collections.newSetFromMap(new IdentityHashMap<>());
         signed.addAll(owners);
@@ -71,8 +71,10 @@ final class Signatures {
             if (!fields.isEmpty()) {
                 acro.flatten(fields, false);
             }
+            return true;
         } catch (IOException | RuntimeException e) {
             PdfFiles.stopIfInterrupted();
+            return false;
         }
     }
 
