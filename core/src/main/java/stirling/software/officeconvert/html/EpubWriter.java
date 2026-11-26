@@ -10,8 +10,6 @@ import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashMap;
@@ -39,10 +37,12 @@ import stirling.software.officeconvert.model.Picture;
 import stirling.software.officeconvert.model.Section;
 import stirling.software.officeconvert.model.StyleSheet;
 import stirling.software.officeconvert.model.Table;
+import stirling.software.officeconvert.sink.FixedTimeZip;
 import stirling.software.officeconvert.sink.KeepOpen;
 import stirling.software.officeconvert.sink.ListLabels;
 import stirling.software.officeconvert.sink.MediaStore;
 import stirling.software.officeconvert.sink.SpillBuffer;
+import stirling.software.officeconvert.sink.Timestamps;
 import stirling.software.officeconvert.sink.ZipParts;
 
 public final class EpubWriter implements DocSink, Closeable {
@@ -117,7 +117,7 @@ public final class EpubWriter implements DocSink, Closeable {
     }
 
     public EpubWriter(OutputStream target, Pictures pictures, Book book) {
-        this.zip = new ZipOutputStream(new KeepOpen(target), StandardCharsets.UTF_8);
+        this.zip = new FixedTimeZip(new KeepOpen(target), StandardCharsets.UTF_8);
         this.media = new MediaStore(pictures);
         this.blocks = new HtmlBlocks(media);
         this.cover = book.cover();
@@ -586,7 +586,7 @@ public final class EpubWriter implements DocSink, Closeable {
             sb.append("<dc:creator>").append(escaped(author.strip())).append("</dc:creator>\n");
         }
         sb.append("<meta property=\"dcterms:modified\">")
-                .append(Instant.now().truncatedTo(ChronoUnit.SECONDS).toString()).append("</meta>\n")
+                .append(Timestamps.now().toString()).append("</meta>\n")
                 .append("<meta name=\"generator\" content=\"Stirling Office Convert\"/>\n");
         if (cover != null) {
             sb.append("<meta name=\"cover\" content=\"cover\"/>\n");

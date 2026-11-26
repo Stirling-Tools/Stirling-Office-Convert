@@ -8,6 +8,7 @@ import stirling.software.officeconvert.model.Numbering;
 import stirling.software.officeconvert.model.RunStyle;
 import stirling.software.officeconvert.model.Section;
 import stirling.software.officeconvert.model.StyleSheet;
+import stirling.software.officeconvert.sink.Timestamps;
 
 final class RtfParts {
 
@@ -132,7 +133,7 @@ final class RtfParts {
     }
 
     static void info(StringBuilder sb, String title, String author) {
-        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
+        LocalDateTime now = LocalDateTime.ofInstant(Timestamps.now(), ZoneOffset.UTC);
         sb.append("{\\info");
         if (title != null && !title.isBlank()) {
             sb.append("{\\title ");

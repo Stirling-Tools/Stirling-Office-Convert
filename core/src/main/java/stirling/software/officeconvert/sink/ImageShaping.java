@@ -14,6 +14,8 @@ import javax.imageio.ImageIO;
 import javax.imageio.ImageWriteParam;
 import javax.imageio.ImageWriter;
 import javax.imageio.stream.ImageOutputStream;
+import javax.imageio.stream.MemoryCacheImageInputStream;
+import javax.imageio.stream.MemoryCacheImageOutputStream;
 
 import stirling.software.officeconvert.build.RgbPixels;
 import stirling.software.officeconvert.model.Picture;
@@ -35,7 +37,8 @@ final class ImageShaping {
     }
 
     static Result apply(byte[] bytes, Picture pic, boolean lossless) throws IOException {
-        BufferedImage img = ImageIO.read(new ByteArrayInputStream(bytes));
+        // Memory-cached streams keep document bytes out of ImageIO's temp-file cache; read closes its input
+        BufferedImage img = ImageIO.read(new MemoryCacheImageInputStream(new ByteArrayInputStream(bytes)));
         if (img == null) {
             return null;
         }
@@ -93,8 +96,10 @@ final class ImageShaping {
 
     private static byte[] png(BufferedImage img) throws IOException {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        if (!ImageIO.write(img, "png", out)) {
-            throw new IOException("No PNG writer");
+        try (ImageOutputStream ios = new MemoryCacheImageOutputStream(out)) {
+            if (!ImageIO.write(img, "png", ios)) {
+                throw new IOException("No PNG writer");
+            }
         }
         return out.toByteArray();
     }
@@ -106,7 +111,7 @@ final class ImageShaping {
         }
         ImageWriter writer = writers.next();
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        try (ImageOutputStream ios = ImageIO.createImageOutputStream(out)) {
+        try (ImageOutputStream ios = new MemoryCacheImageOutputStream(out)) {
             writer.setOutput(ios);
             ImageWriteParam param = writer.getDefaultWriteParam();
             param.setCompressionMode(ImageWriteParam.MODE_EXPLICIT);

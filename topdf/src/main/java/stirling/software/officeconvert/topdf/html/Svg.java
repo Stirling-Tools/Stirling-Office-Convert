@@ -24,6 +24,8 @@ import java.util.Locale;
 import java.util.Map;
 
 import javax.imageio.ImageIO;
+import javax.imageio.stream.ImageOutputStream;
+import javax.imageio.stream.MemoryCacheImageOutputStream;
 
 import org.jsoup.nodes.Element;
 
@@ -113,7 +115,9 @@ final class Svg {
         }
         try {
             ByteArrayOutputStream out = new ByteArrayOutputStream();
-            ImageIO.write(img, "png", out);
+            try (ImageOutputStream ios = new MemoryCacheImageOutputStream(out)) {
+                ImageIO.write(img, "png", ios);
+            }
             return new Painted(out.toByteArray(), w, h, width, height, labels == null ? List.of() : labels);
         } catch (IOException e) {
             return null;

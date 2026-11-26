@@ -320,6 +320,7 @@ final class Rewrite {
     private Future<Done> submit(ExecutorService pool, COSStream s, Recoder.Job job, long limit, Fonts.Work work,
             Recoder.Kind kind) {
         return pool.submit(() -> {
+            PdfFiles.stopIfInterrupted();
             Fonts.Rebuilt font = work == null ? null : work.run();
             if (font != null) {
                 Recoder.Job smaller = Recoder.prepare(font.stream(), kind, null, brotliBudget);
@@ -423,7 +424,7 @@ final class Rewrite {
                         null, kind(p.node(), roles)), false, p.font()), sha, retry);
             }
         } finally {
-            pool.shutdownNow();
+            close(pool);
         }
     }
 
@@ -845,6 +846,7 @@ final class Rewrite {
                     byte[] data = raw.toByteArray();
                     int number = firstContainer + c;
                     java.util.concurrent.Callable<byte[]> job = () -> {
+                        PdfFiles.stopIfInterrupted();
                         byte[] z = Deflate.best(data, options.effort());
                         return encryption != null ? encryption.encrypt(z, number) : z;
                     };
@@ -868,7 +870,7 @@ final class Rewrite {
             throw new IOException(e);
         } finally {
             if (pool != null) {
-                pool.shutdownNow();
+                close(pool);
             }
         }
     }
@@ -894,6 +896,24 @@ final class Rewrite {
         return "/Size " + size + "/Root " + numbers[root] + " 0 R" + (info >= 0 && numbers[info] > 0
                 ? "/Info " + numbers[info] + " 0 R" : "") + (encryption != null ? "/Encrypt " + encryptNumber + " 0 R"
                 : "");
+    }
+
+    // Waits for pool tasks to stop so this worker stays alive, and counted as stuck, while they still run.
+    static void close(ExecutorService pool) {
+        boolean interrupted = false;
+        pool.shutdownNow();
+        while (!pool.isTerminated()) {
+            try {
+                if (!pool.awaitTermination(1, java.util.concurrent.TimeUnit.SECONDS)) {
+                    pool.shutdownNow();
+                }
+            } catch (InterruptedException e) {
+                interrupted = true;
+            }
+        }
+        if (interrupted) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     private static byte[] get(Future<byte[]> f) throws IOException {

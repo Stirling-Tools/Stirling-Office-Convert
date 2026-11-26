@@ -12,8 +12,6 @@ import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -24,12 +22,16 @@ import java.util.TreeSet;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 import javax.imageio.ImageIO;
+import javax.imageio.stream.ImageOutputStream;
+import javax.imageio.stream.MemoryCacheImageInputStream;
+import javax.imageio.stream.MemoryCacheImageOutputStream;
 
 import stirling.software.officeconvert.Pictures;
 import stirling.software.officeconvert.model.Picture;
 import stirling.software.officeconvert.model.Scripts;
 import stirling.software.officeconvert.sink.KeepOpen;
 import stirling.software.officeconvert.sink.SpillFile;
+import stirling.software.officeconvert.sink.Timestamps;
 import stirling.software.officeconvert.sink.ZipParts;
 import stirling.software.officeconvert.slides.Slide;
 import stirling.software.officeconvert.slides.SlideSink;
@@ -118,7 +120,7 @@ public final class OdpWriter implements SlideSink {
         }
         Object data = mediaData.get(pic.media.name());
         byte[] bytes = data instanceof byte[] b ? b : spill.read((SpillFile.Block) data);
-        BufferedImage img = ImageIO.read(new ByteArrayInputStream(bytes));
+        BufferedImage img = ImageIO.read(new MemoryCacheImageInputStream(new ByteArrayInputStream(bytes)));
         if (img == null) {
             return pic.media.name();
         }
@@ -134,8 +136,10 @@ public final class OdpWriter implements SlideSink {
         BufferedImage part = img.getSubimage(x, y, w, h);
         boolean jpeg = !lossless && pic.media.contentType().equals("image/jpeg") && !part.getColorModel().hasAlpha();
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        if (!ImageIO.write(part, jpeg ? "jpeg" : "png", out)) {
-            return pic.media.name();
+        try (ImageOutputStream ios = new MemoryCacheImageOutputStream(out)) {
+            if (!ImageIO.write(part, jpeg ? "jpeg" : "png", ios)) {
+                return pic.media.name();
+            }
         }
         return media(out.toByteArray(), jpeg ? "jpeg" : "png", w, h, key).name();
     }
@@ -172,7 +176,7 @@ public final class OdpWriter implements SlideSink {
         zip.closeEntry();
         entry("styles.xml", OdpParts.styles(width, height, styles.fontDecls(), mostUsedFont(), backgrounds,
                 styles.gradients()));
-        entry("meta.xml", OdpParts.meta(title, author, Instant.now().truncatedTo(ChronoUnit.SECONDS).toString()));
+        entry("meta.xml", OdpParts.meta(title, author, Timestamps.now().toString()));
         List<String[]> manifest = new ArrayList<>();
         for (Map.Entry<String, Object> m : mediaData.entrySet()) {
             ZipParts.picture(zip, "Pictures/" + m.getKey(),

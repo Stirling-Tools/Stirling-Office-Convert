@@ -22,6 +22,7 @@ import javax.imageio.ImageIO;
 import javax.imageio.ImageWriteParam;
 import javax.imageio.ImageWriter;
 import javax.imageio.stream.ImageOutputStream;
+import javax.imageio.stream.MemoryCacheImageOutputStream;
 
 import org.apache.pdfbox.contentstream.operator.color.SetNonStrokingColor;
 import org.apache.pdfbox.contentstream.operator.color.SetNonStrokingColorN;
@@ -283,7 +284,9 @@ public final class FixedHtml {
 
     private static Picture picture(BufferedImage image) throws IOException {
         ByteArrayOutputStream png = new ByteArrayOutputStream();
-        ImageIO.write(image, "png", png);
+        try (ImageOutputStream ios = new MemoryCacheImageOutputStream(png)) {
+            ImageIO.write(image, "png", ios);
+        }
         byte[] best = png.toByteArray();
         String type = "image/png";
         if (best.length > 200_000) {
@@ -303,7 +306,7 @@ public final class FixedHtml {
         }
         ImageWriter writer = writers.next();
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-        try (ImageOutputStream ios = ImageIO.createImageOutputStream(bytes)) {
+        try (ImageOutputStream ios = new MemoryCacheImageOutputStream(bytes)) {
             writer.setOutput(ios);
             ImageWriteParam param = writer.getDefaultWriteParam();
             param.setCompressionMode(ImageWriteParam.MODE_EXPLICIT);

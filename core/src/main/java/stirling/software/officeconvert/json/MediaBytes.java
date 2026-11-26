@@ -6,6 +6,9 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 
 import javax.imageio.ImageIO;
+import javax.imageio.stream.ImageOutputStream;
+import javax.imageio.stream.MemoryCacheImageInputStream;
+import javax.imageio.stream.MemoryCacheImageOutputStream;
 
 /** A picture from an untrusted document, kept as PNG or JPEG with its size read from its header; GIF and BMP are
  * redrawn as PNG. Pictures are only decoded when drawn, by the renderer's guarded decoder. */
@@ -48,14 +51,17 @@ public record MediaBytes(byte[] bytes, String ext, int pixelWidth, int pixelHeig
 
     // GIF and BMP have no place in a Word package, so they are drawn once into a PNG
     private static MediaBytes redrawn(byte[] b) {
+        // Memory-cached streams keep document bytes out of ImageIO's temp-file cache; read closes its input
         try {
-            BufferedImage img = ImageIO.read(new ByteArrayInputStream(b));
+            BufferedImage img = ImageIO.read(new MemoryCacheImageInputStream(new ByteArrayInputStream(b)));
             if (img == null) {
                 return null;
             }
             ByteArrayOutputStream png = new ByteArrayOutputStream();
-            if (!ImageIO.write(img, "png", png)) {
-                return null;
+            try (ImageOutputStream out = new MemoryCacheImageOutputStream(png)) {
+                if (!ImageIO.write(img, "png", out)) {
+                    return null;
+                }
             }
             return new MediaBytes(png.toByteArray(), "png", img.getWidth(), img.getHeight());
         } catch (IOException | RuntimeException e) {

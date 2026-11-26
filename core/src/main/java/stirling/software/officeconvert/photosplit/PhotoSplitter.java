@@ -28,6 +28,7 @@ import javax.imageio.ImageReader;
 import javax.imageio.ImageTypeSpecifier;
 import javax.imageio.stream.FileImageInputStream;
 import javax.imageio.stream.ImageInputStream;
+import javax.imageio.stream.MemoryCacheImageInputStream;
 
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
@@ -398,10 +399,7 @@ public final class PhotoSplitter {
 
     private static Source readPage(Path input, int index, Options options, Page page) throws IOException {
         List<ImageReader> readers;
-        try (InputStream in = Files.newInputStream(input); ImageInputStream stream = ImageIO.createImageInputStream(in)) {
-            if (stream == null) {
-                throw new IOException("cannot read " + input);
-            }
+        try (InputStream in = Files.newInputStream(input); ImageInputStream stream = new MemoryCacheImageInputStream(in)) {
             readers = readerOrder(ImageIO.getImageReaders(stream));
         }
         if (readers.isEmpty()) {
@@ -438,7 +436,7 @@ public final class PhotoSplitter {
             throws IOException {
         try (ImageInputStream stream = input.getFileSystem() == FileSystems.getDefault()
                 ? new FileImageInputStream(input.toFile())
-                : ImageIO.createImageInputStream(Files.newInputStream(input))) {
+                : new MemoryCacheImageInputStream(Files.newInputStream(input))) {
             reader.setInput(stream, true, true);
             String format = reader.getFormatName();
             page.paged = "tif".equalsIgnoreCase(format) || "tiff".equalsIgnoreCase(format);

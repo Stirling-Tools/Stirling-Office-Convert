@@ -17,6 +17,8 @@ import java.util.List;
 import java.util.Set;
 import java.util.function.Predicate;
 import javax.imageio.ImageIO;
+import javax.imageio.stream.ImageOutputStream;
+import javax.imageio.stream.MemoryCacheImageOutputStream;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -320,15 +322,21 @@ final class Art {
     private static byte[] encode(BufferedImage img, boolean jpeg) throws IOException {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         if (jpeg) {
-            if (ImageIO.write(RgbPixels.onWhite(img), "jpeg", out)) {
+            if (write(RgbPixels.onWhite(img), "jpeg", out)) {
                 return out.toByteArray();
             }
             out.reset();
         }
-        if (!ImageIO.write(img, "png", out)) {
+        if (!write(img, "png", out)) {
             throw new IOException("No PNG writer");
         }
         return out.toByteArray();
+    }
+
+    private static boolean write(BufferedImage img, String format, ByteArrayOutputStream out) throws IOException {
+        try (ImageOutputStream ios = new MemoryCacheImageOutputStream(out)) {
+            return ImageIO.write(img, format, ios);
+        }
     }
 
     private static String digest(byte[] bytes) {

@@ -264,7 +264,7 @@ public final class Main {
                 yield (in, target) -> archivalNotes(PdfToPdfA.convert(in, target, archival));
             }
             case LINE_ART -> {
-                LineArt.Options bilevel = a.lineArt().password(a.password());
+                LineArt.Options bilevel = a.lineArt().password(a.password()).timeout(office.timeout());
                 yield (in, target) -> lineArtNotes(LineArt.convert(in, target, bilevel));
             }
             case OPTIMIZE -> {
@@ -541,7 +541,7 @@ public final class Main {
                         + System.lineSeparator()
                         + "       office-convert <in.pdf|dir>... --line-art sauvola|otsu|fixed|edges [-o out.pdf|dir] [--threshold 0-100]"
                         + " [--edge-level 1|2|3] [--window px] [--sauvola-k 0-1] [--codec smallest|jbig2|g4|flate] [--ink-colour]"
-                        + " [--password p] [--overwrite] [-q]"
+                        + " [--password p] [--timeout s] [--overwrite] [-q]"
                         + System.lineSeparator()
                         + "       office-convert <in.pdf|dir>... --optimize [--effort fast|default|max] [--keep-private-data]"
                         + " [--image-dpi n [--image-quality 0-1]] [--grayscale] [-o out.pdf|dir] [--password p] [--timeout s] [--overwrite] [-q]"

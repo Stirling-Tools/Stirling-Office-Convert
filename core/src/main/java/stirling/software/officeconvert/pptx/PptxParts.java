@@ -1,7 +1,6 @@
 package stirling.software.officeconvert.pptx;
 
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
+import stirling.software.officeconvert.sink.Timestamps;
 
 final class PptxParts {
 
@@ -220,7 +219,7 @@ final class PptxParts {
     }
 
     static String core(String title, String author) {
-        String now = Instant.now().truncatedTo(ChronoUnit.SECONDS).toString();
+        String now = Timestamps.now().toString();
         return Ooxml.HEADER
                 + "<cp:coreProperties xmlns:cp=\"http://schemas.openxmlformats.org/package/2006/metadata/core-properties\""
                 + " xmlns:dc=\"http://purl.org/dc/elements/1.1/\" xmlns:dcterms=\"http://purl.org/dc/terms/\""

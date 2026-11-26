@@ -10,6 +10,8 @@ import java.io.OutputStream;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumMap;
@@ -34,10 +36,16 @@ import stirling.software.officeconvert.extract.PdfFiles;
 import stirling.software.officeconvert.extract.StrictFilters;
 import stirling.software.officeconvert.jpx.JpxImageIO;
 import stirling.software.officeconvert.memory.Admission;
+import stirling.software.officeconvert.memory.Deadline;
 
 public final class LineArt {
 
-    public static final long DEFAULT_MAX_PIXELS = 1_000_000_000L;
+    // An A0 sheet scanned at 400 dpi is about 250 M pixels; larger pictures cost minutes of CPU each.
+    public static final long DEFAULT_MAX_PIXELS = 300_000_000L;
+
+    public static final int DEFAULT_MAX_IMAGES = 10_000;
+
+    public static final Duration DEFAULT_TIMEOUT = Duration.ofMinutes(5);
 
     public static final long MAX_INPUT_BYTES = PdfFiles.MAX_INPUT_BYTES;
 
@@ -56,7 +64,13 @@ public final class LineArt {
     }
 
     public record Options(Method method, double threshold, int edgeLevel, int window, double k, Codec codec,
-            boolean inkColour, long maxPixels, String password) {
+            boolean inkColour, long maxPixels, String password, Duration timeout, int maxImages) {
+
+        public Options(Method method, double threshold, int edgeLevel, int window, double k, Codec codec,
+                boolean inkColour, long maxPixels, String password) {
+            this(method, threshold, edgeLevel, window, k, codec, inkColour, maxPixels, password, DEFAULT_TIMEOUT,
+                    DEFAULT_MAX_IMAGES);
+        }
 
         public Options {
             Objects.requireNonNull(method, "method");
@@ -76,6 +90,13 @@ public final class LineArt {
             if (maxPixels < 1) {
                 throw new IllegalArgumentException("maxPixels must be 1 or more, was " + maxPixels);
             }
+            Objects.requireNonNull(timeout, "timeout");
+            if (timeout.isNegative()) {
+                throw new IllegalArgumentException("The timeout must be zero (none) or more, was " + timeout);
+            }
+            if (maxImages < 0) {
+                throw new IllegalArgumentException("maxImages must be 0 or more, was " + maxImages);
+            }
         }
 
         public static Options defaults() {
@@ -87,46 +108,66 @@ public final class LineArt {
         }
 
         public Options method(Method to) {
-            return new Options(to, threshold, edgeLevel, window, k, codec, inkColour, maxPixels, password);
+            return new Options(to, threshold, edgeLevel, window, k, codec, inkColour, maxPixels, password,
+                    timeout, maxImages);
         }
 
         public Options threshold(double percent) {
-            return new Options(method, percent, edgeLevel, window, k, codec, inkColour, maxPixels, password);
+            return new Options(method, percent, edgeLevel, window, k, codec, inkColour, maxPixels, password,
+                    timeout, maxImages);
         }
 
         public Options edgeLevel(int level) {
-            return new Options(method, threshold, level, window, k, codec, inkColour, maxPixels, password);
+            return new Options(method, threshold, level, window, k, codec, inkColour, maxPixels, password,
+                    timeout, maxImages);
         }
 
         public Options window(int pixels) {
-            return new Options(method, threshold, edgeLevel, pixels, k, codec, inkColour, maxPixels, password);
+            return new Options(method, threshold, edgeLevel, pixels, k, codec, inkColour, maxPixels, password,
+                    timeout, maxImages);
         }
 
         public Options k(double k) {
-            return new Options(method, threshold, edgeLevel, window, k, codec, inkColour, maxPixels, password);
+            return new Options(method, threshold, edgeLevel, window, k, codec, inkColour, maxPixels, password,
+                    timeout, maxImages);
         }
 
         public Options codec(Codec to) {
-            return new Options(method, threshold, edgeLevel, window, k, to, inkColour, maxPixels, password);
+            return new Options(method, threshold, edgeLevel, window, k, to, inkColour, maxPixels, password,
+                    timeout, maxImages);
         }
 
         public Options inkColour(boolean keep) {
-            return new Options(method, threshold, edgeLevel, window, k, codec, keep, maxPixels, password);
+            return new Options(method, threshold, edgeLevel, window, k, codec, keep, maxPixels, password,
+                    timeout, maxImages);
         }
 
         public Options maxPixels(long limit) {
-            return new Options(method, threshold, edgeLevel, window, k, codec, inkColour, limit, password);
+            return new Options(method, threshold, edgeLevel, window, k, codec, inkColour, limit, password,
+                    timeout, maxImages);
         }
 
         public Options password(String secret) {
-            return new Options(method, threshold, edgeLevel, window, k, codec, inkColour, maxPixels, secret);
+            return new Options(method, threshold, edgeLevel, window, k, codec, inkColour, maxPixels, secret,
+                    timeout, maxImages);
+        }
+
+        public Options timeout(Duration limit) {
+            return new Options(method, threshold, edgeLevel, window, k, codec, inkColour, maxPixels, password, limit,
+                    maxImages);
+        }
+
+        public Options maxImages(int limit) {
+            return new Options(method, threshold, edgeLevel, window, k, codec, inkColour, maxPixels, password, timeout,
+                    limit);
         }
 
         @Override
         public String toString() {
             return "Options[method=" + method + ", threshold=" + threshold + ", edgeLevel=" + edgeLevel + ", window="
                     + window + ", k=" + k + ", codec=" + codec + ", inkColour=" + inkColour
-                    + ", maxPixels=" + maxPixels + ", password=" + (password == null ? "none" : "given") + "]";
+                    + ", maxPixels=" + maxPixels + ", password=" + (password == null ? "none" : "given") + ", timeout="
+                    + timeout + ", maxImages=" + maxImages + "]";
         }
     }
 
@@ -144,6 +185,18 @@ public final class LineArt {
             return images - converted;
         }
     }
+
+    public static final class TimedOut extends IOException {
+        TimedOut(Duration limit) {
+            super("The line-art conversion took longer than " + limit.toMillis() + " ms and was stopped");
+        }
+    }
+
+    static final String SIGNED = "The PDF is signed; it was left unchanged because rewriting it would invalidate its"
+            + " signatures";
+
+    private static final Deadline DEADLINE = new Deadline("pdf-lineart", "Line-art conversion interrupted",
+            "convert to line art", "converting to line art", TimedOut::new);
 
     private static final COSName DL = COSName.getPDFName("DL");
 
@@ -174,10 +227,14 @@ public final class LineArt {
         Objects.requireNonNull(in, "in");
         Objects.requireNonNull(out, "out");
         Objects.requireNonNull(options, "options");
-        PdfFiles.checkSize(in);
-        return PdfFiles.writeThenMove(out, ".lineart-", part -> {
+        long size = PdfFiles.checkSize(in);
+        return PdfFiles.writeThenMove(out, ".lineart-", part -> DEADLINE.run(options.timeout(), () -> {
             Result result;
             try (PDDocument doc = PdfFiles.open(in, options.password())) {
+                if (Signed.is(doc)) {
+                    Files.copy(in, part, StandardCopyOption.REPLACE_EXISTING);
+                    return new Result(0, 0, size, size, Map.of(), List.of(SIGNED));
+                }
                 result = convert(doc, options);
                 if (doc.isEncrypted()) {
                     doc.setAllSecurityToBeRemoved(true);
@@ -191,7 +248,7 @@ public final class LineArt {
                 }
             }
             return result;
-        });
+        }));
     }
 
     public static Result convert(PDDocument document, Options options) throws IOException {
@@ -199,6 +256,9 @@ public final class LineArt {
         Objects.requireNonNull(options, "options");
         PdfFiles.checkOpen(document);
         PdfFiles.stopIfInterrupted();
+        if (Signed.is(document)) {
+            return new Result(0, 0, 0, 0, Map.of(), List.of(SIGNED));
+        }
         JpxImageIO.install();
         ImageWalk.Walk walk = ImageWalk.walk(document);
         List<ImageWalk.Found> found = walk.images();
@@ -208,8 +268,12 @@ public final class LineArt {
         long after = 0;
         int converted = 0;
         boolean jbig2 = false;
+        int[] tried = {0};
         for (ImageWalk.Found f : found) {
             PdfFiles.stopIfInterrupted();
+            if (!take(tried, options, warnings)) {
+                break;
+            }
             COSStream stream = f.stream();
             long length = stream.getLength();
             Codecs.Encoded encoded;
@@ -238,7 +302,7 @@ public final class LineArt {
         long[] inline = new long[4];
         for (ImageWalk.Content content : walk.contents()) {
             try {
-                InlineImages.convert(content, options, codecs, inline, warnings);
+                InlineImages.convert(content, options, codecs, inline, tried, warnings);
             } catch (IOException | RuntimeException e) {
                 rethrowCancelled(e);
                 warnings.add("Page " + content.page() + ": a content stream could not be read for inline images ("
@@ -251,6 +315,18 @@ public final class LineArt {
         }
         return new Result(found.size() + (int) inline[0], converted + (int) inline[1], before + inline[2],
                 after + inline[3], codecs, warnings);
+    }
+
+    static boolean take(int[] tried, LineArt.Options options, List<String> warnings) {
+        if (tried[0] < options.maxImages()) {
+            tried[0]++;
+            return true;
+        }
+        if (tried[0] == options.maxImages()) {
+            tried[0]++;
+            warnings.add("The PDF has more than " + options.maxImages() + " images; the rest were left as they were");
+        }
+        return false;
     }
 
     static void checkpoint() {

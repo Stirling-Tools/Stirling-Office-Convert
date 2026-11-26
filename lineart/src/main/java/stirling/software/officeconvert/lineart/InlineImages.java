@@ -41,7 +41,7 @@ final class InlineImages {
     private InlineImages() {}
 
     static void convert(ImageWalk.Content content, LineArt.Options options, Map<LineArt.Codec, Integer> codecs,
-            long[] totals, List<String> warnings) throws IOException {
+            long[] totals, int[] tried, List<String> warnings) throws IOException {
         COSStream stream = content.stream();
         byte[] bytes;
         try {
@@ -63,6 +63,9 @@ final class InlineImages {
         for (Spot spot : spots) {
             PdfFiles.stopIfInterrupted();
             totals[0]++;
+            if (!LineArt.take(tried, options, warnings)) {
+                continue;
+            }
             byte[] replacement;
             try {
                 replacement = replacement(spot, content, options, codecs, totals, warnings);

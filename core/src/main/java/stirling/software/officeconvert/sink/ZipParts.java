@@ -13,7 +13,7 @@ public final class ZipParts {
     private ZipParts() {}
 
     public static ZipOutputStream open(OutputStream target) {
-        return new ZipOutputStream(new BufferedOutputStream(new KeepOpen(target), 1 << 16), StandardCharsets.UTF_8);
+        return new FixedTimeZip(new BufferedOutputStream(new KeepOpen(target), 1 << 16), StandardCharsets.UTF_8);
     }
 
     public static void stored(ZipOutputStream zip, String name, byte[] bytes) throws IOException {

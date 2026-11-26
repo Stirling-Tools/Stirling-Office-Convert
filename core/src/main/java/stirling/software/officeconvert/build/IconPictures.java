@@ -9,6 +9,8 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import javax.imageio.ImageIO;
+import javax.imageio.stream.ImageOutputStream;
+import javax.imageio.stream.MemoryCacheImageOutputStream;
 
 import stirling.software.officeconvert.extract.Glyph;
 import stirling.software.officeconvert.extract.IconShape;
@@ -57,7 +59,9 @@ final class IconPictures {
                     gr.dispose();
                 }
                 ByteArrayOutputStream png = new ByteArrayOutputStream();
-                ImageIO.write(img, "png", png);
+                try (ImageOutputStream ios = new MemoryCacheImageOutputStream(png)) {
+                    ImageIO.write(img, "png", ios);
+                }
                 ref = sink.media(png.toByteArray(), "png", pw, ph, key);
             }
             Picture pic = new Picture(ref, width, height);
