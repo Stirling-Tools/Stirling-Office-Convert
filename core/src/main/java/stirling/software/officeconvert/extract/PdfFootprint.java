@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
@@ -118,15 +119,10 @@ public final class PdfFootprint {
                 List<COSStream> contents = contents(page);
                 PDResources resources = page.getResources();
                 if (!contents.isEmpty()) {
-                    scan.resources(resources == null ? null : resources.getCOSObject(), 0);
-                }
-                for (COSStream content : contents) {
-                    try (InputStream in = StreamGuard.head(content, scan.contentLeft)) {
-                        scan.content(in);
-                    }
+                    scan.draw(resources == null ? null : resources.getCOSObject(), contents, 0);
                 }
                 scan.annotations(page.getCOSObject().getCOSArray(COSName.ANNOTS));
-            } catch (IOException | RuntimeException e) {
+            } catch (RuntimeException e) {
                 scan.unknown();
             }
             if (scan.read == Long.MAX_VALUE || sampled.contains(index)
@@ -378,18 +374,53 @@ public final class PdfFootprint {
             return seen.add(object);
         }
 
-        void resources(COSDictionary resources, int depth) {
+        void draw(COSDictionary resources, List<COSStream> streams, int depth) {
+            Drawn drawn = new Drawn(resources == null ? null : resources.getCOSDictionary(COSName.XOBJECT));
+            for (COSStream stream : streams) {
+                try (InputStream in = StreamGuard.head(stream, contentLeft)) {
+                    content(in, drawn);
+                } catch (IOException | RuntimeException e) {
+                    unknown();
+                    drawn.all = true;
+                }
+            }
+            resources(resources, depth, drawn);
+        }
+
+        void resources(COSDictionary resources, int depth, Drawn drawn) {
+            if (resources == null) {
+                return;
+            }
             if (depth > MAX_NESTING) {
                 unknown();
                 return;
             }
-            if (!visit(resources)) {
+            if (seen.contains(resources)) {
                 repeat(resources);
+            } else if (visit(resources)) {
+                long before = read;
+                walk(resources, depth);
+                held.put(resources, read - before);
+            }
+            xobjects(drawn, depth);
+        }
+
+        private void xobjects(Drawn drawn, int depth) {
+            if (drawn.xobjects == null) {
                 return;
             }
-            long before = read;
-            walk(resources, depth);
-            held.put(resources, read - before);
+            for (COSName name : drawn.all ? drawn.xobjects.keySet() : drawn.names) {
+                if (!(drawn.xobjects.getDictionaryObject(name) instanceof COSStream s)) {
+                    continue;
+                }
+                if (seen.contains(s)) {
+                    repeat(s);
+                    continue;
+                }
+                if (COSName.FORM.equals(s.getCOSName(COSName.SUBTYPE)) && visit(s)) {
+                    form(s, depth + 1);
+                }
+            }
         }
 
         void repeat(COSBase object) {
@@ -400,18 +431,9 @@ public final class PdfFootprint {
             COSDictionary xobjects = resources.getCOSDictionary(COSName.XOBJECT);
             if (xobjects != null) {
                 for (COSName name : xobjects.keySet()) {
-                    if (!(xobjects.getDictionaryObject(name) instanceof COSStream s)) {
-                        continue;
-                    }
-                    if (!visit(s)) {
-                        repeat(s);
-                        continue;
-                    }
-                    COSName subtype = s.getCOSName(COSName.SUBTYPE);
-                    if (COSName.IMAGE.equals(subtype)) {
+                    if (xobjects.getDictionaryObject(name) instanceof COSStream s
+                            && COSName.IMAGE.equals(s.getCOSName(COSName.SUBTYPE)) && visit(s)) {
                         picture(decoded(s));
-                    } else if (COSName.FORM.equals(subtype)) {
-                        form(s, depth + 1);
                     }
                 }
             }
@@ -453,28 +475,21 @@ public final class PdfFootprint {
         }
 
         void type3(COSDictionary font, int depth) {
-            COSDictionary own = font.getCOSDictionary(COSName.RESOURCES);
-            if (own != null) {
-                resources(own, depth);
-            }
+            List<COSStream> glyphs = new ArrayList<>();
             COSDictionary procs = font.getCOSDictionary(COSName.CHAR_PROCS);
-            if (procs == null) {
-                return;
-            }
-            for (COSName glyph : procs.keySet()) {
-                if (procs.getDictionaryObject(glyph) instanceof COSStream proc && visit(proc)) {
-                    stream(proc);
+            if (procs != null) {
+                for (COSName glyph : procs.keySet()) {
+                    if (procs.getDictionaryObject(glyph) instanceof COSStream proc && visit(proc)) {
+                        glyphs.add(proc);
+                    }
                 }
             }
+            draw(font.getCOSDictionary(COSName.RESOURCES), glyphs, depth);
         }
 
         void form(COSStream form, int depth) {
             long before = read;
-            COSDictionary own = form.getCOSDictionary(COSName.RESOURCES);
-            if (own != null) {
-                resources(own, depth);
-            }
-            stream(form);
+            draw(form.getCOSDictionary(COSName.RESOURCES), List.of(form), depth);
             held.put(form, read - before);
         }
 
@@ -504,15 +519,7 @@ public final class PdfFootprint {
             }
         }
 
-        void stream(COSStream stream) {
-            try (InputStream in = StreamGuard.head(stream, contentLeft)) {
-                content(in);
-            } catch (IOException | RuntimeException e) {
-                unknown();
-            }
-        }
-
-        void content(InputStream in) throws IOException {
+        void content(InputStream in, Drawn drawn) throws IOException {
             if (buffer == null) {
                 buffer = new byte[CHUNK + INLINE_WINDOW];
             }
@@ -533,7 +540,9 @@ public final class PdfFootprint {
                 }
                 int limit = full ? len - INLINE_WINDOW : len;
                 for (int i = from; i < limit && i + 1 < len; i++) {
-                    if (buf[i] == 'B' && buf[i + 1] == 'I' && (i == 0 ? start : boundary(buf[i - 1]))
+                    if (buf[i] == '/') {
+                        drawn.name(buf, i + 1, len);
+                    } else if (buf[i] == 'B' && buf[i + 1] == 'I' && (i == 0 ? start : boundary(buf[i - 1]))
                             && (i + 2 >= len || boundary(buf[i + 2]))) {
                         inline(buf, i + 2, len, !full);
                     }
@@ -576,6 +585,68 @@ public final class PdfFootprint {
                 }
                 params.put(key.substring(1), value);
             }
+        }
+    }
+
+    static final class Drawn {
+
+        private static final int MAX_NAME = 256;
+
+        final COSDictionary xobjects;
+
+        final Set<COSName> names = new LinkedHashSet<>();
+
+        boolean all;
+
+        private final Map<String, COSName> byName = new HashMap<>();
+
+        Drawn(COSDictionary xobjects) {
+            this.xobjects = xobjects;
+            if (xobjects != null) {
+                for (COSName name : xobjects.keySet()) {
+                    byName.put(name.getName(), name);
+                }
+            }
+        }
+
+        void name(byte[] buf, int from, int end) {
+            if (byName.isEmpty()) {
+                return;
+            }
+            int to = from;
+            while (to < end && !boundary(buf[to])) {
+                if (to - from >= MAX_NAME) {
+                    return;
+                }
+                to++;
+            }
+            if (to == from) {
+                return;
+            }
+            byte[] raw = unescape(buf, from, to);
+            COSName hit = byName.get(new String(raw, StandardCharsets.ISO_8859_1));
+            if (hit == null) {
+                hit = byName.get(new String(raw, StandardCharsets.UTF_8));
+            }
+            if (hit != null) {
+                names.add(hit);
+            }
+        }
+
+        private static byte[] unescape(byte[] buf, int from, int to) {
+            byte[] out = new byte[to - from];
+            int n = 0;
+            for (int i = from; i < to; i++) {
+                int hi = i + 2 < to && buf[i] == '#' ? Character.digit(buf[i + 1], 16) : -1;
+                int lo = hi >= 0 ? Character.digit(buf[i + 2], 16) : -1;
+                if (lo >= 0) {
+                    out[n++] = (byte) (hi << 4 | lo);
+                    i += 2;
+                } else {
+                    out[n++] = buf[i];
+                }
+            }
+            return Arrays.copyOf(out, n);
         }
     }
 

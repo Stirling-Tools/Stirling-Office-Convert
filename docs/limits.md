@@ -129,9 +129,9 @@ pages cost less, so for them the estimate errs high. Sampling covers the first 2
 spread through the document; those pages are scanned first. A retained sample that exceeds the scan budget produces
 an oversized estimate. Arithmetic saturates at the largest estimate.
 
-A form is read once but charged on each page that references its resources, including unused references. This
-conservative form charge can overestimate documents that carry unused form resources; the estimator does not yet
-track `Do` invocations.
+A form is read once but charged on each page whose content names it, so forms listed in shared resources are charged
+only on the pages that draw them. Any name token in the content counts as a use, which can overestimate but never
+misses a drawn form. Images are charged wherever they are listed.
 
 ## Office input (Office to PDF)
 

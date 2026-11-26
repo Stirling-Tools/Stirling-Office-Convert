@@ -54,7 +54,11 @@ class PdfFootprintCoverageTest {
     }
 
     private static COSStream form(PDDocument doc, COSDictionary resources) throws IOException {
-        COSStream s = stream(doc, "");
+        return form(doc, resources, "");
+    }
+
+    private static COSStream form(PDDocument doc, COSDictionary resources, String content) throws IOException {
+        COSStream s = stream(doc, content);
         s.setItem(COSName.TYPE, COSName.XOBJECT);
         s.setItem(COSName.SUBTYPE, COSName.FORM);
         s.setItem(COSName.RESOURCES, resources);
@@ -238,7 +242,7 @@ class PdfFootprintCoverageTest {
             COSDictionary resources = withImage(doc);
             for (int i = 0; i < 6; i++) {
                 COSDictionary xobjects = new COSDictionary();
-                xobjects.setItem(COSName.getPDFName("Fm" + i), form(doc, resources));
+                xobjects.setItem(COSName.getPDFName("Fm" + i), form(doc, resources, i == 0 ? "" : "/Fm" + (i - 1) + " Do\n"));
                 resources = new COSDictionary();
                 resources.setItem(COSName.XOBJECT, xobjects);
             }
@@ -376,6 +380,32 @@ class PdfFootprintCoverageTest {
             resources.setItem(COSName.XOBJECT, xobjects);
             page(doc).getCOSObject().setItem(COSName.RESOURCES, resources);
             assertEquals(0, extra(doc));
+        }
+    }
+
+    @Test
+    void onlyTheFormsAPageNamesAreChargedFromSharedResources() throws IOException {
+        int bytes = 64 << 10;
+        String body = text(bytes);
+        try (PDDocument doc = new PDDocument()) {
+            COSDictionary xobjects = new COSDictionary();
+            for (String name : new String[] {"Fm0", "Fm 1", "Fm2"}) {
+                COSStream form = stream(doc, body);
+                form.setItem(COSName.TYPE, COSName.XOBJECT);
+                form.setItem(COSName.SUBTYPE, COSName.FORM);
+                xobjects.setItem(COSName.getPDFName(name), form);
+            }
+            COSDictionary resources = new COSDictionary();
+            resources.setItem(COSName.XOBJECT, xobjects);
+            String[] draws = {"q /Fm0 Do Q\n", "/Fm#201 Do\n", "BT /F1 4 Tf (x) Tj ET\n"};
+            for (String draw : draws) {
+                page(doc, draw).getCOSObject().setItem(COSName.RESOURCES, resources);
+            }
+            long fixed = 2 * (PdfFootprint.SAMPLED_PAGE_BYTES + PdfFootprint.PAGE_BYTES);
+            long first = charged(body.length() + draws[0].length());
+            long second = charged(body.length() + draws[1].length());
+            long content = first * PdfFootprint.CONTENT_BYTE_COST + (first + second) * PdfFootprint.KEPT_BYTE_COST;
+            assertEquals(content, PdfFootprint.estimate(doc, 0, 0, 150f) - baseline() - fixed);
         }
     }
 
