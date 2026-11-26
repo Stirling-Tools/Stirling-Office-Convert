@@ -53,11 +53,23 @@ final class AttachedPdfA {
 
         private long bytes;
 
-        void spend(long size) throws IOException {
-            if (++files > MAX_FILES || (bytes += size) > MAX_TOTAL_BYTES) {
-                throw new AttachmentParser.LimitExceeded("The PDF attaches more PDF files than can be verified as "
-                        + "PDF/A (" + MAX_FILES + " files or " + (MAX_TOTAL_BYTES >> 20) + " MiB)");
+        void attempt() throws IOException {
+            if (++files > MAX_FILES) {
+                throw new Spent();
             }
+        }
+
+        void spend(long size) throws IOException {
+            if ((bytes += size) > MAX_TOTAL_BYTES) {
+                throw new Spent();
+            }
+        }
+    }
+
+    static final class Spent extends AttachmentParser.LimitExceeded {
+        Spent() {
+            super("The PDF attaches more PDF files than can be verified as PDF/A (" + Budget.MAX_FILES + " files or "
+                    + (Budget.MAX_TOTAL_BYTES >> 20) + " MiB)");
         }
     }
 
@@ -67,6 +79,7 @@ final class AttachedPdfA {
             if (!new String(Decoded.prefix(file, 5), StandardCharsets.ISO_8859_1).equals("%PDF-")) {
                 return false;
             }
+            budget.attempt();
             data = Decoded.bytes(file, MAX_BYTES, "An attachment");
             budget.spend(data.length);
         } catch (IOException | RuntimeException e) {
@@ -74,6 +87,7 @@ final class AttachedPdfA {
                 rethrowBudget(io);
             }
             PdfFiles.stopIfInterrupted();
+            budget.spend(MAX_BYTES);
             return false;
         }
         try (RandomAccessReadBuffer source = new RandomAccessReadBuffer(data)) {

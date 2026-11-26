@@ -185,7 +185,8 @@ public final class PdfToPdfA {
 
     /**
      * Converts an open document in place and writes it to {@code out} only once the conversion has succeeded, so a
-     * failed or timed-out call writes nothing. The caller keeps ownership of the document: it holds the PDF/A changes
+     * conversion that fails or times out writes nothing; a failure while copying to or flushing {@code out} can leave
+     * part or all of the output in it. The caller keeps ownership of the document: it holds the PDF/A changes
      * afterwards, whether the call succeeds or fails. After a {@link TimedOut} a worker that ignores interruption may
      * still read and change the document; do not reuse or close it until {@code Admission.jvm().status().stuck()} is 0.
      */

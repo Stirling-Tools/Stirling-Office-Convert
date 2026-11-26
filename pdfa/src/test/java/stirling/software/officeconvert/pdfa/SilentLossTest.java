@@ -67,6 +67,16 @@ class SilentLossTest {
     }
 
     @Test
+    void aTrailingCommentIsNotABrokenToken() throws Exception {
+        Path in = dir.resolve("comment.pdf");
+        Files.write(in, RawPdf.page(RawPdf.helvetica(), PADDING + "BT /F1 12 Tf 72 700 Td (Kept) Tj ET\n% producer\n").bytes());
+        PdfToPdfA.Result r = PdfToPdfA.convert(in, dir.resolve("comment-out.pdf"));
+        assertFalse(r.warnings().stream().anyMatch(w -> w.contains("broken token") || w.startsWith("Cut content")),
+                r.warnings().toString());
+        assertTrue(ContentRewriteTest.pageText(dir.resolve("comment-out.pdf"), 1).contains("Kept"));
+    }
+
+    @Test
     void anUndecodableContentArrayMemberIsReported() throws Exception {
         RawPdf raw = RawPdf.page(RawPdf.helvetica(), "BT /F1 12 Tf 72 700 Td (Readable) Tj ET");
         raw.set(3, "<</Type/Page/Parent 2 0 R/MediaBox[0 0 595 842]/Resources<<" + RawPdf.helvetica()

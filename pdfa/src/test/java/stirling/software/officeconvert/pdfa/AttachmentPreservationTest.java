@@ -204,6 +204,27 @@ class AttachmentPreservationTest {
         assertTrue(result.warnings().stream().anyMatch(w -> w.contains("embedded")), result.warnings().toString());
     }
 
+    @Test
+    void attachmentsPastTheValidationBudgetAreRemovedInsteadOfFailingTheConversion() throws Exception {
+        byte[] archive = archive();
+        int count = AttachedPdfA.Budget.MAX_FILES + 2;
+        Path input = Samples.write(dir, "s21_tagged");
+        try (PDDocument doc = Loader.loadPDF(Files.readAllBytes(input))) {
+            Map<String, PDComplexFileSpecification> files = new java.util.TreeMap<>();
+            for (int i = 0; i < count; i++) {
+                String name = String.format("part-%02d.pdf", i);
+                files.put(name, spec(doc, name, archive));
+            }
+            tree(doc, files);
+            doc.save(input.toFile());
+        }
+        Path output = dir.resolve("budget.pdf");
+        var result = PdfToPdfA.convert(input, output, PdfToPdfA.Options.defaults().level(PdfALevel.A2B));
+        VeraPdf.assertCompliant(output, PdfALevel.A2B);
+        assertEquals(AttachedPdfA.Budget.MAX_FILES, files(output).size());
+        assertTrue(result.warnings().stream().anyMatch(w -> w.contains("embedded")), result.warnings().toString());
+    }
+
     private byte[] archive() throws Exception {
         Path input = Samples.write(dir, "s21_tagged");
         Path output = dir.resolve("archive.pdf");

@@ -5,8 +5,11 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.BitSet;
 import java.util.Deque;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.apache.pdfbox.contentstream.operator.Operator;
 import org.apache.pdfbox.cos.COSDictionary;
@@ -124,6 +127,11 @@ final class ContentTokens {
 
     /** Parses without trusting cached tokens, as PDFBox can stop early on a bad token without saying so. */
     static Salvaged salvage(List<COSStream> streams) throws IOException {
+        ContentCache cache = ContentCache.current();
+        List<Object> known = cache == null ? null : cache.wholeTokens(streams);
+        if (known != null) {
+            return new Salvaged(known, true, false, 0);
+        }
         int[] unreadable = new int[1];
         byte[] content = checked(bytes(streams, unreadable));
         PositionedParser parser = new PositionedParser(content);
@@ -138,9 +146,12 @@ final class ContentTokens {
             if (parser.cut() >= 0) {
                 return prefix(tokens, parser.cut(), content.length, unreadable[0]);
             }
-            ContentCache cache = ContentCache.current();
             if (cache != null) {
-                cache.tokens(streams, tokens);
+                if (unreadable[0] == 0) {
+                    cache.wholeTokens(streams, tokens);
+                } else {
+                    cache.tokens(streams, tokens);
+                }
             }
             return new Salvaged(tokens, true, false, unreadable[0]);
         } catch (IOException | RuntimeException e) {
@@ -154,29 +165,41 @@ final class ContentTokens {
         }
     }
 
-    private static Salvaged prefix(List<Object> tokens, long at, int length, int unreadable) {
+    private static Salvaged prefix(List<Object> tokens, long at, int length, int unreadable) throws IOException {
         boolean midStream = at < 0 || length - at > Math.max(SALVAGE_TAIL, length / 20);
         int last = tokens.size();
         while (last > 0 && !(tokens.get(last - 1) instanceof Operator)) {
             last--;
         }
         List<Object> kept = new ArrayList<>(tokens.subList(0, last));
-        Deque<String> open = new ArrayDeque<>();
+        List<String> opened = new ArrayList<>();
+        BitSet closed = new BitSet();
+        Map<String, Deque<Integer>> byCloser = new HashMap<>();
+        int seen = 0;
         for (Object t : kept) {
+            if ((++seen & 0xFFFF) == 0) {
+                PdfFiles.stopIfInterrupted();
+            }
             if (t instanceof Operator op) {
-                switch (op.getName()) {
-                    case "q" -> open.push("Q");
-                    case "BT" -> open.push("ET");
-                    case "BMC", "BDC" -> open.push("EMC");
-                    case "Q", "ET", "EMC" -> open.remove(op.getName());
-                    default -> {
-                    }
+                String closer = switch (op.getName()) {
+                    case "q" -> "Q";
+                    case "BT" -> "ET";
+                    case "BMC", "BDC" -> "EMC";
+                    default -> null;
+                };
+                if (closer != null) {
+                    byCloser.computeIfAbsent(closer, k -> new ArrayDeque<>()).push(opened.size());
+                    opened.add(closer);
+                } else if (byCloser.get(op.getName()) instanceof Deque<Integer> open && !open.isEmpty()) {
+                    closed.set(open.pop());
                 }
             }
         }
         // Close what the dropped part would have closed, so nesting stays balanced.
-        for (String closer : open) {
-            kept.add(Operator.getOperator(closer));
+        for (int i = opened.size() - 1; i >= 0; i--) {
+            if (!closed.get(i)) {
+                kept.add(Operator.getOperator(opened.get(i)));
+            }
         }
         return new Salvaged(kept, false, midStream, unreadable);
     }

@@ -39,8 +39,14 @@ final class PositionedParser extends PDFStreamParser {
     }
 
     private boolean blank(long from) {
+        boolean comment = false;
         for (long i = from; i < content.length; i++) {
-            if (!ContentTokens.space(content[(int) i])) {
+            byte b = content[(int) i];
+            if (b == '\n' || b == '\r') {
+                comment = false;
+            } else if (b == '%') {
+                comment = true;
+            } else if (!comment && !ContentTokens.space(b)) {
                 return false;
             }
         }

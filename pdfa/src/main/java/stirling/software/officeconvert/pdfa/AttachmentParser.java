@@ -18,7 +18,7 @@ final class AttachmentParser extends PDFParser {
 
     static final long MAX_STRUCTURE_BYTES = 8L << 20;
 
-    static final class LimitExceeded extends IOException {
+    static class LimitExceeded extends IOException {
         LimitExceeded(String message) {
             super(message);
         }

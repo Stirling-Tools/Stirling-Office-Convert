@@ -90,6 +90,7 @@ final class Report {
 
     void substituted(String description) {
         substituted.add(description);
+        warn("Embedded %s", description);
     }
 
     List<String> warnings() {
@@ -98,9 +99,6 @@ final class Report {
         if (!flattened.isEmpty()) {
             out.add("Drew the transparent parts of " + (flattened.size() == 1 ? "page " : "pages ") + pages()
                     + " as pictures, which PDF/A-1 needs");
-        }
-        for (String s : substituted) {
-            out.add("Embedded " + s);
         }
         if (omitted > 0) {
             out.add(omitted + " more " + (omitted == 1 ? "warning" : "warnings") + " omitted");

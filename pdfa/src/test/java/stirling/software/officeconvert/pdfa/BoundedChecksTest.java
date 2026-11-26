@@ -35,12 +35,12 @@ class BoundedChecksTest {
     void attachmentValidationHasAConversionWideBudget() throws Exception {
         AttachedPdfA.Budget files = new AttachedPdfA.Budget();
         for (int i = 0; i < AttachedPdfA.Budget.MAX_FILES; i++) {
-            files.spend(1);
+            files.attempt();
         }
-        assertThrows(AttachmentParser.LimitExceeded.class, () -> files.spend(1));
+        assertThrows(AttachedPdfA.Spent.class, files::attempt);
         AttachedPdfA.Budget bytes = new AttachedPdfA.Budget();
         bytes.spend(AttachedPdfA.Budget.MAX_TOTAL_BYTES);
-        assertThrows(AttachmentParser.LimitExceeded.class, () -> bytes.spend(1));
+        assertThrows(AttachedPdfA.Spent.class, () -> bytes.spend(1));
     }
 
     @Test

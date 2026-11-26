@@ -729,7 +729,8 @@ PdfToPdfA.convert(pdDocument, outputStream, options);     // an open document, w
 `convert(PDDocument, ...)` converts the document it is given in place: afterwards it holds the PDF/A changes (output
 intent, metadata, fonts, rewritten content), whether the call succeeds or fails, so load a fresh copy if the original
 is still needed. It passes the same memory admission as the file-based overload, and writes to a temporary file that
-is copied to the stream only once the conversion has succeeded, so a failed or timed-out call writes nothing to it.
+is copied to the stream only once the conversion has succeeded, so a conversion that fails or times out writes nothing
+to it; if the stream itself fails while the result is copied or flushed, it can hold part or all of the output.
 After a timeout the converter waits up to ten seconds for its worker to stop. If third-party work ignores
 interruption, that worker can still use the document after the call returns; do not reuse or close that instance
 until `Admission.jvm().status().stuck()` is 0. Prefer the file-based overload for documents that need a strict timeout.
