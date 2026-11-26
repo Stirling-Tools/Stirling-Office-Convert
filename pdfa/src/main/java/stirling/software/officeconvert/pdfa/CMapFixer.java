@@ -40,6 +40,8 @@ final class CMapFixer {
     private static final Pattern CID_RANGE = Pattern.compile(
             "<([0-9A-Fa-f]+)>\\s*<([0-9A-Fa-f]+)>\\s*(\\d+)");
 
+    private static final Pattern USE_CMAP_OPERATOR = Pattern.compile("/([^\\s/]+)\\s+usecmap");
+
     private static final Pattern DECLARED_WMODE = Pattern.compile("/WMode\\s+([01])\\s+def");
 
     private static final Pattern CID_CHAR = Pattern.compile("<([0-9A-Fa-f]+)>\\s*(\\d+)");
@@ -172,9 +174,10 @@ final class CMapFixer {
         if (cid == null || cmap == null) {
             return null;
         }
-        if (level.part() > 1 && showsCidZero(font, codes)) {
-            String text = enc instanceof COSStream st ? text(st) : null;
-            return flatten(font, cid, cmap, codes, text) ? "Moved glyphs shown as CID 0, which PDF/A-2 reserves for "
+        if (showsCidZero(font, codes)) {
+            String text = withPredefined(enc instanceof COSStream st ? text(st)
+                    : enc instanceof COSName n ? "/" + n.getName() + " usecmap" : null);
+            return flatten(font, cid, cmap, codes, text) ? "Moved glyphs shown as CID 0, which PDF/A reserves for "
                     + ".notdef, to another CID" : null;
         }
         if (enc instanceof COSName n) {
@@ -197,7 +200,7 @@ final class CMapFixer {
             s.setInt(WMODE, cmap.getWMode());
             note = "Made the writing mode of a CMap agree with its program";
         }
-        String text = text(s);
+        String text = withPredefined(text(s));
         COSBase use = s.getDictionaryObject(USE_CMAP);
         boolean chained = use instanceof COSStream
                 || use instanceof COSName u && !(level.part() > 1 && PREDEFINED.contains(u.getName()))
@@ -342,13 +345,28 @@ final class CMapFixer {
     }
 
     private static int declaredWMode(String name) throws IOException {
+        String text = predefinedText(name);
+        Matcher m = DECLARED_WMODE.matcher(text == null ? "" : text);
+        return m.find() ? Integer.parseInt(m.group(1)) : 0;
+    }
+
+    private static String predefinedText(String name) throws IOException {
         try (InputStream in = CMap.class.getResourceAsStream("/org/apache/fontbox/cmap/" + name)) {
-            if (in == null || name.contains("/") || name.contains("..")) {
-                return 0;
-            }
-            Matcher m = DECLARED_WMODE.matcher(new String(in.readAllBytes(), StandardCharsets.ISO_8859_1));
-            return m.find() ? Integer.parseInt(m.group(1)) : 0;
+            return in == null || name.contains("/") || name.contains("..") ? null
+                    : new String(in.readAllBytes(), StandardCharsets.ISO_8859_1);
         }
+    }
+
+    // Adds the predefined CMaps a CMap uses until a codespace is found, so 3 and 4 byte codes keep their length.
+    static String withPredefined(String text) throws IOException {
+        String out = text;
+        String piece = text;
+        for (int i = 0; piece != null && i < 4 && !out.contains("begincodespacerange"); i++) {
+            Matcher m = USE_CMAP_OPERATOR.matcher(piece);
+            piece = m.find() ? predefinedText(m.group(1)) : null;
+            out = piece == null ? out : out + "\n" + piece;
+        }
+        return out;
     }
 
     private boolean flatten(PDType0Font font, PDCIDFont cid, CMap cmap, Set<Integer> codes, String text)
@@ -380,7 +398,7 @@ final class CMapFixer {
         Map<Integer, Integer> remap = new TreeMap<>();
         int free = 1;
         for (Map.Entry<Integer, Integer> e : mapping.entrySet()) {
-            if (e.getValue() > MAX_CID || e.getValue() == 0 && level.part() > 1) {
+            if (e.getValue() > MAX_CID || e.getValue() == 0) {
                 Integer to = remap.get(e.getValue());
                 if (to == null) {
                     while (usedCids.contains(free)) {
