@@ -144,21 +144,18 @@ class ImageBudgetMaskTest {
         stream.setInt(COSName.BITS_PER_COMPONENT, 8);
         stream.setItem(COSName.COLORSPACE, COSName.DEVICEGRAY);
         stream.setItem(COSName.FILTER, COSName.JPX_DECODE);
-        ByteBuffer siz = ByteBuffer.allocate(42);
-        siz.putShort((short) 0xFF4F).putShort((short) 0xFF51).putShort((short) 41).putShort((short) 0);
-        siz.putInt(encodedWidth).putInt(encodedHeight).putInt(0).putInt(0);
-        siz.putInt(encodedWidth).putInt(encodedHeight).putInt(0).putInt(0).putShort((short) 1);
         try (OutputStream out = stream.createRawOutputStream()) {
-            out.write(siz.array());
+            out.write(siz(encodedWidth, encodedHeight));
         }
         return stream;
     }
 
     private static byte[] siz(int width, int height) {
-        ByteBuffer siz = ByteBuffer.allocate(42);
+        ByteBuffer siz = ByteBuffer.allocate(45);
         siz.putShort((short) 0xFF4F).putShort((short) 0xFF51).putShort((short) 41).putShort((short) 0);
         siz.putInt(width).putInt(height).putInt(0).putInt(0);
         siz.putInt(width).putInt(height).putInt(0).putInt(0).putShort((short) 1);
+        siz.put((byte) 7).put((byte) 1).put((byte) 1);
         return siz.array();
     }
 

@@ -19,6 +19,8 @@ public final class JpxImageReader extends ImageReader {
 
     static final long MAX_INPUT = Integer.MAX_VALUE - 64;
 
+    static final long MAX_SAMPLES = JpxOptions.DEFAULT_MAX_SAMPLES;
+
     private interface Decoding<T> {
         T run() throws IOException;
     }
@@ -101,7 +103,7 @@ public final class JpxImageReader extends ImageReader {
             return decodeFull();
         }
         int reduce = 31 - Integer.numberOfLeadingZeros(Math.min(sx, sy));
-        JpxOptions options = JpxOptions.defaults().withReduce(reduce).withRegion(whole ? null : region);
+        JpxOptions options = new JpxOptions(0, null, MAX_SAMPLES).withReduce(reduce).withRegion(whole ? null : region);
         JpxImage jpx = JpxDecoder.decode(bytes(), options);
         BufferedImage reduced = jpx.toBufferedImage();
         return Subsample.pick(reduced, region, sx, sy, jpx.reduce());
@@ -126,7 +128,7 @@ public final class JpxImageReader extends ImageReader {
     private BufferedImage decodeFull() throws IOException {
         size();
         if (full == null) {
-            full = JpxDecoder.decode(bytes()).toBufferedImage();
+            full = JpxDecoder.decode(bytes(), new JpxOptions(0, null, MAX_SAMPLES)).toBufferedImage();
         }
         return full;
     }
