@@ -107,18 +107,26 @@ final class Art {
         List<Run> kept = plan.runs();
         kept.sort(Comparator.comparingDouble(r -> -r.box.area()));
         int blanks = 0;
+        int tried = 0;
+        boolean blankTail = false;
         long start = renderer.operators();
         for (Run r : kept.subList(0, Math.min(MAX_PIECES, kept.size()))) {
             if (renderer.operators() - start > maxPageOperators) {
                 break;
             }
+            tried++;
             Piece p = piece(paint, r.marks, r.box, pageIndex, toDisplay, width, height);
             if (p != null) {
                 out.add(p);
                 blanks = 0;
             } else if (++blanks >= MAX_BLANK_PIECES) {
+                blankTail = true;
                 break;
             }
+        }
+        if (!blankTail && tried < kept.size()) {
+            Warnings.leftOut(LOG, (kept.size() - tried) + " piece(s) of art on page " + (pageIndex + 1)
+                    + " left out: the page draws more than can be rendered");
         }
         return out;
     }

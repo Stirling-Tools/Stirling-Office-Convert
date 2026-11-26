@@ -97,6 +97,13 @@ public final class Warnings {
         report(log, message, cause, true);
     }
 
+    static void stillLeftOut(String message) {
+        Sink sink = CURRENT.get();
+        if (sink != null) {
+            sink.add(message, true);
+        }
+    }
+
     static void pages(int n) {
         Sink sink = CURRENT.get();
         if (sink != null) {

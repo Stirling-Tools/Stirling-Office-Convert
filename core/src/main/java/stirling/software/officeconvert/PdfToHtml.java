@@ -66,8 +66,9 @@ public final class PdfToHtml {
         PdfFiles.checkOpen(doc);
         JpxImageIO.install();
         PdfFiles.stopIfInterrupted();
-        Admission.Ticket ticket = Admission.jvm().enter(
-                PdfFootprint.estimate(doc, options.firstPage(), options.lastPage(), options.dpi()));
+        long footprint = PdfFootprint.estimate(doc, options.firstPage(), options.lastPage(), options.dpi());
+        long render = FixedHtml.peakRenderBytes(doc, options.firstPage(), options.lastPage(), options.dpi());
+        Admission.Ticket ticket = Admission.jvm().enter(footprint > Long.MAX_VALUE - render ? Long.MAX_VALUE : footprint + render);
         try {
             StreamGuard.check(doc);
             FontGuard.check(doc);

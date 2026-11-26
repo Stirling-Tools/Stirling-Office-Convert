@@ -257,7 +257,7 @@ public final class PdfToXlsx {
         }
     }
 
-    private static void plainPage(SheetBuilder builder, PageData page, Throwable e, boolean fallback, boolean tablesOnly)
+    static void plainPage(SheetBuilder builder, PageData page, Throwable e, boolean fallback, boolean tablesOnly)
             throws IOException {
         if (!fallback) {
             throw new IOException("Page " + (page.index() + 1) + " could not be converted", e);
@@ -266,7 +266,9 @@ public final class PdfToXlsx {
         try {
             lines = LineBuilder.build(OcrText.pageGlyphs(page));
         } catch (RuntimeException | StackOverflowError again) {
-            lines = List.of();
+            Warnings.leftOut(LOG, "Page " + (page.index() + 1) + " could not be analysed; its text was left out", e);
+            builder.plainPage(page, List.of());
+            return;
         }
         if (tablesOnly && !lines.isEmpty()) {
             Warnings.leftOut(LOG, "Page " + (page.index() + 1) + " could not be analysed; left out of this tables-only output", e);

@@ -142,6 +142,56 @@ class OfficeConvertTest {
     }
 
     @Test
+    void aCarriedWorkerThatOutlivesItsTimeoutKeepsTheCallersSlot() throws Exception {
+        Admission.Limits saved = Admission.jvm().limits();
+        Admission.configure(new Admission.Limits(60, 1, Duration.ofMillis(300), false));
+        long stopMillis = OfficeConvert.stopMillis;
+        OfficeConvert.stopMillis = 200;
+        AtomicBoolean release = new AtomicBoolean();
+        CountDownLatch holding = new CountDownLatch(1);
+        Thread[] worker = new Thread[1];
+        try {
+            try (Admission.Ticket _ = Admission.jvm().enter(Admission.BASE_BYTES)) {
+                assertThrows(OfficeConvert.TimedOut.class, () -> OfficeConvert.run(Duration.ofMillis(100), () -> {
+                    worker[0] = Thread.currentThread();
+                    try (Admission.Ticket _ = Admission.jvm().enter(Admission.BASE_BYTES)) {
+                        holding.countDown();
+                        while (!release.get()) {
+                            Thread.onSpinWait();
+                        }
+                    }
+                    return null;
+                }));
+            }
+            assertTrue(holding.await(1, TimeUnit.SECONDS));
+            assertEquals(1, Admission.jvm().running());
+            assertEquals(1, Admission.jvm().status().stuck());
+            assertThrows(Admission.Busy.class, () -> Admission.jvm().enter(Admission.BASE_BYTES).close());
+        } finally {
+            release.set(true);
+            if (worker[0] != null) {
+                worker[0].join();
+            }
+            OfficeConvert.stopMillis = stopMillis;
+            Admission.configure(saved);
+        }
+        assertEquals(0, Admission.jvm().running());
+    }
+
+    @Test
+    void nestedWorkThatEndsBeforeItsCallerFreesTheSlotWhenTheCallerCloses() throws Exception {
+        try (Admission.Ticket _ = Admission.jvm().enter(Admission.BASE_BYTES)) {
+            OfficeConvert.run(Duration.ofMinutes(1), () -> {
+                try (Admission.Ticket _ = Admission.jvm().enter(Admission.BASE_BYTES)) {
+                    return null;
+                }
+            });
+            assertEquals(1, Admission.jvm().running());
+        }
+        assertEquals(0, Admission.jvm().running());
+    }
+
+    @Test
     void timeoutStopsTheConversionAndLeavesNothing() throws Exception {
         Path pdf = dir.resolve("slow.pdf");
         try (PDDocument doc = new PDDocument()) {

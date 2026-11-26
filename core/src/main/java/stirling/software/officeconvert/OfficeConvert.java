@@ -14,6 +14,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.pdfbox.pdmodel.PDDocument;
 
@@ -413,12 +414,34 @@ public final class OfficeConvert {
             nanos = Long.MAX_VALUE;
         }
         // A worker of a thread that already converts carries its ticket, so nested work never waits for a slot
-        Admission.Ticket held = Admission.current();
+        Admission.Ticket held = Admission.lend();
+        AtomicBoolean returned = new AtomicBoolean();
+        Runnable giveBack = () -> {
+            if (returned.compareAndSet(false, true)) {
+                Admission.giveBack(held);
+            }
+        };
         FutureTask<T> task = new FutureTask<>(() -> {
-            Admission.carry(held);
-            return guarded(work);
+            try {
+                Admission.carry(held);
+                return guarded(work);
+            } finally {
+                giveBack.run();
+            }
         });
-        Thread worker = Thread.ofPlatform().name("office-convert").daemon().stackSize(STACK_BYTES).start(task);
+        Thread worker;
+        try {
+            worker = Thread.ofPlatform().name("office-convert").daemon().stackSize(STACK_BYTES).start(() -> {
+                try {
+                    task.run();
+                } finally {
+                    giveBack.run();
+                }
+            });
+        } catch (RuntimeException | Error e) {
+            giveBack.run();
+            throw e;
+        }
         try {
             return nanos == 0 ? task.get() : task.get(nanos, TimeUnit.NANOSECONDS);
         } catch (TimeoutException e) {

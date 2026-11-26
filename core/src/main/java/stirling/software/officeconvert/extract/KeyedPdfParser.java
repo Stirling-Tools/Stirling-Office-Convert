@@ -96,8 +96,19 @@ final class KeyedPdfParser extends PDFParser {
     private static boolean attachmentsOnly(COSDictionary encryption) {
         COSName eff = encryption.getCOSName(COSName.getPDFName("EFF"));
         COSDictionary filters = encryption.getCOSDictionary(COSName.CF);
-        COSDictionary filter = eff == null || filters == null ? null : filters.getCOSDictionary(eff);
-        return filter != null && COSName.getPDFName("EFOpen").equals(filter.getCOSName(COSName.getPDFName("AuthEvent")));
+        if (eff == null || filters == null || !(filters.getDictionaryObject(eff) instanceof COSDictionary)) {
+            return false;
+        }
+        for (COSName name : filters.keySet()) {
+            if (COSName.IDENTITY.equals(name)) {
+                continue;
+            }
+            if (!(filters.getDictionaryObject(name) instanceof COSDictionary filter)
+                    || !COSName.getPDFName("EFOpen").equals(filter.getCOSName(COSName.getPDFName("AuthEvent")))) {
+                return false;
+            }
+        }
+        return true;
     }
 
     @Override
