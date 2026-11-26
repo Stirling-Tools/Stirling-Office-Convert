@@ -959,12 +959,15 @@ Published to https://maven.stirlingpdf.com and Maven Central as `com.stirling:st
 PDF), `com.stirling:stirling-office-convert-pdfa` (PDF to PDF/A), `-lineart` and `-optimize`, signed, the same way as
 JPDFium:
 
-- A `v1.2.3` tag runs `.github/workflows/release.yml`: build and test, then `publishAllToR2Staging` signs every module into
-  `build/r2-repo` and the [maven-r2-publish](https://github.com/Stirling-Tools/maven-r2-publish) release action stages it
-  under `staging/`. `.github/scripts/verify-staged.sh` checks every file and runs a conversion from the staged artifacts;
-  only then is the set promoted to the root. A failed verify or promote keeps the staging copy for "Re-run failed jobs".
-- The unsigned build artifact is retained for seven days. After an approval delay or retry beyond that window,
-  choose **Re-run all jobs** to regenerate the signing input.
+- A `v1.2.3` tag runs `.github/workflows/release.yml`: build and test, then `publishAllToR2Staging` writes every module
+  unsigned into `build/r2-repo`, kept as the `r2-repo-unsigned` artifact. The "Sign and stage" job signs that copy with
+  `.github/scripts/sign-staged-repo.sh` and the [maven-r2-publish](https://github.com/Stirling-Tools/maven-r2-publish)
+  release action stages it under `staging/`. `.github/scripts/verify-staged.sh` checks every file and runs a conversion
+  from the staged artifacts; only then is the set promoted to the root. A failed verify or promote keeps the staging
+  copy for "Re-run failed jobs".
+- Only "Sign and stage" reads `r2-repo-unsigned`, which is kept for seven days. If Sign and stage has to be re-run
+  after that, choose **Re-run all jobs**; after a promote or Central failure, re-run only the failed jobs, since
+  re-running all would stage a released version again.
 - After the promote, `publishAllToCentralPortal` sends the same version to Maven Central with automatic release. That job
   may fail without failing the release, so a version can be on maven.stirlingpdf.com before, or without, reaching Central.
 - Dispatch with `dryRun` to build, stage and verify without releasing.
@@ -973,7 +976,8 @@ JPDFium:
 - Secrets: `GPG_SIGNING_KEY` (ASCII-armoured private key), `GPG_SIGNING_PASSWORD`, `CENTRAL_PORTAL_USERNAME` and
   `CENTRAL_PORTAL_PASSWORD` (a Central Portal user token), plus `R2_ENDPOINT`, `R2_ACCESS_KEY_ID` and
   `R2_SECRET_ACCESS_KEY` in a `maven` environment. A release version without a signing key is refused before anything
-  is uploaded. An unprotected signing key uses an empty `GPG_SIGNING_PASSWORD`.
+  is uploaded. For a signing key without a passphrase, leave `GPG_SIGNING_PASSWORD` unset: an unset secret expands to
+  an empty string, which the signing script and Gradle accept.
 - Locally: `./gradlew publishToMavenLocal` builds the jar, sources, javadoc and POM.
 
 ## Tests
