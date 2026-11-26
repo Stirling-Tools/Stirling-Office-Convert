@@ -82,7 +82,7 @@ public final class PdfOutput implements Closeable {
 
     private ZonedDateTime stamped;
 
-    private boolean fixedId;
+    private byte[] idSeed;
 
     private boolean finished;
 
@@ -204,11 +204,12 @@ public final class PdfOutput implements Closeable {
         info = Objects.requireNonNull(value, "info");
     }
 
-    /** The creation time to stamp, instead of the host clock; {@code fixedId} also derives the /ID from it and the
-     * document info, so the same input and time give the same bytes. */
-    public void timestamp(ZonedDateTime when, boolean fixedId) {
+    /** The creation time to stamp, instead of the host clock; a non-null {@code idSeed}, a digest of the source,
+     * also derives the /ID from it, the time and the document info, so the same input and time give the same bytes
+     * and different inputs different IDs. */
+    public void timestamp(ZonedDateTime when, byte[] idSeed) {
         this.stamped = Objects.requireNonNull(when, "when");
-        this.fixedId = fixedId;
+        this.idSeed = idSeed == null ? null : idSeed.clone();
     }
 
     public DocumentInfo info() {
@@ -376,6 +377,7 @@ public final class PdfOutput implements Closeable {
             md5.update((byte) 0);
         }
         md5.update(Integer.toString(document.getNumberOfPages()).getBytes(StandardCharsets.US_ASCII));
+        md5.update(idSeed);
         COSString id = new COSString(md5.digest());
         COSArray pair = new COSArray();
         pair.add(id);
@@ -394,7 +396,7 @@ public final class PdfOutput implements Closeable {
         String now = DateConverter.toString(stamped == null ? Calendar.getInstance() : GregorianCalendar.from(stamped));
         pdi.getCOSObject().setString(COSName.CREATION_DATE, now);
         pdi.getCOSObject().setString(COSName.MOD_DATE, now);
-        if (fixedId) {
+        if (idSeed != null) {
             fixId(now);
         }
         if (info.language() != null) {

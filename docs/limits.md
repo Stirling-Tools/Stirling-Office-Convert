@@ -128,6 +128,7 @@ deep; anything it cannot see or read is charged as a large picture, so an estima
 | ODS repeated rows and columns | 8–192 MB of work | truncated with a warning |
 | Spreadsheet cells / merged ranges | 4 M / 100,000 | truncated |
 | Spreadsheet data read before admission | 256 MB | the rest is charged conservatively |
+| Password key stretching (encrypted OOXML spin count) | 1,000,000 (the format allows 10,000,000; Office writes 100,000), **fixed**; Office's built-in read-only password is tried only up to 100,000 | refused unread, as the derivation inside POI cannot be interrupted |
 
 The library itself changes one JVM-wide setting, which also affects other code in the same JVM: Apache POI's zip
 file count, raised above its default only when a package needs more entries. `PoiXml.raiseProcessLimits()` raises the

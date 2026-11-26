@@ -10,6 +10,8 @@ import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.ZoneId;
@@ -842,7 +844,7 @@ public final class OfficeToPdf {
             Format format = detect(zip, requested);
             try (Admission.Ticket ticket = Admission.jvm().enter(Footprint.estimate(zip, format));
                     PdfOutput output = new PdfOutput(fonts, options.maxScratchBytes())) {
-                output.timestamp(options.now(), options.clock() != null);
+                output.timestamp(options.now(), idSeed(source, options));
                 output.info(DocumentInfo.read(zip));
                 RenderJob job = new RenderJob(zip, format, options, fonts, output);
                 job.admitted(ticket);
@@ -930,7 +932,7 @@ public final class OfficeToPdf {
             Renderer renderer, FontLibrary fonts) throws IOException {
         try (Admission.Ticket ticket = Admission.jvm().enter(Footprint.legacy(Files.size(source)));
                 PdfOutput output = new PdfOutput(fonts, options.maxScratchBytes())) {
-            output.timestamp(options.now(), options.clock() != null);
+            output.timestamp(options.now(), idSeed(source, options));
             RenderJob job = new RenderJob(source, format, options, fonts, output);
             job.admitted(ticket);
             Throwable failed = null;
@@ -1224,6 +1226,27 @@ public final class OfficeToPdf {
         } catch (IOException | RuntimeException e) {
             file.toFile().deleteOnExit();
         }
+    }
+
+    static byte[] idSeed(Path source, Options options) throws IOException {
+        if (options.clock() == null) {
+            return null;
+        }
+        MessageDigest sha;
+        try {
+            sha = MessageDigest.getInstance("SHA-256");
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+        byte[] buffer = new byte[1 << 16];
+        try (InputStream in = Files.newInputStream(source)) {
+            int n;
+            while ((n = in.read(buffer)) >= 0) {
+                stopIfInterrupted();
+                sha.update(buffer, 0, n);
+            }
+        }
+        return sha.digest();
     }
 
     static void stopIfInterrupted() throws InterruptedIOException {

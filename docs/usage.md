@@ -932,7 +932,8 @@ further; the JDK default is 240 MB.
   with status 2. Write `.docx` or `.rtf` instead.
 - `OfficeToPdf.Options` has three more components, `locale`, `zone` and `clock` (null keeps the host's value), so its
   canonical constructor takes fifteen arguments. The twelve-argument constructor is kept; a record pattern over
-  `Options` needs the new components. A fixed clock gives byte-identical output for the same input.
+  `Options` needs the new components. A fixed clock gives byte-identical output for the same input, with a
+  PDF /ID derived from the input's content, so different inputs keep different IDs.
 - Encrypted OOXML refuses a spin count above 1,000,000, and Office's built-in password is tried only up to 100,000.
 - With network access on, a redirect from `https` to `http` is refused.
 - OpenDocument, flat OPC, FB2 and OpenOffice.org 1.x XML parts are held to the element budget and the 100:1

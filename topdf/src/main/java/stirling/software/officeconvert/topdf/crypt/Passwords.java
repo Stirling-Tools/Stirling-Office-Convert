@@ -54,8 +54,8 @@ public final class Passwords {
     static Decryptor unlock(EncryptionInfo info, String password) {
         EncryptionVerifier v = info.getVerifier();
         if (v != null && v.getSpinCount() > MAX_SPIN_COUNT) {
-            throw new EncryptedDocumentException("The document's encryption asks for more key stretching than Office"
-                    + " allows, so it was not opened");
+            throw new EncryptedDocumentException("The document's encryption asks for more key stretching than this"
+                    + " converter's limit of " + MAX_SPIN_COUNT + " rounds, so it was not opened");
         }
         Decryptor d = info.getDecryptor();
         if (d == null) {

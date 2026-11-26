@@ -53,7 +53,7 @@ final class LegacyDrawingInput {
         }
         try (Admission.Ticket _ = Admission.jvm().enter(footprint(source));
                 PdfOutput output = new PdfOutput(options.fontLibrary(), options.maxScratchBytes())) {
-            output.timestamp(options.now(), options.clock() != null);
+            output.timestamp(options.now(), OfficeToPdf.idSeed(source, options));
             OleThumbnail.Outcome drawn = OleThumbnail.draw(source, output);
             String what = kind == OleThumbnail.Kind.PUBLISHER ? "Microsoft Publisher publication"
                     : "Visio 2003-2010 drawing";
