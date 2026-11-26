@@ -122,6 +122,13 @@ final class FlattenRenderer extends GuardedRenderer {
             }
         }
 
+        @Override
+        public void endPath() {
+            // A clip path is applied here, and intersecting a huge one is as slow as filling it.
+            drawable();
+            super.endPath();
+        }
+
         private boolean drawable() {
             int n = 0;
             for (PathIterator it = getLinePath().getPathIterator(null); !it.isDone(); it.next()) {

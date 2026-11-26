@@ -70,15 +70,11 @@ public final class FontEmbedder {
         Set<ContentGraph.Node> unreadable = new HashSet<>();
         for (ContentGraph.Node n : graph.nodes()) {
             PdfFiles.stopIfInterrupted();
-            List<Object> tokens;
-            try {
-                tokens = ContentTokens.salvage(n.streams()).tokens();
-            } catch (IOException e) {
-                Decoded.rethrowFatal(e);
+            ContentTokens.Salvaged parsed = ContentTokens.salvage(n.streams());
+            if (parsed.midStream() || parsed.unreadable() > 0) {
                 unreadable.add(n);
-                continue;
             }
-            usage.scan(tokens, n.resources(), n.owner());
+            usage.scan(parsed.tokens(), n.resources(), n.owner());
         }
         usage.resolve();
         Map<COSDictionary, TreeSet<Integer>> targets = new LinkedHashMap<>(usage.codes());

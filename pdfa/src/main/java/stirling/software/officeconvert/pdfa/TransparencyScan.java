@@ -222,7 +222,8 @@ final class TransparencyScan {
         try {
             t = !scan(ContentTokens.parse(List.of(stream)), res, new Matrix(), depth + 1).isEmpty();
         } catch (IOException e) {
-            t = false;
+            // Unreadable, so it may hold transparency: assume it does rather than strip keys it might need.
+            t = true;
         }
         cache.put(stream, t);
         return t;

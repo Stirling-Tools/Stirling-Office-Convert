@@ -8,6 +8,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.pdfbox.pdmodel.PDDocument;
 
@@ -105,8 +106,10 @@ public final class PdfToPdfA {
         }
     }
 
+    /** {@code unverified} lists PDF/A rules the output may still break, as the converter could not fix them; when
+     * it is not empty, validate the file before relying on its PDF/A label. */
     public record Result(PdfALevel level, int pages, List<String> warnings, List<Integer> flattenedPages,
-            List<String> substitutedFonts, PdfALevel achievedLevel) {
+            List<String> substitutedFonts, PdfALevel achievedLevel, List<String> unverified) {
 
         public Result {
             Objects.requireNonNull(level, "level");
@@ -114,6 +117,12 @@ public final class PdfToPdfA {
             warnings = List.copyOf(warnings);
             flattenedPages = List.copyOf(flattenedPages);
             substitutedFonts = List.copyOf(substitutedFonts);
+            unverified = List.copyOf(unverified);
+        }
+
+        public Result(PdfALevel level, int pages, List<String> warnings, List<Integer> flattenedPages,
+                List<String> substitutedFonts, PdfALevel achievedLevel) {
+            this(level, pages, warnings, flattenedPages, substitutedFonts, achievedLevel, List.of());
         }
 
         public Result(PdfALevel level, int pages, List<String> warnings, List<Integer> flattenedPages,
@@ -174,6 +183,13 @@ public final class PdfToPdfA {
                 })));
     }
 
+    /**
+     * Converts an open document in place and writes it to {@code out} only once the conversion has succeeded, so a
+     * conversion that fails or times out writes nothing; a failure while copying to or flushing {@code out} can leave
+     * part or all of the output in it. The caller keeps ownership of the document: it holds the PDF/A changes
+     * afterwards, whether the call succeeds or fails. After a {@link TimedOut} a worker that ignores interruption may
+     * still read and change the document; do not reuse or close it until {@code Admission.jvm().status().stuck()} is 0.
+     */
     public static Result convert(PDDocument document, OutputStream out, Options options) throws IOException {
         Objects.requireNonNull(document, "document");
         Objects.requireNonNull(out, "out");
@@ -181,7 +197,50 @@ public final class PdfToPdfA {
         PdfFiles.checkOpen(document);
         RuntimeModules.check();
         JpxImageIO.install();
-        return Deadline.run(options.timeout(), () -> ContentCache.run(() -> Conversion.run(document, out, options)));
+        Path part = Files.createTempFile("pdf-to-pdfa-", ".pdf");
+        AtomicBoolean abandoned = new AtomicBoolean();
+        try {
+            Result result = Deadline.run(options.timeout(), () -> ContentCache.run(() -> {
+                long size = sourceBytes(document);
+                Admission.Ticket ticket = Admission.jvm().enter(estimate(size, 0));
+                try {
+                    long content = ContentBudget.peakBytes(document);
+                    ticket.close();
+                    ticket = Admission.jvm().enter(estimate(size, content));
+                    try (OutputStream os = new BufferedOutputStream(Files.newOutputStream(part), 1 << 16)) {
+                        return Conversion.run(document, os, options);
+                    }
+                } finally {
+                    ticket.close();
+                    if (abandoned.get()) {
+                        deleteQuietly(part);
+                    }
+                }
+            }));
+            Files.copy(part, out);
+            out.flush();
+            return result;
+        } finally {
+            abandoned.set(true);
+            deleteQuietly(part);
+        }
+    }
+
+    // The file size, from the furthest object offset, for documents opened from a file; 0 for documents built in memory.
+    private static long sourceBytes(PDDocument document) {
+        long most = 0;
+        for (Long offset : document.getDocument().getXrefTable().values()) {
+            most = Math.max(most, offset == null ? 0 : offset);
+        }
+        return most;
+    }
+
+    private static void deleteQuietly(Path file) {
+        try {
+            Files.deleteIfExists(file);
+        } catch (IOException e) {
+            // A worker still writing keeps the file open on Windows; it deletes the file itself when it ends.
+        }
     }
 
     static long estimate(long bytes, long content) {

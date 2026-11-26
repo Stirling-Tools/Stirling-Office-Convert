@@ -35,21 +35,59 @@ final class AttachedPdfA {
     }
 
     static boolean check(COSStream file, boolean partFour) throws IOException {
-        return check(file, 0, partFour);
+        return check(file, partFour, new Budget());
     }
 
-    private static boolean check(COSStream file, int depth, boolean partFour) throws IOException {
+    static boolean check(COSStream file, boolean partFour, Budget budget) throws IOException {
+        return check(file, 0, partFour, budget);
+    }
+
+    /** Validation cannot be interrupted, so one conversion validates a bounded number and size of attachments. */
+    static final class Budget {
+
+        static final int MAX_FILES = 32;
+
+        static final long MAX_TOTAL_BYTES = 128L << 20;
+
+        private int files;
+
+        private long bytes;
+
+        void attempt() throws IOException {
+            if (++files > MAX_FILES) {
+                throw new Spent();
+            }
+        }
+
+        void spend(long size) throws IOException {
+            if ((bytes += size) > MAX_TOTAL_BYTES) {
+                throw new Spent();
+            }
+        }
+    }
+
+    static final class Spent extends AttachmentParser.LimitExceeded {
+        Spent() {
+            super("The PDF attaches more PDF files than can be verified as PDF/A (" + Budget.MAX_FILES + " files or "
+                    + (Budget.MAX_TOTAL_BYTES >> 20) + " MiB)");
+        }
+    }
+
+    private static boolean check(COSStream file, int depth, boolean partFour, Budget budget) throws IOException {
         byte[] data;
         try {
             if (!new String(Decoded.prefix(file, 5), StandardCharsets.ISO_8859_1).equals("%PDF-")) {
                 return false;
             }
+            budget.attempt();
             data = Decoded.bytes(file, MAX_BYTES, "An attachment");
+            budget.spend(data.length);
         } catch (IOException | RuntimeException e) {
             if (e instanceof IOException io) {
                 rethrowBudget(io);
             }
             PdfFiles.stopIfInterrupted();
+            budget.spend(MAX_BYTES);
             return false;
         }
         try (RandomAccessReadBuffer source = new RandomAccessReadBuffer(data)) {
@@ -62,7 +100,7 @@ final class AttachedPdfA {
                 boolean[] ok = {true};
                 Set<COSStream> checked = Collections.newSetFromMap(new IdentityHashMap<>());
                 boolean carriesAnyFile = profile.equals("4f") || profile.equals("4e");
-                CosWalk.walk(doc, b -> ok[0] &= allowed(b, depth, checked, partFour, carriesAnyFile));
+                CosWalk.walk(doc, b -> ok[0] = ok[0] && allowed(b, depth, checked, partFour, budget, carriesAnyFile));
                 parser.checkBudget();
                 FontProgramBounds.run(doc);
                 ContentBudget.peakBytes(doc);
@@ -124,7 +162,7 @@ final class AttachedPdfA {
         return count == 1 ? value : "";
     }
 
-    private static boolean allowed(COSBase b, int depth, Set<COSStream> checked, boolean partFour,
+    private static boolean allowed(COSBase b, int depth, Set<COSStream> checked, boolean partFour, Budget budget,
             boolean carriesAnyFile) throws IOException {
         if (!(b instanceof COSDictionary d)) {
             return true;
@@ -139,23 +177,23 @@ final class AttachedPdfA {
         if (ef != null) {
             for (COSName key : ef.keySet()) {
                 if (!(ef.getDictionaryObject(key) instanceof COSStream file)
-                        || checked.add(file) && !nested(file, depth, partFour)) {
+                        || checked.add(file) && !nested(file, depth, partFour, budget)) {
                     return false;
                 }
             }
         }
         if (d instanceof COSStream s && EMBEDDED_FILE.equals(s.getCOSName(COSName.TYPE)) && checked.add(s)) {
-            return nested(s, depth, partFour);
+            return nested(s, depth, partFour, budget);
         }
         return true;
     }
 
-    private static boolean nested(COSStream stream, int depth, boolean partFour) throws IOException {
+    private static boolean nested(COSStream stream, int depth, boolean partFour, Budget budget) throws IOException {
         if (depth >= MAX_DEPTH) {
             throw new AttachmentParser.LimitExceeded(
                     "An attachment nests PDF/A files beyond the verification depth limit");
         }
-        return check(stream, depth + 1, partFour);
+        return check(stream, depth + 1, partFour, budget);
     }
 
     private static void metadataBudget(byte[] bytes) throws IOException {

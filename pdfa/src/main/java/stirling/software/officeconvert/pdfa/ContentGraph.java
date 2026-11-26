@@ -132,8 +132,11 @@ final class ContentGraph {
                 continue;
             }
             COSStream s = step.stream();
-            if (nodes.size() >= MAX_NODES || !seenStreams.add(s)) {
+            if (!seenStreams.add(s)) {
                 continue;
+            }
+            if (nodes.size() >= MAX_NODES) {
+                throw new IOException("The PDF has more than " + MAX_NODES + " content streams, too many to check");
             }
             COSDictionary res = step.kind() == Kind.GLYPH ? step.res() : dict(s.getDictionaryObject(COSName.RESOURCES));
             if (res == null) {

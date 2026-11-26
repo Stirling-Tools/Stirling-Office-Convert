@@ -306,7 +306,7 @@ final class StreamFixer {
 
     static byte[] read(COSStream s, long limit) {
         try {
-            return Decoded.bytes(s, limit, "A stream");
+            return Decoded.anyBytes(s, limit, "A stream");
         } catch (IOException | RuntimeException e) {
             return null;
         }

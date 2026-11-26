@@ -114,9 +114,12 @@ Every page render goes through one guarded renderer, so these limits hold for pa
 | Decoded image size | 256 MB, counting the raster PDFBox builds | the image is drawn at the smallest subsampling (up to 1/16) that fits; beyond that it is left out |
 | JPEG 2000 samples | 2^26, judged from the codestream the decoder reads; decoding needs about 6 bytes of working memory per sample (some 400 MB at the limit), outside the 256 MB decoded-image figure | the image is left out |
 | Decoded stream size | 256 MB | a content stream is emptied, an image refused |
-| Path segments in PDF/A flattening | 100,000 | flattening fails |
+| Path segments in PDF/A flattening (fill, stroke and clip paths) | 100,000 | flattening fails |
 | Transparency group nesting in PDF/A flattening | 64 | flattening fails |
 | PDF/A flattening raster | 40 M pixels | the resolution is lowered |
+| PDF/A content streams (pages, forms, patterns, glyphs, appearances) | 200,000 | the conversion fails |
+| PDF/A outline items, and form fields | 1,000,000 each | the conversion fails |
+| PDF/A warnings | 200 distinct; 100 naming the file, 20 per kind | the rest are counted in "N more warnings omitted" |
 | Photo split pages / pixels | 1,000 / 100 M | refused |
 
 Stack overflows and out-of-memory errors while drawing are reported as ordinary conversion failures; an EPUB or

@@ -1,9 +1,11 @@
 package stirling.software.officeconvert.pdfa;
 
+import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.apache.pdfbox.cos.COSStream;
 
@@ -20,6 +22,8 @@ final class ContentCache implements AutoCloseable {
     private final Map<COSStream, byte[]> bytes = new IdentityHashMap<>();
 
     private final Map<List<COSStream>, List<Object>> tokens = new LinkedHashMap<>();
+
+    private final Set<List<COSStream>> whole = new HashSet<>();
 
     private long byteSize;
 
@@ -68,16 +72,35 @@ final class ContentCache implements AutoCloseable {
     }
 
     void tokens(List<COSStream> streams, List<Object> value) {
+        store(streams, value);
+    }
+
+    List<Object> wholeTokens(List<COSStream> streams) {
+        return whole.contains(streams) ? tokens.get(streams) : null;
+    }
+
+    void wholeTokens(List<COSStream> streams, List<Object> value) {
+        List<COSStream> key = store(streams, value);
+        if (key != null) {
+            whole.add(key);
+        }
+    }
+
+    private List<COSStream> store(List<COSStream> streams, List<Object> value) {
         long size = value.size() * ContentBudget.BYTES_PER_TOKEN;
         if (size > MAX_BYTES) {
-            return;
+            return null;
         }
         if (tokenSize + size > MAX_BYTES || tokens.size() >= MAX_ENTRIES) {
             tokens.clear();
+            whole.clear();
             tokenSize = 0;
         }
-        List<Object> old = tokens.put(List.copyOf(streams), List.copyOf(value));
+        List<COSStream> key = List.copyOf(streams);
+        List<Object> old = tokens.put(key, List.copyOf(value));
         tokenSize += size - (old == null ? 0 : old.size() * ContentBudget.BYTES_PER_TOKEN);
+        whole.remove(key);
+        return key;
     }
 
     void changed(COSStream stream) {
@@ -88,6 +111,7 @@ final class ContentCache implements AutoCloseable {
             Map.Entry<List<COSStream>, List<Object>> entry = iterator.next();
             if (entry.getKey().contains(stream)) {
                 tokenSize -= entry.getValue().size() * ContentBudget.BYTES_PER_TOKEN;
+                whole.remove(entry.getKey());
                 iterator.remove();
             }
         }

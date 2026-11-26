@@ -7,6 +7,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSBase;
@@ -34,7 +35,25 @@ final class Decoded {
 
     private Decoded() {}
 
+    // Image decoders build a whole raster before any output cap applies, and no text-like stream uses them.
+    private static final Set<String> IMAGE_FILTERS = Set.of("DCTDecode", "DCT", "JPXDecode", "JBIG2Decode",
+            "CCITTFaxDecode", "CCF");
+
+    /** Decodes a stream that holds content, a font, metadata or a file, refusing image filters. */
     static byte[] bytes(COSStream s, long limit, String what) throws IOException {
+        List<COSName> filters = filters(s);
+        for (COSName f : filters) {
+            if (IMAGE_FILTERS.contains(f.getName())) {
+                throw new IOException(what + " uses the image filter " + f.getName());
+            }
+        }
+        Capped out = new Capped(limit, what, null);
+        decode(s, out, limit, what, filters);
+        return out.toByteArray();
+    }
+
+    /** Decodes any stream, images included. */
+    static byte[] anyBytes(COSStream s, long limit, String what) throws IOException {
         Capped out = new Capped(limit, what, null);
         decode(s, out, limit, what, filters(s));
         return out.toByteArray();
