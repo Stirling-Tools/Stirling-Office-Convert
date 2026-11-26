@@ -19,8 +19,7 @@ public final class JpxImageReader extends ImageReader {
 
     static final long MAX_INPUT = Integer.MAX_VALUE - 64;
 
-    // The documented PDF picture limit (ImageBudget.MAX_JPX_SAMPLES), since PDFBox decodes through this reader.
-    static final long MAX_SAMPLES = 1L << 26;
+    static final long MAX_SAMPLES = JpxOptions.DEFAULT_MAX_SAMPLES;
 
     private interface Decoding<T> {
         T run() throws IOException;

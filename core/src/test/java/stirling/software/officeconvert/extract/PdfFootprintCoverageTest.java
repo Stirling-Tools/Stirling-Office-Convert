@@ -304,8 +304,7 @@ class PdfFootprintCoverageTest {
         }
         try (PDDocument doc = new PDDocument()) {
             page(doc).getCOSObject().setItem(COSName.CONTENTS, stream(doc, text(4 << 20)));
-            long kept = charged(text(4 << 20).length()) * PdfFootprint.KEPT_BYTE_COST;
-            assertEquals(PdfFootprint.MAX_CONTENT_CHARGE + kept, extra(doc), "one page is laid out only so far");
+            assertEquals(2 * PdfFootprint.MAX_CONTENT_CHARGE, extra(doc), "one page is laid out and kept only so far");
         }
         try (PDDocument doc = new PDDocument()) {
             page(doc).getCOSObject().setItem(COSName.CONTENTS, stream(doc, text(4 << 10)));

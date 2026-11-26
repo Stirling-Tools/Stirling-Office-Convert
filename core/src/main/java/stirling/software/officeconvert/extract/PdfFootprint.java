@@ -132,12 +132,12 @@ public final class PdfFootprint {
             long excess = Math.max(0, scan.read - contentBefore - PAGE_CONTENT_ALLOWANCE);
             scan.busiest = Math.max(scan.busiest, excess);
             if (sampled.contains(index)) {
-                scan.dense = add(scan.dense, excess);
+                scan.dense = add(scan.dense, Math.min(MAX_CONTENT_CHARGE, multiply(excess, KEPT_BYTE_COST)));
             }
         }
         long render = renderBytes(scan.area, dpi) - renderBytes(scan.area, MEASURED_DPI);
         long content = add(Math.min(MAX_CONTENT_CHARGE, multiply(scan.busiest, CONTENT_BYTE_COST)),
-                multiply(scan.dense, KEPT_BYTE_COST));
+                scan.dense);
         return add(add(add(model, scan.picture), Math.max(0, render)), content);
     }
 
@@ -364,7 +364,7 @@ public final class PdfFootprint {
         }
 
         boolean visit(COSBase object) {
-            if (object == null) {
+            if (object == null || seen.contains(object)) {
                 return false;
             }
             if (budget-- <= 0) {

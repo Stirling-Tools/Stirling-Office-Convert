@@ -123,7 +123,7 @@ AZW3 cover that fails is left out and the book still converts.
 The memory estimate for a PDF scans at most 2,000 pages, 20,000 objects and 64 MB of content, and forms nested 8
 deep; anything it cannot see or read is charged as a large picture. Besides a fixed cost per page and the largest
 picture, content past the first 16 KB of a page (its streams, forms, patterns and appearances) is charged for the
-glyphs, lines and words built from it: 96 bytes per byte on the pages sampled for document statistics (up to 60), and another 176 per byte
+glyphs, lines and words built from it: 96 bytes per byte (at most 64 MB a page) on the pages sampled for document statistics (up to 60), and another 176 per byte
 (at most 64 MB) on the page with the most, while it is laid out. These figures were measured on dense text; vector
 pages cost less, so for them the estimate errs high. Sampling covers the first 20 pages, the last 5 and paired pages
 spread through the document; those pages are scanned first. A retained sample that exceeds the scan budget produces
