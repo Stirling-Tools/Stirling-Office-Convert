@@ -14,6 +14,7 @@ import stirling.software.officeconvert.extract.PageData;
 import stirling.software.officeconvert.extract.PageReader;
 import stirling.software.officeconvert.extract.PageSamples;
 import stirling.software.officeconvert.extract.PdfFiles;
+import stirling.software.officeconvert.extract.Warnings;
 
 final class PageStream {
 
@@ -48,7 +49,7 @@ final class PageStream {
                 if (onUnreadable == null) {
                     throw new IOException("Page " + (reading[0] + 1) + " could not be read", e);
                 }
-                LOG.warn("Page " + (reading[0] + 1) + " could not be read", e);
+                Warnings.leftOut(LOG, "Page " + (reading[0] + 1) + " could not be read", e);
                 onUnreadable.accept(reader.unreadable(reading[0]));
                 from = reading[0] + 1;
             }

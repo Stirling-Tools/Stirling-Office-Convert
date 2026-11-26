@@ -3,15 +3,19 @@ package stirling.software.officeconvert;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InterruptedIOException;
 import java.io.OutputStream;
+import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -30,6 +34,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import stirling.software.officeconvert.memory.Admission;
+import stirling.software.officeconvert.memory.ConversionTimedOut;
 import stirling.software.officeconvert.testing.Workers;
 
 class OfficeConvertTest {
@@ -137,6 +142,56 @@ class OfficeConvertTest {
     }
 
     @Test
+    void aCarriedWorkerThatOutlivesItsTimeoutKeepsTheCallersSlot() throws Exception {
+        Admission.Limits saved = Admission.jvm().limits();
+        Admission.configure(new Admission.Limits(60, 1, Duration.ofMillis(300), false));
+        long stopMillis = OfficeConvert.stopMillis;
+        OfficeConvert.stopMillis = 200;
+        AtomicBoolean release = new AtomicBoolean();
+        CountDownLatch holding = new CountDownLatch(1);
+        Thread[] worker = new Thread[1];
+        try {
+            try (Admission.Ticket _ = Admission.jvm().enter(Admission.BASE_BYTES)) {
+                assertThrows(OfficeConvert.TimedOut.class, () -> OfficeConvert.run(Duration.ofMillis(100), () -> {
+                    worker[0] = Thread.currentThread();
+                    try (Admission.Ticket _ = Admission.jvm().enter(Admission.BASE_BYTES)) {
+                        holding.countDown();
+                        while (!release.get()) {
+                            Thread.onSpinWait();
+                        }
+                    }
+                    return null;
+                }));
+            }
+            assertTrue(holding.await(1, TimeUnit.SECONDS));
+            assertEquals(1, Admission.jvm().running());
+            assertEquals(1, Admission.jvm().status().stuck());
+            assertThrows(Admission.Busy.class, () -> Admission.jvm().enter(Admission.BASE_BYTES).close());
+        } finally {
+            release.set(true);
+            if (worker[0] != null) {
+                worker[0].join();
+            }
+            OfficeConvert.stopMillis = stopMillis;
+            Admission.configure(saved);
+        }
+        assertEquals(0, Admission.jvm().running());
+    }
+
+    @Test
+    void nestedWorkThatEndsBeforeItsCallerFreesTheSlotWhenTheCallerCloses() throws Exception {
+        try (Admission.Ticket _ = Admission.jvm().enter(Admission.BASE_BYTES)) {
+            OfficeConvert.run(Duration.ofMinutes(1), () -> {
+                try (Admission.Ticket _ = Admission.jvm().enter(Admission.BASE_BYTES)) {
+                    return null;
+                }
+            });
+            assertEquals(1, Admission.jvm().running());
+        }
+        assertEquals(0, Admission.jvm().running());
+    }
+
+    @Test
     void timeoutStopsTheConversionAndLeavesNothing() throws Exception {
         Path pdf = dir.resolve("slow.pdf");
         try (PDDocument doc = new PDDocument()) {
@@ -210,5 +265,83 @@ class OfficeConvertTest {
     void unknownExtensionsAndSecretsStayOut() {
         assertThrows(IllegalArgumentException.class, () -> OfficeConvert.Format.of(Path.of("out.pdfx")));
         assertFalse(OfficeConvert.Settings.defaults().password("hunter2").toString().contains("hunter2"));
+    }
+
+    @Test
+    void aRuntimeExceptionInAConversionArrivesAsAnIOException() {
+        IOException e = assertThrows(IOException.class, () -> OfficeConvert.run(Duration.ofMinutes(1), () -> {
+            throw new IllegalStateException("broken table");
+        }));
+        assertTrue(e.getMessage().contains("broken table"), e.getMessage());
+        assertTrue(e.getCause() instanceof IllegalStateException);
+    }
+
+    @Test
+    void onlyTheCallingThreadWritesTheCallersStream() throws IOException {
+        Path pdf = sample();
+        Thread caller = Thread.currentThread();
+        AtomicBoolean foreign = new AtomicBoolean();
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        OutputStream out = new OutputStream() {
+            @Override
+            public void write(int b) {
+                write(new byte[] {(byte) b}, 0, 1);
+            }
+
+            @Override
+            public void write(byte[] b, int off, int len) {
+                foreign.compareAndSet(false, Thread.currentThread() != caller);
+                bytes.write(b, off, len);
+            }
+        };
+        try (PDDocument doc = Loader.loadPDF(pdf.toFile())) {
+            OfficeConvert.convert(doc, out, OfficeConvert.Format.DOCX, OfficeConvert.Settings.defaults());
+        }
+        assertFalse(foreign.get(), "the worker wrote the caller's stream");
+        assertEquals('P', bytes.toByteArray()[0]);
+    }
+
+    @Test
+    void aSocketTimeoutOnTheCallersStreamDoesNotInterruptTheCaller() throws IOException {
+        Path pdf = sample();
+        OutputStream slow = new OutputStream() {
+            @Override
+            public void write(int b) throws IOException {
+                throw new SocketTimeoutException("write timed out");
+            }
+        };
+        try (PDDocument doc = Loader.loadPDF(pdf.toFile())) {
+            assertThrows(SocketTimeoutException.class, () -> OfficeConvert.convert(doc, slow,
+                    OfficeConvert.Format.DOCX, OfficeConvert.Settings.defaults()));
+        }
+        assertFalse(Thread.interrupted());
+    }
+
+    @Test
+    void aConversionStartedInsideAnotherIsNestedAndNeverWaitsForASecondSlot() throws IOException {
+        Path pdf = sample();
+        Admission.Limits saved = Admission.jvm().limits();
+        Admission.configure(new Admission.Limits(60, 1, Duration.ZERO, false));
+        try {
+            assertTimeoutPreemptively(Duration.ofMinutes(1), () -> OfficeConvert.run(Duration.ofMinutes(1), () -> {
+                try (Admission.Ticket _ = Admission.jvm().enter(Admission.BASE_BYTES)) {
+                    OfficeConvert.convert(pdf, dir.resolve("nested.docx"));
+                }
+                return null;
+            }));
+            assertTrue(Files.size(dir.resolve("nested.docx")) > 0);
+        } finally {
+            Admission.configure(saved);
+        }
+    }
+
+    @Test
+    void timeoutsShareABaseAndRefusalsAreMarked() {
+        assertTrue(ConversionTimedOut.class.isAssignableFrom(OfficeConvert.TimedOut.class));
+        for (IOException e : List.of(new Admission.Busy(), new Admission.TooLarge(), new Admission.NeedsMemory(),
+                new Admission.Stopped())) {
+            assertTrue(e instanceof Admission.Refusal, e.getClass().getName());
+        }
+        assertFalse(new InterruptedIOException() instanceof Admission.Refusal);
     }
 }

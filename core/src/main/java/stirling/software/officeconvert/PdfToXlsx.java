@@ -22,6 +22,7 @@ import stirling.software.officeconvert.extract.PageReader;
 import stirling.software.officeconvert.extract.PdfFiles;
 import stirling.software.officeconvert.extract.PdfFootprint;
 import stirling.software.officeconvert.extract.StreamGuard;
+import stirling.software.officeconvert.extract.Warnings;
 import stirling.software.officeconvert.jpx.JpxImageIO;
 import stirling.software.officeconvert.layout.DocStats;
 import stirling.software.officeconvert.layout.Line;
@@ -205,7 +206,7 @@ public final class PdfToXlsx {
                     if (!fallback) {
                         throw new IOException("Page " + (page.index() + 1) + " could not be converted", e);
                     }
-                    LOG.warn("Page " + (page.index() + 1) + " left out of the document statistics", e);
+                    Warnings.note(LOG, "Page " + (page.index() + 1) + " left out of the document statistics", e);
                 }
                 if (cacheAll && cacheWeight[0] + PageStream.weight(page) <= CACHE_BUDGET) {
                     cache.put(page.index(), page);
@@ -256,7 +257,7 @@ public final class PdfToXlsx {
         }
     }
 
-    private static void plainPage(SheetBuilder builder, PageData page, Throwable e, boolean fallback, boolean tablesOnly)
+    static void plainPage(SheetBuilder builder, PageData page, Throwable e, boolean fallback, boolean tablesOnly)
             throws IOException {
         if (!fallback) {
             throw new IOException("Page " + (page.index() + 1) + " could not be converted", e);
@@ -265,13 +266,15 @@ public final class PdfToXlsx {
         try {
             lines = LineBuilder.build(OcrText.pageGlyphs(page));
         } catch (RuntimeException | StackOverflowError again) {
-            lines = List.of();
-        }
-        if (tablesOnly && !lines.isEmpty()) {
-            LOG.warn("Page " + (page.index() + 1) + " could not be analysed; left out of this tables-only output", e);
+            Warnings.leftOut(LOG, "Page " + (page.index() + 1) + " could not be analysed; its text was left out", e);
+            builder.plainPage(page, List.of());
             return;
         }
-        LOG.warn("Page " + (page.index() + 1) + " could not be analysed; kept as lines of text", e);
+        if (tablesOnly && !lines.isEmpty()) {
+            Warnings.leftOut(LOG, "Page " + (page.index() + 1) + " could not be analysed; left out of this tables-only output", e);
+            return;
+        }
+        Warnings.note(LOG, "Page " + (page.index() + 1) + " could not be analysed; kept as lines of text", e);
         builder.plainPage(page, lines);
     }
 

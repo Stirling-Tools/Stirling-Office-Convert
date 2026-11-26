@@ -18,6 +18,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.apache.pdfbox.contentstream.PDFGraphicsStreamEngine;
 import org.apache.pdfbox.contentstream.operator.Operator;
 import org.apache.pdfbox.pdmodel.graphics.PDXObject;
@@ -51,6 +53,8 @@ import stirling.software.officeconvert.extract.PageGraphics.Rule;
 import stirling.software.officeconvert.extract.PageGraphics.VectorMark;
 
 final class GraphicsCollector extends PDFGraphicsStreamEngine {
+
+    private static final Log LOG = LogFactory.getLog(GraphicsCollector.class);
 
     private static final int MAX_PATH_POINTS = 200_000;
 
@@ -110,6 +114,8 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
 
     private final Map<Object, Integer> dotOrder = new IdentityHashMap<>();
     private final List<ImageDraw> images = new ArrayList<>();
+
+    private boolean imagesCapped;
     private final List<VectorMark> marks = new ArrayList<>();
     private final List<PageGraphics.Area> masked = new ArrayList<>();
 
@@ -567,8 +573,15 @@ final class GraphicsCollector extends PDFGraphicsStreamEngine {
 
     @Override
     public void drawImage(PDImage pdImage) throws IOException {
-        if (images.size() >= MAX_IMAGES || pdImage instanceof PDXObject x && hiddenContent.hidden(x)
+        if (pdImage instanceof PDXObject x && hiddenContent.hidden(x)
                 || pdImage instanceof PDImageXObject image && !StrictFilters.decodable(image.getCOSObject())) {
+            return;
+        }
+        if (images.size() >= MAX_IMAGES) {
+            if (!imagesCapped) {
+                imagesCapped = true;
+                Warnings.leftOut(LOG, "A page draws more than " + MAX_IMAGES + " images; the rest were left out");
+            }
             return;
         }
         PDGraphicsState gs = getGraphicsState();

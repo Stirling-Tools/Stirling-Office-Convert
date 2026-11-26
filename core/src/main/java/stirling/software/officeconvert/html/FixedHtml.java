@@ -238,7 +238,7 @@ public final class FixedHtml {
         sb.append("<section class=\"").append(live ? "pg" : "pg picture").append("\" id=\"page-").append(index + 1)
                 .append("\" style=\"page:").append(size).append(";width:").append(HtmlText.pt(width)).append(";height:")
                 .append(HtmlText.pt(height)).append("\">\n");
-        long estimate = pixels(width, height, scale) * 4L * 3L;
+        long estimate = renderBytes(width, height, scale);
         Admission.Ticket ticket = Admission.jvm().enter(estimate);
         try {
             BufferedImage image = renderer.draw(index, scale, ImageType.RGB);
@@ -259,6 +259,29 @@ public final class FixedHtml {
         sb.append(text).append("</section>\n");
         w.write(sb.toString());
         w.flush();
+    }
+
+    public static long peakRenderBytes(PDDocument doc, int firstPage, int lastPage, float dpi) {
+        int first = Math.max(1, firstPage);
+        int last = Math.min(doc.getNumberOfPages(), lastPage);
+        long peak = 0;
+        int index = 0;
+        for (PDPage page : doc.getPages()) {
+            if (++index > last) {
+                break;
+            }
+            if (index < first) {
+                continue;
+            }
+            PDRectangle box = page.getCropBox();
+            float scale = pictureScale(box.getWidth(), box.getHeight(), dpi);
+            peak = Math.max(peak, renderBytes(box.getWidth(), box.getHeight(), scale));
+        }
+        return peak;
+    }
+
+    private static long renderBytes(float width, float height, float scale) {
+        return pixels(width, height, scale) * 4L * 3L;
     }
 
     static float pictureScale(float width, float height, float dpi) {

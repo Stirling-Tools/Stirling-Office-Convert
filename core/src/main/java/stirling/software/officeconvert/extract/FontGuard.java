@@ -37,13 +37,17 @@ public final class FontGuard {
 
     private static final Map<COSStream, Boolean> BOUNDED = Collections.synchronizedMap(new WeakHashMap<>());
 
-    private static final Map<COSDocument, Boolean> CHECKED = Collections.synchronizedMap(new WeakHashMap<>());
+    private static final Map<COSDocument, Integer> CHECKED = Collections.synchronizedMap(new WeakHashMap<>());
 
     private FontGuard() {}
 
     public static int check(PDDocument doc) throws IOException {
         COSDocument cos = doc.getDocument();
-        if (CHECKED.containsKey(cos)) {
+        Integer earlier = CHECKED.get(cos);
+        if (earlier != null) {
+            if (earlier > 0) {
+                Warnings.stillLeftOut(leftOut(earlier));
+            }
             return 0;
         }
         int removed = 0;
@@ -76,10 +80,14 @@ public final class FontGuard {
         }
         if (removed > 0) {
             doc.setResourceCache(new DefaultResourceCache());
-            LOG.warn(removed + " embedded font program(s) left out: their glyphs expand too far to draw safely");
+            Warnings.leftOut(LOG, leftOut(removed));
         }
-        CHECKED.put(cos, Boolean.TRUE);
+        CHECKED.put(cos, removed);
         return removed;
+    }
+
+    private static String leftOut(int removed) {
+        return removed + " embedded font program(s) left out: their glyphs expand too far to draw safely";
     }
 
     private static int leaveOutRunaway(COSDictionary descriptor) throws InterruptedIOException {

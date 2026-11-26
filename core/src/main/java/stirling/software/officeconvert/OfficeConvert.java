@@ -1,22 +1,28 @@
 package stirling.software.officeconvert;
 
+import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.io.InterruptedIOException;
 import java.io.OutputStream;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.pdfbox.pdmodel.PDDocument;
 
 import stirling.software.officeconvert.extract.PdfFiles;
 import stirling.software.officeconvert.extract.PdfFootprint;
+import stirling.software.officeconvert.extract.Warnings;
 import stirling.software.officeconvert.memory.Admission;
+import stirling.software.officeconvert.memory.ConversionTimedOut;
 
 public final class OfficeConvert {
 
@@ -192,7 +198,7 @@ public final class OfficeConvert {
         }
     }
 
-    public static final class TimedOut extends IOException {
+    public static final class TimedOut extends ConversionTimedOut {
         TimedOut(Duration limit) {
             super("The conversion took longer than " + limit.toMillis() + " ms and was stopped");
         }
@@ -254,29 +260,66 @@ public final class OfficeConvert {
         });
     }
 
+    /** Converts a loaded PDF into the caller's stream, which receives the output only once the conversion succeeded and
+     * stays open. On {@link TimedOut} a stopped worker may still read {@code pdf} for a while: do not close or change it
+     * then (load a private copy per conversion if the document is shared or reused). */
     public static void convert(PDDocument pdf, OutputStream out, Format format, Settings settings) throws IOException {
         Objects.requireNonNull(pdf, "pdf");
         Objects.requireNonNull(out, "out");
         Objects.requireNonNull(format, "format");
         Objects.requireNonNull(settings, "settings");
-        run(settings.timeout(), () -> {
-            switch (format) {
-                case DOCX -> PdfToDocx.convert(pdf, out, settings.document());
-                case ODT -> PdfToOdt.convert(pdf, out, settings.document());
-                case FODT, XML -> PdfToOdt.convertFlat(pdf, out, settings.document());
-                case RTF -> PdfToRtf.convert(pdf, out, settings.document());
-                case TXT -> PdfToText.convert(pdf, out, settings.document());
-                case HTML -> PdfToHtml.convert(pdf, out, settings.document());
-                case JSON -> PdfToJson.convert(pdf, out, settings.document());
-                case MARKDOWN -> PdfToMarkdown.convert(pdf, out, settings.document());
-                case EPUB -> PdfToEpub.convert(pdf, out, settings.document(), settings.ebook());
-                case AZW3 -> PdfToAzw3.convert(pdf, out, settings.document(), settings.ebook());
-                case PPTX -> PdfToPptx.convert(pdf, out, settings.slides());
-                case ODP -> PdfToOdp.convert(pdf, out, settings.slides());
-                case XLSX, ODS, CSV -> PdfToXlsx.convert(pdf, out, settings.workbook(format));
+        // The worker writes a private file, so one that outlives the timeout never touches the caller's stream
+        Path part = Files.createTempFile("office-convert-", ".part");
+        try {
+            run(settings.timeout(), () -> {
+                try (OutputStream os = new BufferedOutputStream(Files.newOutputStream(part), 1 << 16)) {
+                    write(pdf, os, format, settings);
+                } finally {
+                    if (Thread.currentThread().isInterrupted()) {
+                        deleteQuietly(part);
+                    }
+                }
+                return null;
+            });
+            try {
+                Files.copy(part, out);
+                out.flush();
+            } catch (InterruptedIOException e) {
+                // the caller's own stream may have swallowed the interrupt that stopped it; not a socket timeout
+                if (e.getClass() == InterruptedIOException.class) {
+                    Thread.currentThread().interrupt();
+                }
+                throw e;
             }
-            return null;
-        });
+        } finally {
+            deleteQuietly(part);
+        }
+    }
+
+    private static void write(PDDocument pdf, OutputStream out, Format format, Settings settings) throws IOException {
+        switch (format) {
+            case DOCX -> PdfToDocx.convert(pdf, out, settings.document());
+            case ODT -> PdfToOdt.convert(pdf, out, settings.document());
+            case FODT, XML -> PdfToOdt.convertFlat(pdf, out, settings.document());
+            case RTF -> PdfToRtf.convert(pdf, out, settings.document());
+            case TXT -> PdfToText.convert(pdf, out, settings.document());
+            case HTML -> PdfToHtml.convert(pdf, out, settings.document());
+            case JSON -> PdfToJson.convert(pdf, out, settings.document());
+            case MARKDOWN -> PdfToMarkdown.convert(pdf, out, settings.document());
+            case EPUB -> PdfToEpub.convert(pdf, out, settings.document(), settings.ebook());
+            case AZW3 -> PdfToAzw3.convert(pdf, out, settings.document(), settings.ebook());
+            case PPTX -> PdfToPptx.convert(pdf, out, settings.slides());
+            case ODP -> PdfToOdp.convert(pdf, out, settings.slides());
+            case XLSX, ODS, CSV -> PdfToXlsx.convert(pdf, out, settings.workbook(format));
+        }
+    }
+
+    private static void deleteQuietly(Path file) {
+        try {
+            Files.deleteIfExists(file);
+        } catch (IOException ignored) {
+            // an abandoned worker may still hold it open; it deletes the file itself when it stops
+        }
     }
 
     public static String text(Path pdf) throws IOException {
@@ -306,6 +349,55 @@ public final class OfficeConvert {
         return PdfFootprint.estimate(pdf, settings.firstPage(), settings.lastPage(), dpi);
     }
 
+    /** What a conversion produced: the pages it converted, its warnings in plain words, and whether content of the
+     * PDF was left out of the output (a picture that could not be decoded, a page cut short by a limit). */
+    public record Result(int pages, List<String> warnings, boolean partial) {
+
+        public Result {
+            Objects.requireNonNull(warnings, "warnings");
+            warnings = List.copyOf(warnings);
+        }
+    }
+
+    /** As {@link #convert(Path, Path)}, reporting what the conversion left out instead of only logging it. */
+    public static Result convertWithResult(Path pdf, Path out) throws IOException {
+        return convertWithResult(pdf, out, Settings.defaults());
+    }
+
+    public static Result convertWithResult(Path pdf, Path out, Settings settings) throws IOException {
+        Format format;
+        try {
+            format = Format.of(out);
+        } catch (IllegalArgumentException e) {
+            throw new UnsupportedFormatException(e.getMessage(), e);
+        }
+        return convertWithResult(pdf, out, format, settings);
+    }
+
+    public static Result convertWithResult(Path pdf, Path out, Format format, Settings settings) throws IOException {
+        Objects.requireNonNull(pdf, "pdf");
+        Objects.requireNonNull(out, "out");
+        Objects.requireNonNull(format, "format");
+        Objects.requireNonNull(settings, "settings");
+        try (Warnings.Sink sink = Warnings.open()) {
+            Admission.readmitting(() -> {
+                sink.reset();
+                convertOnce(pdf, out, format, settings);
+                return null;
+            });
+            return new Result(sink.pages(), sink.messages(), sink.partial());
+        }
+    }
+
+    /** As {@link #convert(PDDocument, OutputStream, Format, Settings)}, reporting what the conversion left out. */
+    public static Result convertWithResult(PDDocument pdf, OutputStream out, Format format, Settings settings)
+            throws IOException {
+        try (Warnings.Sink sink = Warnings.open()) {
+            convert(pdf, out, format, settings);
+            return new Result(sink.pages(), sink.messages(), sink.partial());
+        }
+    }
+
     @FunctionalInterface
     public interface Work<T> {
         T call() throws IOException;
@@ -321,8 +413,35 @@ public final class OfficeConvert {
         } catch (ArithmeticException e) {
             nanos = Long.MAX_VALUE;
         }
-        FutureTask<T> task = new FutureTask<>(() -> guarded(work));
-        Thread worker = Thread.ofPlatform().name("office-convert").daemon().stackSize(STACK_BYTES).start(task);
+        // A worker of a thread that already converts carries its ticket, so nested work never waits for a slot
+        Admission.Ticket held = Admission.lend();
+        AtomicBoolean returned = new AtomicBoolean();
+        Runnable giveBack = () -> {
+            if (returned.compareAndSet(false, true)) {
+                Admission.giveBack(held);
+            }
+        };
+        FutureTask<T> task = new FutureTask<>(() -> {
+            try {
+                Admission.carry(held);
+                return guarded(work);
+            } finally {
+                giveBack.run();
+            }
+        });
+        Thread worker;
+        try {
+            worker = Thread.ofPlatform().name("office-convert").daemon().stackSize(STACK_BYTES).start(() -> {
+                try {
+                    task.run();
+                } finally {
+                    giveBack.run();
+                }
+            });
+        } catch (RuntimeException | Error e) {
+            giveBack.run();
+            throw e;
+        }
         try {
             return nanos == 0 ? task.get() : task.get(nanos, TimeUnit.NANOSECONDS);
         } catch (TimeoutException e) {
@@ -362,7 +481,11 @@ public final class OfficeConvert {
             if (stoppedForMemory(e)) {
                 throw Admission.NeedsMemory.causedBy(e);
             }
-            throw e;
+            if (Thread.currentThread().isInterrupted()) {
+                throw new InterruptedIOException("Conversion interrupted");
+            }
+            String reason = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+            throw new IOException("The document could not be converted: " + reason, e);
         } catch (OutOfMemoryError e) {
             throw Admission.NeedsMemory.causedBy(e);
         } catch (StackOverflowError e) {

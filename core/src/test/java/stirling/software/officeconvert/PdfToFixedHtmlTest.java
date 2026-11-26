@@ -2,6 +2,7 @@ package stirling.software.officeconvert;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.ByteArrayInputStream;
@@ -9,9 +10,11 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.Base64;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 import javax.imageio.ImageIO;
 import javax.imageio.ImageReader;
@@ -28,6 +31,9 @@ import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.PDResources;
 import org.apache.pdfbox.pdmodel.common.PDStream;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
+import org.apache.pdfbox.pdmodel.encryption.AccessPermission;
+import org.apache.pdfbox.pdmodel.encryption.InvalidPasswordException;
+import org.apache.pdfbox.pdmodel.encryption.StandardProtectionPolicy;
 import org.apache.pdfbox.pdmodel.font.PDType0Font;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
@@ -318,6 +324,35 @@ class PdfToFixedHtmlTest {
         String mixed = Files.readString(out, StandardCharsets.UTF_8);
         assertTrue(mixed.contains("fill:transparent;font-family:'Courier New',monospace\">A</text>"), mixed);
         assertTrue(mixed.contains("font-family:'Helvetica',sans-serif\">BC</text>"), mixed);
+    }
+
+    @Test
+    void aProtectedPdfOpensWithItsPasswordAndBidiControlsAreDropped() throws IOException {
+        Path pdf = dir.resolve("locked.pdf");
+        try (PDDocument doc = new PDDocument()) {
+            PDPage page = new PDPage();
+            doc.addPage(page);
+            try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+                cs.beginText();
+                cs.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA), 12);
+                cs.newLineAtOffset(72, 700);
+                cs.showText("Locked text");
+                cs.endText();
+            }
+            doc.getDocumentInformation().setTitle("Invoice ‮fdp.exe⁦");
+            doc.protect(new StandardProtectionPolicy("owner", "user", new AccessPermission()));
+            doc.save(pdf.toFile());
+        }
+        Path out = dir.resolve("locked.html");
+        assertThrows(InvalidPasswordException.class, () -> PdfToHtml.convertFixed(pdf, out, FixedHtml.Options.defaults()));
+        assertFalse(Files.exists(out));
+        PdfToHtml.convertFixed(pdf, out, FixedHtml.Options.defaults(), "user", Duration.ofMinutes(1));
+        String page = Files.readString(out, StandardCharsets.UTF_8);
+        assertTrue(page.contains("<title>Invoice fdp.exe</title>"), page);
+        assertTrue(page.contains("Locked"), page);
+        try (Stream<Path> left = Files.list(dir)) {
+            assertTrue(left.noneMatch(f -> f.getFileName().toString().endsWith(".part")));
+        }
     }
 
     private static int count(String needle) {

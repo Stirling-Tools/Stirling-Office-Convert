@@ -16,6 +16,7 @@ import stirling.software.officeconvert.RuntimeModules;
 import stirling.software.officeconvert.extract.PdfFiles;
 import stirling.software.officeconvert.jpx.JpxImageIO;
 import stirling.software.officeconvert.memory.Admission;
+import stirling.software.officeconvert.memory.ConversionTimedOut;
 import stirling.software.officeconvert.topdf.font.FontLibrary;
 import stirling.software.officeconvert.topdf.font.FontSet;
 
@@ -143,7 +144,7 @@ public final class PdfToPdfA {
         }
     }
 
-    public static final class TimedOut extends IOException {
+    public static final class TimedOut extends ConversionTimedOut {
         TimedOut(Duration limit) {
             super("The conversion took longer than " + limit.toMillis() + " ms and was stopped");
         }

@@ -32,7 +32,11 @@ public final class StreamGuard {
 
     public static final long MAX_DECODED = 256L << 20;
 
+    private static final String PICTURE_LEFT_OUT = "A picture inflates past " + (MAX_DECODED >> 20) + " MB and was left out";
+
     private static final Map<COSStream, Boolean> FITS = Collections.synchronizedMap(new WeakHashMap<>());
+
+    private static final Map<COSStream, Boolean> EMPTIED = Collections.synchronizedMap(new WeakHashMap<>());
 
     private StreamGuard() {}
 
@@ -52,9 +56,12 @@ public final class StreamGuard {
                         BrotliStreams.decode(s, cos);
                     }
                     // The subtype is the document's claim, so a stream labelled as an image is checked too.
-                    if (overflows(s)) {
+                    if (EMPTIED.containsKey(s)) {
+                        emptied++;
+                    } else if (overflows(s)) {
                         empty(s);
                         FITS.put(s, false);
+                        EMPTIED.put(s, Boolean.TRUE);
                         emptied++;
                     }
                 }
@@ -66,7 +73,7 @@ public final class StreamGuard {
             }
         }
         if (emptied > 0) {
-            LOG.warn(emptied + " stream(s) inflate past " + (MAX_DECODED >> 20) + " MB and were left out");
+            Warnings.leftOut(LOG, emptied + " stream(s) inflate past " + (MAX_DECODED >> 20) + " MB and were left out");
         }
         return emptied;
     }
@@ -74,6 +81,9 @@ public final class StreamGuard {
     public static boolean fits(COSStream s) {
         Boolean known = FITS.get(s);
         if (known != null) {
+            if (!known) {
+                Warnings.stillLeftOut(PICTURE_LEFT_OUT);
+            }
             return known;
         }
         boolean fits;
@@ -83,7 +93,7 @@ public final class StreamGuard {
             fits = false;
         }
         if (!fits) {
-            LOG.warn("A picture inflates past " + (MAX_DECODED >> 20) + " MB and was left out");
+            Warnings.leftOut(LOG, PICTURE_LEFT_OUT);
         }
         FITS.put(s, fits);
         return fits;

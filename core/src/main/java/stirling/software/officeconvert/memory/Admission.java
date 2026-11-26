@@ -130,7 +130,11 @@ public final class Admission {
         default void reclaim(boolean collect) {}
     }
 
-    public static class NeedsMemory extends InterruptedIOException {
+    /** A conversion the gate refused or stopped (busy, too large, out of memory), not a cancelled or timed-out one,
+     * though each is an {@link InterruptedIOException}. */
+    public interface Refusal {}
+
+    public static class NeedsMemory extends InterruptedIOException implements Refusal {
         public NeedsMemory() {
             super(NEEDS_MEMORY);
         }
@@ -162,7 +166,7 @@ public final class Admission {
         }
     }
 
-    public static final class Busy extends InterruptedIOException {
+    public static final class Busy extends InterruptedIOException implements Refusal {
         public Busy() {
             super(BUSY);
         }
@@ -247,7 +251,7 @@ public final class Admission {
         try {
             int stuck = 0;
             for (Ticket t : running) {
-                if (ABANDONED.contains(t.owner)) {
+                if (ABANDONED.contains(t.owner) || t.lingering) {
                     stuck++;
                 }
             }
@@ -367,6 +371,10 @@ public final class Admission {
 
         private volatile boolean closed;
 
+        private int lent;
+
+        private boolean lingering;
+
         private Ticket(long cost, Ticket previous, Ticket outer) {
             this.cost = cost;
             this.previous = previous;
@@ -409,16 +417,28 @@ public final class Admission {
             try {
                 if (!closed) {
                     closed = true;
-                    running.remove(this);
-                    inUse -= cost;
-                    if (outer != null && outer.gate() == Admission.this) {
-                        outer.held -= cost;
+                    if (lent > 0) {
+                        lingering = true;
+                    } else {
+                        release();
                     }
-                    freed.signalAll();
                 }
             } finally {
                 lock.unlock();
             }
+            forget();
+        }
+
+        private void release() {
+            running.remove(this);
+            inUse -= cost;
+            if (outer != null && outer.gate() == Admission.this) {
+                outer.held -= cost;
+            }
+            freed.signalAll();
+        }
+
+        private void forget() {
             if (Thread.currentThread() == owner && CURRENT.get() == this) {
                 Ticket open = open(previous);
                 if (open != null) {
@@ -435,6 +455,49 @@ public final class Admission {
             t = t.previous;
         }
         return t;
+    }
+
+    /** The open ticket the calling thread converts under, or null, for a worker thread it starts to {@link #carry}. */
+    public static Ticket current() {
+        return open(CURRENT.get());
+    }
+
+    public static Ticket lend() {
+        Ticket t = open(CURRENT.get());
+        if (t != null) {
+            Ticket root = t.outer == null ? t : t.outer;
+            root.gate().lock.lock();
+            try {
+                root.lent++;
+            } finally {
+                root.gate().lock.unlock();
+            }
+        }
+        return t;
+    }
+
+    public static void giveBack(Ticket lent) {
+        if (lent == null) {
+            return;
+        }
+        Ticket root = lent.outer == null ? lent : lent.outer;
+        root.gate().lock.lock();
+        try {
+            if (--root.lent == 0 && root.lingering) {
+                root.lingering = false;
+                root.release();
+            }
+        } finally {
+            root.gate().lock.unlock();
+        }
+    }
+
+    /** Runs this worker thread under the ticket of the thread that started it, so a conversion started here is nested
+     * and never queues for a second slot. */
+    public static void carry(Ticket held) {
+        if (open(held) != null) {
+            CURRENT.set(held);
+        }
     }
 
     /** Waits until the estimated heap is free and holds it until the ticket is closed; a document over the budget runs

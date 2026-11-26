@@ -7,6 +7,7 @@ import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InterruptedIOException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
@@ -25,6 +26,8 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 import stirling.software.officeconvert.build.PlacedContent;
 import stirling.software.officeconvert.build.RgbPixels;
 import stirling.software.officeconvert.extract.OperatorBudget;
+import stirling.software.officeconvert.extract.PdfFiles;
+import stirling.software.officeconvert.extract.Warnings;
 import stirling.software.officeconvert.layout.Box;
 import stirling.software.officeconvert.model.Picture;
 import stirling.software.officeconvert.slides.PaintOrder.Kind;
@@ -92,7 +95,7 @@ final class Art {
     }
 
     List<Piece> pieces(PaintOrder paint, Set<Integer> represented, int pageIndex, AffineTransform toDisplay,
-            float width, float height) {
+            float width, float height) throws InterruptedIOException {
         Plan plan = plan(paint, represented, paint.drawsShapes(), width, height, gradients);
         if (!plan.shapes().isEmpty()) {
             Plan raster = plan(paint, represented, false, width, height, gradients);
@@ -104,18 +107,26 @@ final class Art {
         List<Run> kept = plan.runs();
         kept.sort(Comparator.comparingDouble(r -> -r.box.area()));
         int blanks = 0;
+        int tried = 0;
+        boolean blankTail = false;
         long start = renderer.operators();
         for (Run r : kept.subList(0, Math.min(MAX_PIECES, kept.size()))) {
             if (renderer.operators() - start > maxPageOperators) {
                 break;
             }
+            tried++;
             Piece p = piece(paint, r.marks, r.box, pageIndex, toDisplay, width, height);
             if (p != null) {
                 out.add(p);
                 blanks = 0;
             } else if (++blanks >= MAX_BLANK_PIECES) {
+                blankTail = true;
                 break;
             }
+        }
+        if (!blankTail && tried < kept.size()) {
+            Warnings.leftOut(LOG, (kept.size() - tried) + " piece(s) of art on page " + (pageIndex + 1)
+                    + " left out: the page draws more than can be rendered");
         }
         return out;
     }
@@ -236,13 +247,13 @@ final class Art {
     }
 
     Piece together(PaintOrder paint, List<Mark> marks, int pageIndex, AffineTransform toDisplay, float width,
-            float height) {
+            float height) throws InterruptedIOException {
         Box b = bounds(marks, width, height);
         return b == null ? null : piece(paint, marks, b, pageIndex, toDisplay, width, height);
     }
 
     private Piece piece(PaintOrder paint, List<Mark> run, Box box, int pageIndex, AffineTransform toDisplay,
-            float width, float height) {
+            float width, float height) throws InterruptedIOException {
         Set<Integer> orders = new HashSet<>();
         int first = Integer.MAX_VALUE;
         boolean blended = false;
@@ -277,8 +288,11 @@ final class Art {
             Picture pic = new Picture(ref, box.width(), box.height());
             return new Piece(new PictureShape(new Frame(box.x(), box.top(), box.width(), box.height()), pic),
                     run.stream().mapToInt(Mark::order).max().orElse(0));
+        } catch (InterruptedIOException e) {
+            throw e;
         } catch (IOException | RuntimeException e) {
-            LOG.warn("Page art left out: it could not be rendered", e);
+            PdfFiles.stopIfInterrupted();
+            Warnings.leftOut(LOG, "Page art left out: it could not be rendered", e);
             return null;
         }
     }

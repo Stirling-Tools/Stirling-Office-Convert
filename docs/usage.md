@@ -221,12 +221,14 @@ OfficeConvert.convert(Path.of("in.pdf"), Path.of("out.pptx"), Settings.defaults(
         .pictureFallback(true)        // keep a page that cannot be converted as a picture instead of failing
         .figureDpi(200)               // resolution of drawings turned into pictures
         .sheets(PdfToXlsx.Sheets.TABLE)   // spreadsheets: a sheet per table instead of per page
-        .pictures(Pictures.LOSSLESS)  // every pixel, no JPEG compression (see Pictures)
+        .pictures(Pictures.LOSSLESS)  // no lossy compression of pictures (see Pictures)
         .timeout(Duration.ofMinutes(2)));  // fail with OfficeConvert.TimedOut past this (default 5 minutes, ZERO = none)
 
 String text = OfficeConvert.text(Path.of("in.pdf"));                      // text in reading order
 
-// A document you already opened, into your own stream; you keep both, and the stream stays open.
+// A document you already opened, into your own stream; you keep both, and the stream stays open. The stream gets
+// the output only once the conversion succeeded; after a TimedOut, do not reuse or close the document while a
+// stopped worker may still read it (load a private copy per conversion when in doubt).
 try (PDDocument doc = Loader.loadPDF(bytes)) {
     OfficeConvert.convert(doc, response.getOutputStream(), OfficeConvert.Format.DOCX, Settings.defaults());
 }
@@ -256,17 +258,22 @@ stay available for options the facade leaves out, such as untyped spreadsheet ce
 `Pictures.COMPACT`, the default, keeps pictures at 220 ppi or more at their printed size (Word's own default)
 and stores a large picture without transparency as a JPEG of quality 90. Files come out several times smaller,
 and the eye cannot tell those JPEGs from the originals, but flat artwork with lettering can show faint fuzz on
-sharp edges when zoomed right in. `Pictures.LOSSLESS` keeps every pixel the PDF holds and compresses nothing
-lossily: pictures, page backgrounds and slide art are PNG, and where a format needs a cropped or turned JPEG
+sharp edges when zoomed right in. With `Pictures.LOSSLESS` the pictures that are copied or decoded are stored
+without lossy compression: pictures, page backgrounds and slide art are PNG, and where a format needs a cropped or turned JPEG
 redrawn (ODT, ODP, RTF) it is redrawn as PNG. Either way, JPEGs in the PDF are copied as they are. Only a picture past the decoding budget of about 32 million pixels
-is thinned.
+is thinned, a stencil mask past it is left out, and drawings turned into pictures are rendered at `figureDpi`.
 
 The `Path` overload writes beside the target and moves the file into place, so a failed conversion leaves nothing
-behind. Every failure is an `IOException`; a page that cannot be converted fails the conversion naming the page.
+behind. Every failure is an `IOException` (an unexpected `RuntimeException` arrives wrapped in one, and only an
+`Error` other than running out of memory or stack is rethrown as it is); a page that cannot be converted fails the conversion naming the page.
 An interrupted thread stops within moments, mid-page, with an `InterruptedIOException`, which is how the timeout
 works. Each conversion runs on its own worker thread with an 8 MB stack; a document nested too deeply for it fails
 with "The document nests too deeply to convert" instead of a `StackOverflowError`. `OfficeConvert.run(timeout, work)`
 gives other converters, such as `PdfToPpt`, the same worker, timeout and failure handling. Warnings go through Commons Logging, like PDFBox's own, which reaches SLF4J or Log4j when either is present.
+`OfficeConvert.convertWithResult` takes the same arguments as `convert` and also returns a `Result`: the pages
+converted, the warnings in plain words, and `partial()`, true when content of the PDF was left out of the output (a
+picture that could not be decoded or was past a limit, a figure that could not be rendered, a page cut short by its
+operator or form limit, a stream emptied as a compression bomb). A page kept as a picture is a warning only.
 
 Damaged input is read the way viewers read it: a broken operator is skipped, and a content stream that breaks off
 keeps what it drew before the break. Limits that keep one document from exhausting a shared server, each far above
@@ -635,6 +642,7 @@ PdfToMarkdown.convertPackage(pdDocument, zipStream, options); // document.md plu
 String text = PdfToText.text(pdDocument, options);
 PdfToHtml.convert(pdf, Path.of("out.html"), options);      // one HTML5 file, pictures as data: URIs
 PdfToHtml.convertFixed(pdf, Path.of("page.html"), FixedHtml.Options.defaults()); // each page as it looks
+PdfToHtml.convertFixed(pdf, Path.of("page.html"), FixedHtml.Options.defaults(), "secret", Duration.ofMinutes(2)); // password, timeout (default 5 min)
 PdfToJson.convert(pdf, Path.of("out.json"), options);      // the document model as JSON
 PdfToEpub.convert(pdf, Path.of("out.epub"), options);      // a reflowing EPUB 3 book
 PdfToAzw3.convert(pdf, Path.of("out.azw3"), options);      // the same book for Kindle (KF8)
@@ -949,6 +957,14 @@ further; the JDK default is 240 MB.
   with status 2. Write `.docx` or `.rtf` instead.
 - Input of a kind the library does not read, by extension or content, throws `UnsupportedFormatException`, an
   `IOException` subclass; a damaged or empty file of a kind it reads still throws a plain `IOException`.
+- `OfficeConvert.TimedOut`, `OfficeToPdf.TimedOut` and `PdfToPdfA.TimedOut` now share the base class
+  `stirling.software.officeconvert.memory.ConversionTimedOut` (an `IOException`), so one catch covers all three.
+- `Admission.Busy`, `TooLarge`, `NeedsMemory` and `Stopped` implement the marker interface `Admission.Refusal`:
+  check `e instanceof Admission.Refusal` to tell a refused or stopped conversion from a cancelled one. They still
+  extend `InterruptedIOException`.
+- `OfficeConvert.convertWithResult` returns the pages converted, the warnings and a `partial` flag.
+- A conversion started on a thread that already converts (inside `OfficeConvert.run`) runs under that thread's
+  admission ticket and no longer queues for a second slot.
 
 ### 0.2.0
 

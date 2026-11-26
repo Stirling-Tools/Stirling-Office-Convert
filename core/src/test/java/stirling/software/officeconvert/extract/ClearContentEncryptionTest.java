@@ -30,11 +30,19 @@ class ClearContentEncryptionTest {
     }
 
     private static DamagedPdf encrypted(String streams, String strings) {
+        return encrypted(streams, strings, "/EFOpen");
+    }
+
+    private static DamagedPdf encrypted(String streams, String strings, String event) {
+        return encrypted(streams, strings, event, "");
+    }
+
+    private static DamagedPdf encrypted(String streams, String strings, String event, String moreFilters) {
         String key = "(" + "\\000".repeat(32) + ")";
         return DamagedPdf.hello()
                 .object(5, "<< /Pages 1 0 R /Type /Catalog /Names << /EmbeddedFiles << /Names [] >> >> >>")
                 .object(7, "<< /Filter /Standard /V 4 /R 4 /Length 128 /P -1028 /O " + key + " /U " + key
-                        + " /CF << /StdCF << /AuthEvent /EFOpen /CFM /AESV2 /Length 16 >> >> /EFF /StdCF"
+                        + " /CF << /StdCF << /AuthEvent " + event + " /CFM /AESV2 /Length 16 >>" + moreFilters + " >> /EFF /StdCF"
                         + streams + strings + " /EncryptMetadata false >>")
                 .trailer("/Root 5 0 R /Encrypt 7 0 R /ID [<00112233445566778899AABBCCDDEEFF>"
                         + " <00112233445566778899AABBCCDDEEFF>]");
@@ -64,5 +72,23 @@ class ClearContentEncryptionTest {
         assertThrows(InvalidPasswordException.class, () -> PdfFiles.open(in, null));
         Path attachmentsOnly = write(encrypted(" /StmF /Identity", " /StrF /Identity"));
         assertThrows(InvalidPasswordException.class, () -> PdfFiles.openAsStored(attachmentsOnly, null));
+        Path wholeDocument = write(encrypted(" /StmF /Identity", " /StrF /Identity", "/DocOpen"));
+        assertThrows(InvalidPasswordException.class, () -> PdfFiles.open(wholeDocument, null));
+        assertThrows(InvalidPasswordException.class, () -> PdfFiles.open(wholeDocument, "wrong"));
+    }
+
+    @Test
+    void aCryptFilterAStreamCouldNameStillNeedsItsPassword() throws IOException {
+        Path docOpen = write(encrypted(" /StmF /Identity", " /StrF /Identity", "/EFOpen",
+                " /DocCF << /AuthEvent /DocOpen /CFM /AESV2 /Length 16 >>"));
+        assertThrows(InvalidPasswordException.class, () -> PdfFiles.open(docOpen, null));
+        Path defaultEvent = write(encrypted(" /StmF /Identity", " /StrF /Identity", "/EFOpen",
+                " /DocCF << /CFM /AESV2 /Length 16 >>"));
+        assertThrows(InvalidPasswordException.class, () -> PdfFiles.open(defaultEvent, null));
+        Path attachmentFilters = write(encrypted(" /StmF /Identity", " /StrF /Identity", "/EFOpen",
+                " /MoreCF << /AuthEvent /EFOpen /CFM /AESV2 /Length 16 >>"));
+        try (PDDocument doc = PdfFiles.open(attachmentFilters, null)) {
+            assertEquals("Hello PDF-world!", text(doc));
+        }
     }
 }

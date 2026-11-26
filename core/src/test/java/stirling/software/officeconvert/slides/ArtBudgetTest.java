@@ -1,10 +1,12 @@
 package stirling.software.officeconvert.slides;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.awt.geom.AffineTransform;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Set;
 
 import org.apache.pdfbox.cos.COSName;
@@ -17,6 +19,7 @@ import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
 import org.junit.jupiter.api.Test;
 
 import stirling.software.officeconvert.extract.HiddenContent;
+import stirling.software.officeconvert.extract.Warnings;
 import stirling.software.officeconvert.build.PlacedContent;
 import stirling.software.officeconvert.model.Picture;
 
@@ -28,7 +31,7 @@ class ArtBudgetTest {
 
     @Test
     void manySeparatePiecesOnALongPageStopAtTheOperatorBudget() throws Exception {
-        try (PDDocument doc = manyPieces()) {
+        try (PDDocument doc = manyPieces(FILLER); Warnings.Sink sink = Warnings.open()) {
             PDPage page = doc.getPage(0);
             AffineTransform toDisplay = new AffineTransform(1, 0, 0, -1, 0, 792);
             PaintOrder paint = PaintOrder.read(page, toDisplay, 612, 792, HiddenContent.of(null));
@@ -37,10 +40,24 @@ class ArtBudgetTest {
             long perRender = 3L * FILLER + 1000;
             assertTrue(art.operators() > PAGE_OPERATORS, () -> "" + art.operators());
             assertTrue(art.operators() <= PAGE_OPERATORS + perRender, () -> "" + art.operators());
+            assertTrue(sink.partial(), () -> sink.messages().toString());
         }
     }
 
-    private static PDDocument manyPieces() throws Exception {
+    @Test
+    void piecesPastTheCapAreReportedAsLeftOut() throws Exception {
+        try (PDDocument doc = manyPieces(0); Warnings.Sink sink = Warnings.open()) {
+            PDPage page = doc.getPage(0);
+            AffineTransform toDisplay = new AffineTransform(1, 0, 0, -1, 0, 792);
+            PaintOrder paint = PaintOrder.read(page, toDisplay, 612, 792, HiddenContent.of(null));
+            List<Art.Piece> pieces = new Art(doc, new Store(), 72f, false, g -> false, Long.MAX_VALUE)
+                    .pieces(paint, Set.of(), 0, toDisplay, 612, 792);
+            assertEquals(120, pieces.size());
+            assertTrue(sink.partial(), () -> sink.messages().toString());
+        }
+    }
+
+    private static PDDocument manyPieces(int filler) throws Exception {
         PDDocument doc = new PDDocument();
         PDPage page = new PDPage();
         PDResources resources = new PDResources();
@@ -48,7 +65,7 @@ class ArtBudgetTest {
         page.setResources(resources);
         doc.addPage(page);
         StringBuilder sb = new StringBuilder();
-        sb.append("0 0 m 1 0 l n\n".repeat(FILLER));
+        sb.append("0 0 m 1 0 l n\n".repeat(filler));
         for (int i = 0; i < 150; i++) {
             int x = 20 + (i % 15) * 38;
             int y = 40 + (i / 15) * 70;
