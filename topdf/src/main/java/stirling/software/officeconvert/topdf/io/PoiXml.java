@@ -1,6 +1,7 @@
 package stirling.software.officeconvert.topdf.io;
 
 import java.io.IOException;
+import java.util.AbstractList;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -31,33 +32,52 @@ public final class PoiXml {
 
     private PoiXml() {}
 
+    /** Makes POI's shared XML options, for the life of the JVM, refuse DOCTYPEs and parse through {@link #reader()}.
+     * @throws IllegalStateException when the host has already given POI another reader, which would go unhardened */
     public static void install() {
-        if (installed) {
+        if (installed && POIXMLTypeLoader.DEFAULT_XML_OPTIONS.getLoadUseXMLReader() == READER) {
             return;
         }
         synchronized (PoiXml.class) {
-            if (installed) {
-                return;
-            }
-            XmlOptions options = POIXMLTypeLoader.DEFAULT_XML_OPTIONS;
-            options.setDisallowDocTypeDeclaration(true);
-            if (options.getLoadUseXMLReader() == null) {
-                options.setLoadUseXMLReader(READER);
-            }
+            install(POIXMLTypeLoader.DEFAULT_XML_OPTIONS);
             installed = true;
         }
     }
 
-    public static final List<String[]> PROCESS_LIMITS = List.of(new String[] {"jdk.xml.maxElementDepth", "1000"},
-            new String[] {"jdk.xml.totalEntitySizeLimit", "0"}, new String[] {"jdk.xml.maxGeneralEntitySizeLimit", "0"},
-            new String[] {"jdk.xml.elementAttributeLimit", "10000"});
+    static void install(XmlOptions options) {
+        XMLReader chosen = options.getLoadUseXMLReader();
+        if (chosen != null && chosen != READER) {
+            throw new IllegalStateException("POI's shared XML options (POIXMLTypeLoader.DEFAULT_XML_OPTIONS) already"
+                    + " use the XMLReader " + chosen.getClass().getName() + "; the converter parses only through its"
+                    + " own hardened reader, so leave setLoadUseXMLReader unset");
+        }
+        options.setDisallowDocTypeDeclaration(true);
+        options.setLoadUseXMLReader(READER);
+    }
+
+    private static final String[][] LIMITS = {{"jdk.xml.maxElementDepth", "1000"},
+        {"jdk.xml.totalEntitySizeLimit", "0"}, {"jdk.xml.maxGeneralEntitySizeLimit", "0"},
+        {"jdk.xml.elementAttributeLimit", "10000"}};
+
+    /** The property and value pairs {@link #raiseProcessLimits()} sets; read-only, each pair a fresh copy. */
+    public static final List<String[]> PROCESS_LIMITS = new AbstractList<>() {
+        @Override
+        public String[] get(int i) {
+            return LIMITS[i].clone();
+        }
+
+        @Override
+        public int size() {
+            return LIMITS.length;
+        }
+    };
 
     /** Sets the jdk.xml limits POI's slide and relationship parsers need, JVM-wide and only where unset; returns
      * the properties it set. The library never calls it on its own, since it also loosens the host's other parsers. */
     public static List<String> raiseProcessLimits() {
         List<String> set = new ArrayList<>();
         synchronized (System.class) {
-            for (String[] p : PROCESS_LIMITS) {
+            for (String[] p : LIMITS) {
                 if (System.getProperty(p[0]) == null) {
                     System.setProperty(p[0], p[1]);
                     set.add(p[0]);

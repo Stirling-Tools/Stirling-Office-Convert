@@ -2,6 +2,9 @@ package stirling.software.officeconvert.topdf.font;
 
 import java.io.IOException;
 import java.lang.ref.SoftReference;
+import java.nio.ByteBuffer;
+import java.nio.channels.SeekableByteChannel;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 
@@ -48,6 +51,10 @@ final class FontEntry {
     private SoftReference<FontProgram> program;
 
     private IOException broken;
+
+    private long retryAt;
+
+    private int failures;
 
     FontEntry(Path file, byte[] data, int index, long offset, String postScriptName, String family, String subfamily,
             String fullName, List<String> legacyFamilies, List<String> typographicFamilies, int weight, boolean bold,
@@ -141,7 +148,14 @@ final class FontEntry {
 
     boolean usable() {
         synchronized (this) {
-            return unusable == null && broken == null;
+            return unusable == null && (broken == null || Failures.due(retryAt));
+        }
+    }
+
+    // A failure kept until the JVM stops; others are retried after a while
+    boolean failedForGood() {
+        synchronized (this) {
+            return broken != null && retryAt == Failures.NEVER;
         }
     }
 
@@ -167,7 +181,7 @@ final class FontEntry {
     }
 
     synchronized FontProgram program() throws IOException {
-        if (broken != null) {
+        if (broken != null && !Failures.due(retryAt)) {
             throw broken;
         }
         FontProgram p = program == null ? null : program.get();
@@ -179,12 +193,34 @@ final class FontEntry {
                 }
                 p = FontProgram.load(this);
             } catch (IOException | RuntimeException e) {
+                if (Failures.interrupted(e)) {
+                    throw e;
+                }
                 broken = new IOException("The font " + describe() + " could not be read: " + e.getMessage(), e);
+                retryAt = parseFailure(e) || ++failures >= Failures.MAX_RETRIES ? Failures.NEVER : Failures.retryAt();
                 throw broken;
             }
+            broken = null;
+            failures = 0;
             program = new SoftReference<>(p);
         }
         return p;
+    }
+
+    // Bytes in memory, or a file that still reads, fail the same way every time; a locked file may not
+    private boolean parseFailure(Exception e) {
+        if (file == null || e instanceof RuntimeException) {
+            return true;
+        }
+        if (Failures.fileSystem(e)) {
+            return false;
+        }
+        try (SeekableByteChannel ch = Files.newByteChannel(file)) {
+            ch.position(Math.max(0, ch.size() - 1)).read(ByteBuffer.allocate(1));
+            return true;
+        } catch (IOException | RuntimeException unreadable) {
+            return false;
+        }
     }
 
     String describe() {

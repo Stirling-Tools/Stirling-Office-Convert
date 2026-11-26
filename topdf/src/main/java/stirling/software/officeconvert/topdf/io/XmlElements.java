@@ -3,6 +3,10 @@ package stirling.software.officeconvert.topdf.io;
 import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.Charset;
+import java.util.Arrays;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import stirling.software.officeconvert.memory.Admission;
 
@@ -29,6 +33,18 @@ public final class XmlElements extends FilterInputStream {
     private long count;
 
     private boolean open;
+
+    // The first bytes, until the XML declaration (if any) has closed and its encoding has been checked
+    private byte[] prolog = new byte[PROLOG];
+
+    private int seen;
+
+    private static final int PROLOG = 1024;
+
+    private static final byte[] EBCDIC_DECLARATION = {0x4C, 0x6F, (byte) 0xA7, (byte) 0x94};
+
+    private static final Pattern ENCODING =
+            Pattern.compile("^<\\?xml\\s[^>]*?encoding\\s*=\\s*[\"']([A-Za-z0-9._:-]{1,64})");
 
     private XmlElements(InputStream in, String part, long max, boolean checked) {
         super(in);
@@ -90,6 +106,9 @@ public final class XmlElements extends FilterInputStream {
     }
 
     private void see(int c) throws IOException {
+        if (prolog != null) {
+            prolog(c);
+        }
         if (open) {
             if (c == 0) {
                 return;
@@ -108,5 +127,51 @@ public final class XmlElements extends FilterInputStream {
         if (c == '<') {
             open = true;
         }
+    }
+
+    // The count keys on the byte 0x3C, so an encoding that writes '<' as another byte would go uncounted
+    private void prolog(int c) throws IOException {
+        prolog[seen++] = (byte) c;
+        if (seen == EBCDIC_DECLARATION.length && Arrays.equals(prolog, 0, seen, EBCDIC_DECLARATION, 0, seen)) {
+            throw unreadable("it is in an EBCDIC encoding");
+        }
+        if (c == '>' || seen == prolog.length) {
+            StringBuilder head = new StringBuilder();
+            for (int i = 0; i < seen; i++) {
+                int b = prolog[i] & 0xFF;
+                if (b != 0 && (head.length() > 0 || b < 0x80)) {
+                    head.append((char) b);
+                }
+            }
+            prolog = null;
+            // A declaration padded past the buffer could name its encoding where this check no longer looks
+            if (c != '>' && head.toString().startsWith("<?xml")) {
+                throw unreadable("its XML declaration is too long");
+            }
+            Matcher m = ENCODING.matcher(head);
+            if (m.find() && !countable(m.group(1))) {
+                throw unreadable("it is in the " + m.group(1) + " encoding, which is not supported");
+            }
+        }
+    }
+
+    private static boolean countable(String encoding) {
+        try {
+            byte[] marks = "<>/?!".getBytes(Charset.forName(encoding));
+            StringBuilder ascii = new StringBuilder();
+            for (byte b : marks) {
+                if (b != 0 && b != (byte) 0xFE && b != (byte) 0xFF) {
+                    ascii.append((char) (b & 0xFF));
+                }
+            }
+            return ascii.toString().equals("<>/?!");
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
+    }
+
+    private OfficeZip.DamagedPart unreadable(String why) {
+        String m = "The part " + part + " cannot be read: " + why;
+        return new OfficeZip.DamagedPart(part, m, null);
     }
 }

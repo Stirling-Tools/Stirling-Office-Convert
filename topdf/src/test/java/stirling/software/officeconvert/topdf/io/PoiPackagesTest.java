@@ -16,6 +16,8 @@ import java.nio.file.Path;
 import java.util.Comparator;
 import java.util.List;
 
+import javax.xml.parsers.SAXParserFactory;
+
 import org.apache.poi.ooxml.POIXMLTypeLoader;
 import org.apache.poi.openxml4j.opc.OPCPackage;
 import org.apache.poi.openxml4j.opc.PackageAccess;
@@ -379,13 +381,28 @@ class PoiPackagesTest {
     }
 
     @Test
-    void installsOnlyWhenTheHostHasNotChosenAReader() {
+    void installsItsReaderAndRefusesOneTheHostChose() throws Exception {
         PoiXml.install();
         XMLReader installed = POIXMLTypeLoader.DEFAULT_XML_OPTIONS.getLoadUseXMLReader();
         assertTrue(installed == PoiXml.reader(), String.valueOf(installed));
         PoiXml.install();
         assertTrue(POIXMLTypeLoader.DEFAULT_XML_OPTIONS.getLoadUseXMLReader() == installed);
         assertFalse(PoiXml.reader().getClass().getName().startsWith("com.sun."));
+
+        XmlOptions host = new XmlOptions();
+        host.setLoadUseXMLReader(SAXParserFactory.newDefaultInstance().newSAXParser().getXMLReader());
+        IllegalStateException e = assertThrows(IllegalStateException.class, () -> PoiXml.install(host));
+        assertTrue(e.getMessage().contains("setLoadUseXMLReader"), e.getMessage());
+    }
+
+    @Test
+    void theProcessLimitsCannotBeChanged() {
+        List<String[]> limits = PoiXml.PROCESS_LIMITS;
+        assertEquals("jdk.xml.maxElementDepth", limits.get(0)[0]);
+        limits.get(0)[1] = "1";
+        assertEquals("1000", PoiXml.PROCESS_LIMITS.get(0)[1]);
+        assertThrows(UnsupportedOperationException.class, () -> limits.set(0, new String[] {"a", "b"}));
+        assertThrows(UnsupportedOperationException.class, () -> limits.add(new String[] {"a", "b"}));
     }
 
     @Test

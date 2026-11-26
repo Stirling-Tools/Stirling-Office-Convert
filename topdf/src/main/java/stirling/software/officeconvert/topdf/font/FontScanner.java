@@ -39,10 +39,16 @@ final class FontScanner {
     private FontScanner() {}
 
     static List<FontEntry> scan(Path file) {
+        List<FontEntry> found = scanFile(file);
+        return found == null ? List.of() : found;
+    }
+
+    // Null when the file could not be read at all, as against read and found to hold no usable font
+    static List<FontEntry> scanFile(Path file) {
         try (Source src = Source.of(file)) {
             return scan(src, file, null);
         } catch (IOException | RuntimeException e) {
-            return List.of();
+            return Failures.interrupted(e) || Failures.fileSystem(e) ? null : List.of();
         }
     }
 
@@ -495,13 +501,18 @@ final class FontScanner {
         abstract Slice slice(long pos, int len) throws IOException;
 
         static Source of(Path file) throws IOException {
-            RandomAccessFile raf = new RandomAccessFile(file.toFile(), "r");
+            RandomAccessFile raf;
             long length;
+            try {
+                raf = new RandomAccessFile(file.toFile(), "r");
+            } catch (IOException e) {
+                throw new Failures.Unreadable(e);
+            }
             try {
                 length = raf.length();
             } catch (IOException e) {
                 raf.close();
-                throw e;
+                throw new Failures.Unreadable(e);
             }
             return new Source() {
                 @Override
@@ -515,8 +526,12 @@ final class FontScanner {
                         throw new IOException("Font data out of range");
                     }
                     byte[] b = new byte[len];
-                    raf.seek(pos);
-                    raf.readFully(b);
+                    try {
+                        raf.seek(pos);
+                        raf.readFully(b);
+                    } catch (IOException e) {
+                        throw new Failures.Unreadable(e);
+                    }
                     return new Slice(b);
                 }
 

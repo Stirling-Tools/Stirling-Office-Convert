@@ -14,6 +14,7 @@ import java.util.EnumSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 
 final class FontFiles {
 
@@ -34,7 +35,16 @@ final class FontFiles {
         }
         List<Scanned> out = new ArrayList<>();
         for (Key k : new LinkedHashSet<>(keys)) {
-            Scanned s = SCANNED.computeIfAbsent(k, FontFiles::scan);
+            Scanned s = SCANNED.get(k);
+            if (s == null) {
+                List<FontEntry> entries = FontScanner.scanFile(k.file());
+                List<FontEntry> read = entries == null ? List.of() : entries;
+                s = new Scanned(k, read, problem(k.file().toString(), read));
+                // A file the system would not let us read is looked at again next time
+                if (entries != null) {
+                    s = Objects.requireNonNullElse(SCANNED.putIfAbsent(k, s), s);
+                }
+            }
             if (s.problem() != null) {
                 problems.add(s.problem());
             }
@@ -50,11 +60,6 @@ final class FontFiles {
             problems.add(problem);
         }
         return entries;
-    }
-
-    private static Scanned scan(Key k) {
-        List<FontEntry> entries = FontScanner.scan(k.file());
-        return new Scanned(k, entries, problem(k.file().toString(), entries));
     }
 
     private static String problem(String name, List<FontEntry> entries) {
