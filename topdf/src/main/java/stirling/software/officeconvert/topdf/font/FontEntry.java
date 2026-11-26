@@ -54,6 +54,8 @@ final class FontEntry {
 
     private long retryAt;
 
+    private int failures;
+
     FontEntry(Path file, byte[] data, int index, long offset, String postScriptName, String family, String subfamily,
             String fullName, List<String> legacyFamilies, List<String> typographicFamilies, int weight, boolean bold,
             boolean italic, boolean symbolCmap, boolean noSubsetting, boolean postScript, String unusable) {
@@ -195,10 +197,11 @@ final class FontEntry {
                     throw e;
                 }
                 broken = new IOException("The font " + describe() + " could not be read: " + e.getMessage(), e);
-                retryAt = parseFailure(e) ? Failures.NEVER : Failures.retryAt();
+                retryAt = parseFailure(e) || ++failures >= Failures.MAX_RETRIES ? Failures.NEVER : Failures.retryAt();
                 throw broken;
             }
             broken = null;
+            failures = 0;
             program = new SoftReference<>(p);
         }
         return p;

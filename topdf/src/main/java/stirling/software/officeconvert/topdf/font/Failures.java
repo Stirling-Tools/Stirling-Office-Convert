@@ -15,6 +15,8 @@ final class Failures {
 
     static final long NEVER = Long.MAX_VALUE;
 
+    static final int MAX_RETRIES = 5;
+
     static volatile LongSupplier clock = System::nanoTime;
 
     private static final ThreadLocal<long[]> MISSES = ThreadLocal.withInitial(() -> new long[1]);

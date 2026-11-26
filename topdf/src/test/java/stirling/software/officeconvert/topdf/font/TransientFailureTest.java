@@ -76,6 +76,22 @@ class TransientFailureTest {
     }
 
     @Test
+    void aFontFileThatKeepsFailingIsGivenUpAfterItsRetries() throws IOException {
+        Path file = Files.write(dir.resolve("Gone.ttf"), TestFonts.renamed("Gone Face"));
+        List<FontEntry> entries = FontScanner.scan(file);
+        FontLibrary lib = FontLibrary.of(entries, Map.of(), Map.of());
+        Files.delete(file);
+        FontEntry e = entries.get(0);
+        for (int i = 0; i < Failures.MAX_RETRIES; i++) {
+            assertFalse(e.failedForGood(), "retry " + i);
+            assertNull(lib.exact("Gone Face", false, false));
+            later();
+        }
+        assertTrue(e.failedForGood());
+        assertFalse(e.usable());
+    }
+
+    @Test
     void anInterruptedLoadIsNotRemembered() throws IOException {
         Path file = Files.write(dir.resolve("Cut.ttf"), TestFonts.renamed("Cut Face"));
         FontEntry e = FontScanner.scan(file).get(0);
