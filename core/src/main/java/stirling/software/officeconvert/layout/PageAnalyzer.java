@@ -1,5 +1,6 @@
 package stirling.software.officeconvert.layout;
 
+import java.io.InterruptedIOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -58,7 +59,16 @@ public final class PageAnalyzer {
         this.detectTables = detectTables;
     }
 
-    public PageLayout analyze(PageData page) {
+    public PageLayout analyze(PageData page) throws InterruptedIOException {
+        try {
+            return analyzePage(page);
+        } catch (Polls.Stopped s) {
+            throw s.stop();
+        }
+    }
+
+    private PageLayout analyzePage(PageData page) {
+        Polls.check();
         boolean ocr = OcrText.dominates(page);
         List<Glyph> glyphs = OcrText.pageGlyphs(page);
         PageGraphics gfx = page.graphics();
@@ -93,6 +103,7 @@ public final class PageAnalyzer {
         rules.removeIf(formulas.consumed()::contains);
         fills.removeIf(formulas.consumed()::contains);
         fills.removeIf(usedMarks::contains);
+        Polls.check();
         Decorations.underlines(segments, rules);
         Decorations.highlights(segments, fills);
         Decorations.pills(segments, gfx.marks(), usedMarks);
@@ -111,6 +122,7 @@ public final class PageAnalyzer {
                     formulas.consumed());
         }
 
+        Polls.check();
         boolean tinted = tinted(page, gfx);
         Veils.Split veiled = Veils.split(gfx.marks(), gfx);
         List<PageGraphics.VectorMark> art = veiled.art();
@@ -145,6 +157,7 @@ public final class PageAnalyzer {
                 papers.add(m);
             }
         }
+        Polls.check();
         List<Box> strong = new ArrayList<>(MathFinder.displayMath(segments, stats.bodySize));
         for (Box b : FigureFinder.strongRegions(unused(art, usedMarks), page.width(), page.height())) {
             if (!FigureFinder.isProse(b, segments)) {
@@ -174,6 +187,7 @@ public final class PageAnalyzer {
             fills.removeIf(f -> Regions.insideAny(Regions.of(f), codes, 1f));
             strong.addAll(codes);
         }
+        Polls.check();
         List<TableDetection.Found> tables = detectTables
                 ? tableFinder.find(page, frame.textLeft(), frame.textRight(), segments, rules, fills, strong)
                 : new ArrayList<>();
@@ -191,6 +205,7 @@ public final class PageAnalyzer {
         List<Box> figures = new ArrayList<>();
         List<Box> backdrops = new ArrayList<>(FigureFinder.cluster(concat(shaped, drawnBehind), 1f));
         List<PageGraphics.VectorMark> marks = unused(art, usedMarks);
+        Polls.check();
         List<Box> choiceFields = choiceFields(page.widgets(), tableBoxes);
         List<Box> framedChoices = new ArrayList<>();
         for (Box f : FigureFinder.figures(strong, freeFills, freeRules, segments, marks, page.width(), page.height())) {
@@ -247,11 +262,13 @@ public final class PageAnalyzer {
                     Math.min(page.height(), p.bottom()));
             blocks.add(new PageLayout.FigureItem(on, true, true, gfx.order(p)));
         }
+        Polls.check();
         List<Line> flow = claimWords(segments, tables, figures, blocks);
         Notes notes = footnotes(flow, freeRules, frame, page);
         List<Line> sideNotes = new ArrayList<>();
         List<PageLayout.Band> bands = bands(page, flow, blocks, frame, ocr, sideNotes);
 
+        Polls.check();
         List<PageGraphics.VectorMark> dots = marks.stream().filter(PageGraphics.VectorMark::round).toList();
         List<PageLayout.Decoration> decorations =
                 new ArrayList<>(Decorations.leftovers(withoutCellShading(freeFills, tables), freeRules, dots, drawn, tableBoxes,
@@ -287,6 +304,7 @@ public final class PageAnalyzer {
         rules.removeIf(r -> Regions.insideAny(Regions.of(r), codes, 1f));
         fills.removeIf(f -> Regions.insideAny(Regions.of(f), codes, 1f));
         List<PageLayout.TextBoxItem> boxes = new ArrayList<>();
+        Polls.check();
         List<Line> pieces = FormPage.pieces(lines, rules, fills, tabLeaders);
         for (List<Line> block : FormPage.blocks(pieces, rules)) {
             boxes.add(placed.form(block, FormPage.room(block, pieces, rules, page.width()), page.width()));

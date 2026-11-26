@@ -6,7 +6,9 @@ import java.util.regex.Pattern;
 
 final class PageNumbers {
 
-    private static final Pattern EDGE_PUNCTUATION = Pattern.compile("^[\\p{Punct}\\u2013\\u2014]+|[\\p{Punct}\\u2013\\u2014]+$");
+    private static final Pattern NUMBER = Pattern.compile("[1-9][0-9]{0,3}");
+
+    private static final String PUNCTUATION = "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~–—";
 
     private PageNumbers() {}
 
@@ -17,8 +19,8 @@ final class PageNumbers {
             return out;
         }
         for (int i = 0; i < words.size(); i++) {
-            String t = EDGE_PUNCTUATION.matcher(words.get(i).text).replaceAll("");
-            if (!t.matches("[1-9][0-9]{0,3}")) {
+            String t = withoutEdgePunctuation(words.get(i).text);
+            if (!NUMBER.matcher(t).matches()) {
                 continue;
             }
             boolean edge = i == 0 || i == words.size() - 1;
@@ -33,5 +35,18 @@ final class PageNumbers {
             }
         }
         return out;
+    }
+
+    // A loop, not a regex: an end-anchored run retried at every offset is quadratic on long punctuation.
+    private static String withoutEdgePunctuation(String text) {
+        int from = 0;
+        int to = text.length();
+        while (from < to && PUNCTUATION.indexOf(text.charAt(from)) >= 0) {
+            from++;
+        }
+        while (to > from && PUNCTUATION.indexOf(text.charAt(to - 1)) >= 0) {
+            to--;
+        }
+        return text.substring(from, to);
     }
 }

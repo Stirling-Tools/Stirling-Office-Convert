@@ -14,6 +14,9 @@ import stirling.software.officeconvert.extract.PageData;
 public final class HeaderFooter {
 
     private static final float ZONE = 0.13f;
+    // A page this crowded at its edges has no running lines worth sampling.
+    private static final int MAX_ZONE_LINES = 1000;
+    private static final Pattern MARK_TEXT = Pattern.compile("[0-9*]{1,3}");
     private static final float MIN_SHARE = 0.4f;
     private static final Pattern DIGITS = Pattern.compile("[0-9]+");
     private static final Pattern ROMAN_ONLY = Pattern.compile("(?i)^[-– ]*[ivxlc]{1,6}[-– ]*$");
@@ -38,11 +41,20 @@ public final class HeaderFooter {
     private int landscapePages;
 
     void addPage(PageData page, List<Line> segments) {
+        float h = page.height();
+        int inZones = 0;
+        for (Line seg : segments) {
+            inZones += seg.bottom < h * ZONE || seg.top > h * (1 - ZONE) ? 1 : 0;
+        }
+        if (inZones > MAX_ZONE_LINES) {
+            return;
+        }
         sampledPages.add(page.index());
         landscapePages += page.width() > page.height() ? 1 : 0;
-        float h = page.height();
         List<Seen> onPage = seen.computeIfAbsent(page.index(), k -> new ArrayList<>());
-        for (Line seg : segments) {
+        for (int i = 0; i < segments.size(); i++) {
+            Polls.check(i);
+            Line seg = segments.get(i);
             boolean top = seg.bottom < h * ZONE;
             boolean bottom = seg.top > h * (1 - ZONE);
             if (!top && !bottom || marksText(seg, segments)) {
@@ -52,7 +64,7 @@ public final class HeaderFooter {
             String sig = signature(seg, top, page.width());
             onPage.add(new Seen(sig, seg.top, seg.bottom, seg));
             RunningLine r = candidates.computeIfAbsent(sig, k -> new RunningLine(k, top, seg.baseline));
-            if (r.occurrences.putIfAbsent(page.index(), seg) == null && beyond(seg, top, segments) >= 3) {
+            if (r.occurrences.putIfAbsent(page.index(), seg) == null && buried(seg, top, segments)) {
                 r.buried++;
             }
             for (int n : PageNumbers.in(seg)) {
@@ -63,7 +75,7 @@ public final class HeaderFooter {
     }
 
     private static boolean marksText(Line seg, List<Line> segments) {
-        if (seg.words.size() != 1 || !seg.text().strip().matches("[0-9*]{1,3}")) {
+        if (seg.words.size() != 1 || !MARK_TEXT.matcher(seg.text().strip()).matches()) {
             return false;
         }
         for (Line o : segments) {
@@ -75,18 +87,19 @@ public final class HeaderFooter {
         return false;
     }
 
-    private static int beyond(Line seg, boolean top, List<Line> segments) {
+    // Three lines past it bury a line; stopping there keeps a crowded zone linear.
+    private static boolean buried(Line seg, boolean top, List<Line> segments) {
         int n = 0;
         for (Line o : segments) {
             if (o == seg || Math.abs(o.baseline - seg.baseline) < 2f) {
                 continue;
             }
             float mid = (o.top + o.bottom) / 2f;
-            if (top ? mid < seg.bottom : mid > seg.top) {
-                n++;
+            if ((top ? mid < seg.bottom : mid > seg.top) && ++n >= 3) {
+                return true;
             }
         }
-        return n;
+        return false;
     }
 
     void finish(int pageCount) {

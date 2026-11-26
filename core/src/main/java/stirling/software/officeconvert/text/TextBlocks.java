@@ -16,7 +16,9 @@ final class TextBlocks {
 
     private static final float GAP = 3f;
 
-    private static final Pattern PAGE_ONLY = Pattern.compile("(?i)[\\s\\p{Punct}]*(page|pg\\.?|p\\.)?[\\s\\p{Punct}]*(of)?[\\s\\p{Punct}]*");
+    // Possessive runs: three adjacent greedy runs over one class backtrack cubically.
+    private static final Pattern PAGE_ONLY =
+            Pattern.compile("(?i)[\\s\\p{Punct}]*+(page|pg\\.?|p\\.)?[\\s\\p{Punct}]*+(of)?[\\s\\p{Punct}]*+");
 
     private final Map<Integer, String> markers = new HashMap<>();
     private boolean first = true;

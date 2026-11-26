@@ -1,5 +1,6 @@
 package stirling.software.officeconvert.layout;
 
+import java.io.InterruptedIOException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -113,8 +114,12 @@ public final class DocStats {
 
     public final Scripts.Profile scripts = new Scripts.Profile();
 
-    public void add(PageData page, List<Line> segments) {
-        headerFooter.addPage(page, segments);
+    public void add(PageData page, List<Line> segments) throws InterruptedIOException {
+        try {
+            headerFooter.addPage(page, segments);
+        } catch (Polls.Stopped s) {
+            throw s.stop();
+        }
         for (Line l : segments) {
             for (int wi = 0; wi < l.words.size(); wi++) {
                 Word w = l.words.get(wi);

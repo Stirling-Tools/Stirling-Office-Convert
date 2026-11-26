@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 
+import stirling.software.officeconvert.layout.Polls;
 import stirling.software.officeconvert.table.PageContent.PdfWord;
 import stirling.software.officeconvert.table.PageContent.Ruling;
 
@@ -41,6 +42,7 @@ final class LatticeFinder {
         }
         List<Found> found = new ArrayList<>();
         for (List<List<Ruling>> component : connected(hs, vs)) {
+            Polls.check();
             List<Ruling> componentHs = component.get(0);
             List<Ruling> componentVs = component.get(1);
             if (componentHs.size() >= 2 && componentVs.size() >= 2) {

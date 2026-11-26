@@ -58,6 +58,9 @@ public final class ColumnFinder {
 
     private static final int MAX_EDGES = 100;
 
+    // Each seed grows across every item, so past this many text lines the page is read as one column.
+    private static final int MAX_TEXT_ITEMS = 2500;
+
     private ColumnFinder() {}
 
     public static List<Band> find(
@@ -165,19 +168,20 @@ public final class ColumnFinder {
                 texts.add(it);
             }
         }
+        if (texts.size() > MAX_TEXT_ITEMS) {
+            return new ArrayList<>();
+        }
         texts.sort(Comparator.comparingDouble(Item::x));
         List<float[]> seeds = new ArrayList<>();
         for (int i = 0; i < texts.size(); i++) {
+            Polls.check(i);
             Item a = texts.get(i);
             Item nearest = null;
-            for (int j = 0; j < texts.size(); j++) {
+            for (int j = firstClear(texts, a.right(), minGutter); j < texts.size(); j++) {
                 Item b = texts.get(j);
-                if (b.x() - a.right() < minGutter
-                        || b.top() >= a.bottom() || a.top() >= b.bottom()) {
-                    continue;
-                }
-                if (nearest == null || b.x() < nearest.x()) {
+                if (b.top() < a.bottom() && a.top() < b.bottom()) {
                     nearest = b;
+                    break;
                 }
             }
             if (nearest != null) {
@@ -187,7 +191,9 @@ public final class ColumnFinder {
         }
         List<Gutter> accepted = new ArrayList<>();
         float textWidth = textRight - textLeft;
-        for (float[] seed : seeds) {
+        for (int si = 0; si < seeds.size(); si++) {
+            Polls.check(si);
+            float[] seed = seeds.get(si);
             Gutter g = grow(seed, items, minGutter, textWidth);
             if (g == null) {
                 continue;
@@ -224,6 +230,21 @@ public final class ColumnFinder {
             }
         }
         return accepted;
+    }
+
+    // First item, in x order, that starts at least a gutter right of the given edge.
+    private static int firstClear(List<Item> byX, float edge, float minGutter) {
+        int lo = 0;
+        int hi = byX.size();
+        while (lo < hi) {
+            int mid = (lo + hi) >>> 1;
+            if (byX.get(mid).x() - edge < minGutter) {
+                lo = mid + 1;
+            } else {
+                hi = mid;
+            }
+        }
+        return lo;
     }
 
     private static Gutter grow(float[] seed, List<Item> items, float minGutter, float textWidth) {

@@ -43,16 +43,51 @@ final class GutterSide {
     }
 
     int sharedRowsWithin(GutterSide other, float tolerance) {
+        float[] others = sorted(other.baselines);
         int n = 0;
         for (float y : baselines) {
-            for (float o : other.baselines) {
-                if (Math.abs(y - o) <= tolerance) {
-                    n++;
-                    break;
+            // y - o falls as o rises, so the first o within tolerance above is the only one to test.
+            int lo = 0;
+            int hi = others.length;
+            while (lo < hi) {
+                int mid = (lo + hi) >>> 1;
+                if (y - others[mid] > tolerance) {
+                    lo = mid + 1;
+                } else {
+                    hi = mid;
                 }
+            }
+            if (lo < others.length && y - others[lo] >= -tolerance) {
+                n++;
             }
         }
         return n;
+    }
+
+    // How many sorted values v have v - from at most (or below) the limit; v - from rises with v.
+    private static int leading(float[] sorted, float from, float limit, boolean inclusive) {
+        int lo = 0;
+        int hi = sorted.length;
+        while (lo < hi) {
+            int mid = (lo + hi) >>> 1;
+            float d = sorted[mid] - from;
+            if (inclusive ? d <= limit : d < limit) {
+                lo = mid + 1;
+            } else {
+                hi = mid;
+            }
+        }
+        return lo;
+    }
+
+    private static float[] sorted(Set<Float> values) {
+        float[] out = new float[values.size()];
+        int i = 0;
+        for (float v : values) {
+            out[i++] = v;
+        }
+        Arrays.sort(out);
+        return out;
     }
 
     float width() {
@@ -127,15 +162,15 @@ final class GutterSide {
     }
 
     private List<Item> withoutWrapEdge(List<Item> own, float width) {
+        float[] edges = new float[own.size()];
+        for (int i = 0; i < edges.length; i++) {
+            edges[i] = leftOfGutter ? own.get(i).right() : own.get(i).x();
+        }
+        Arrays.sort(edges);
         List<Item> out = new ArrayList<>();
         for (Item r : own) {
             float inner = leftOfGutter ? r.right() : r.x();
-            int shared = 0;
-            for (Item o : own) {
-                if (Math.abs((leftOfGutter ? o.right() : o.x()) - inner) <= 1.5f) {
-                    shared++;
-                }
-            }
+            int shared = leading(edges, inner, 1.5f, true) - leading(edges, inner, -1.5f, false);
             if (Math.abs(edge - inner) < 0.4f * width || shared < 3) {
                 out.add(r);
             }

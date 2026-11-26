@@ -13,11 +13,13 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 
 import stirling.software.officeconvert.Pictures;
 import stirling.software.officeconvert.extract.PageData;
+import stirling.software.officeconvert.extract.PdfFiles;
 import stirling.software.officeconvert.layout.Box;
 import stirling.software.officeconvert.layout.DocStats;
 import stirling.software.officeconvert.layout.LabelGround;
 import stirling.software.officeconvert.layout.PageLayout;
 import stirling.software.officeconvert.layout.ParaDraft;
+import stirling.software.officeconvert.layout.Polls;
 import stirling.software.officeconvert.model.Block;
 import stirling.software.officeconvert.model.Inline;
 import stirling.software.officeconvert.model.Numbering;
@@ -118,6 +120,14 @@ public final class DocumentBuilder {
     private record Slot(float ref, boolean top, boolean pageBreak) {}
 
     public void page(PageLayout layout, AffineTransform toDisplay) throws IOException {
+        try {
+            placePage(layout, toDisplay);
+        } catch (Polls.Stopped s) {
+            throw s.stop();
+        }
+    }
+
+    private void placePage(PageLayout layout, AffineTransform toDisplay) throws IOException {
         PageData page = layout.page();
         pageLayout = layout;
         if (pageCount == 0) {
@@ -157,6 +167,7 @@ public final class DocumentBuilder {
         paragraphs.fitting(flowing);
         float footTop = flowing && textOnly(layout) ? footTop(layout, flowBottom) : Float.MAX_VALUE;
         for (PageLayout.Band band : layout.bands()) {
+            PdfFiles.stopIfInterrupted();
             if (band.columns().stream().allMatch(c -> c.items().isEmpty())) {
                 continue;
             }
@@ -329,6 +340,7 @@ public final class DocumentBuilder {
         boolean columnTop = ci > 0 && !flowOn;
         float wrappedBottom = Float.NaN;
         for (int ii = 0; ii < col.items().size(); ii++) {
+            Polls.check(ii);
             PageLayout.Item item = col.items().get(ii);
             if (placeOutOfFlow(item, layout, toDisplay, col)) {
                 if (blocksColumn(item, col) && item.top() >= prevBottom - 1) {
