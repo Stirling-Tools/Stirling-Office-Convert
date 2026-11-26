@@ -71,6 +71,12 @@ class WebAssetsTlsTest {
                     }
                 }
             }
+            if (ex.getRequestURI().getPath().equals("/down")) {
+                ex.getResponseHeaders().add("Location", "http://site.test:" + ex.getLocalAddress().getPort() + "/");
+                ex.sendResponseHeaders(302, -1);
+                ex.close();
+                return;
+            }
             byte[] body = "<p>secure</p>".getBytes(StandardCharsets.UTF_8);
             ex.getResponseHeaders().add("Content-Type", "text/html");
             ex.sendResponseHeaders(200, body.length);
@@ -132,12 +138,14 @@ class WebAssetsTlsTest {
     }
 
     @Test
-    void aSlowLookupIsAbandonedAtTheTimeout() {
+    void aSlowLookupIsAbandonedAtTheTimeout() throws InterruptedException {
         CountDownLatch never = new CountDownLatch(1);
+        CountDownLatch cancelled = new CountDownLatch(1);
         WebAssets.Resolver stuck = host -> {
             try {
                 never.await(30, TimeUnit.SECONDS);
             } catch (InterruptedException e) {
+                cancelled.countDown();
                 Thread.currentThread().interrupt();
             }
             throw new IOException("released");
@@ -145,8 +153,17 @@ class WebAssetsTlsTest {
         long start = System.nanoTime();
         IOException e = assertThrows(IOException.class, () -> WebAssets.fetch("http://slow.test/",
                 ON.timeout(Duration.ofMillis(400)), stuck, LOOPBACK_ONLY, trusting));
+        assertTrue(cancelled.await(5, TimeUnit.SECONDS), "the lookup thread is interrupted");
         never.countDown();
         assertTrue(e.getMessage().contains("Looking up"), e.getMessage());
         assertTrue((System.nanoTime() - start) / 1_000_000 < 5_000);
+    }
+
+    @Test
+    void aRedirectFromHttpsToPlainHttpIsRefused() throws Exception {
+        int port = serve(valid("site.test"), authority);
+        IOException e = assertThrows(IOException.class, () -> WebAssets.fetch("https://site.test:" + port + "/down",
+                ON.redirects(true), TEST_HOSTS, LOOPBACK_ONLY, trusting));
+        assertTrue(e.getMessage().contains("https to plain http"), e.getMessage());
     }
 }

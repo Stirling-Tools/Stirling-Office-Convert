@@ -16,6 +16,7 @@ import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
 
+import stirling.software.officeconvert.extract.StreamGuard;
 import stirling.software.officeconvert.topdf.io.BoundedZip;
 import stirling.software.officeconvert.topdf.io.DecodedPicture;
 import stirling.software.officeconvert.topdf.io.PdfBytes;
@@ -136,6 +137,8 @@ public final class IWorkPreview {
                     if (src.isEncrypted()) {
                         encrypted = "The Apple iWork document's preview is encrypted";
                     } else if (src.getNumberOfPages() > 0) {
+                        // Importing a page decodes its content, so the PDF input guard runs first
+                        StreamGuard.check(src);
                         return pdf(src, out, maxPages);
                     }
                 }

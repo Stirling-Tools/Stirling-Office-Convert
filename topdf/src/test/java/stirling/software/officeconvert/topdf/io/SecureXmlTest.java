@@ -30,6 +30,16 @@ class SecureXmlTest {
     }
 
     @Test
+    void wholeParsesFromStreamsAndReadersStopAtTheElementBudget() {
+        String xml = "<r>" + "<e/>".repeat((int) XmlElements.domElements() + 1) + "</r>";
+        IOException bytes = assertThrows(IOException.class, () -> SecureXml.parse(in(xml), "/many.xml"));
+        assertTrue(bytes.getMessage().contains("/many.xml has more than"), bytes.getMessage());
+        IOException chars = assertThrows(IOException.class, () -> SecureXml.parse(new java.io.StringReader(xml)));
+        assertTrue(chars.getMessage().contains("XML elements"), chars.getMessage());
+        assertThrows(OfficeZip.DamagedPart.class, () -> SecureXml.parse(in(xml)));
+    }
+
+    @Test
     void parsesNamespacesAndBuiltInEntities() throws Exception {
         Document doc = SecureXml.parse(in("<w:doc xmlns:w=\"urn:w\"><w:t>a &amp; b &#x263A;</w:t></w:doc>"));
         assertEquals("urn:w", doc.getDocumentElement().getNamespaceURI());

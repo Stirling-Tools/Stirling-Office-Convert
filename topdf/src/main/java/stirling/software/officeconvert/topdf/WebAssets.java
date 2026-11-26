@@ -270,11 +270,16 @@ public final class WebAssets implements HtmlAssets {
                 if (location == null || hop >= access.maxRedirects()) {
                     throw new IOException("Too many redirects, or a redirect without a Location");
                 }
+                URI next;
                 try {
-                    at = uri(at.resolve(location.strip()).toString());
+                    next = uri(at.resolve(location.strip()).toString());
                 } catch (IllegalArgumentException e) {
                     throw new IOException("A redirect to an invalid URL", e);
                 }
+                if (at.getScheme().equalsIgnoreCase("https") && !next.getScheme().equalsIgnoreCase("https")) {
+                    throw new IOException("The server redirected from https to plain http, which is not followed");
+                }
+                at = next;
                 continue;
             }
             if (r.status() < 200 || r.status() >= 300) {
@@ -356,7 +361,7 @@ public final class WebAssets implements HtmlAssets {
     private InetAddress[] lookup(String host) throws IOException {
         long limit = Math.max(1, Math.min(remainingMillis(), LOOKUP_TIMEOUT.toMillis()));
         CompletableFuture<InetAddress[]> answer = new CompletableFuture<>();
-        Thread.ofVirtual().start(() -> {
+        Thread lookup = Thread.ofVirtual().start(() -> {
             try {
                 answer.complete(resolver.resolve(host));
             } catch (IOException | RuntimeException e) {
@@ -366,8 +371,11 @@ public final class WebAssets implements HtmlAssets {
         try {
             return answer.get(limit, TimeUnit.MILLISECONDS);
         } catch (TimeoutException e) {
+            // A resolver that polls stops here; the JDK's native lookup ends only when the OS answers
+            lookup.interrupt();
             throw new IOException("Looking up " + host + " took longer than " + limit + " ms", e);
         } catch (InterruptedException e) {
+            lookup.interrupt();
             Thread.currentThread().interrupt();
             throw new IOException("Interrupted while looking up " + host, e);
         } catch (ExecutionException e) {

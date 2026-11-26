@@ -1,5 +1,6 @@
 package stirling.software.officeconvert.topdf.io;
 
+import java.io.FilterReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InterruptedIOException;
@@ -23,6 +24,8 @@ import org.xml.sax.ErrorHandler;
 import org.xml.sax.InputSource;
 import org.xml.sax.SAXException;
 import org.xml.sax.SAXParseException;
+
+import stirling.software.officeconvert.memory.Admission;
 
 public final class SecureXml {
 
@@ -116,12 +119,80 @@ public final class SecureXml {
         return builder;
     }
 
+    // A DOM costs hundreds of bytes per element, so every whole parse counts them against the memory budget
     public static Document parse(InputStream in) throws IOException {
-        return parse(new InputSource(in));
+        if (in instanceof XmlElements) {
+            return parse(new InputSource(in));
+        }
+        String part = OfficeZip.partName(in);
+        return parse(in, part == null ? "XML" : part);
+    }
+
+    /** A DOM of {@code in}, failing with {@link OfficeZip.DamagedPart} naming {@code part} past the element budget. */
+    public static Document parse(InputStream in, String part) throws IOException {
+        return parse(new InputSource(XmlElements.dom(in, part)));
     }
 
     public static Document parse(Reader in) throws IOException {
-        return parse(new InputSource(in));
+        return parse(new InputSource(new CountedReader(in, XmlElements.domElements())));
+    }
+
+    // The character twin of XmlElements for text already decoded: '<' not followed by '/', '?' or '!' opens one
+    private static final class CountedReader extends FilterReader {
+
+        private final long max;
+
+        private long count;
+
+        private boolean open;
+
+        CountedReader(Reader in, long max) {
+            super(in);
+            this.max = max;
+        }
+
+        @Override
+        public int read() throws IOException {
+            int c = super.read();
+            if (c >= 0) {
+                see((char) c);
+            }
+            return c;
+        }
+
+        @Override
+        public int read(char[] b, int off, int len) throws IOException {
+            int n = super.read(b, off, len);
+            for (int i = off; i < off + n; i++) {
+                see(b[i]);
+            }
+            return n;
+        }
+
+        @Override
+        public long skip(long n) throws IOException {
+            long skipped = 0;
+            while (skipped < n && read() >= 0) {
+                skipped++;
+            }
+            return skipped;
+        }
+
+        private void see(char c) throws IOException {
+            if (open) {
+                open = false;
+                if (c != '/' && c != '?' && c != '!') {
+                    if (++count > max) {
+                        String m = XmlElements.tooMany("XML", max);
+                        throw new OfficeZip.DamagedPart("XML", m, new OfficeZip.Oversized(m));
+                    }
+                    if ((count & 0xFFF) == 0) {
+                        Admission.checkpoint();
+                    }
+                }
+            }
+            open = c == '<';
+        }
     }
 
     private static Document parse(InputSource source) throws IOException {

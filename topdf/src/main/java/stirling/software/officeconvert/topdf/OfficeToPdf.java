@@ -10,7 +10,12 @@ import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.time.Clock;
 import java.time.Duration;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -121,10 +126,10 @@ public final class OfficeToPdf {
     }
 
     /** {@code password} opens a password protected document; it is never written anywhere, nor printed by
-     * {@link #toString()}. */
+     * {@link #toString()}. A null {@code locale}, {@code zone} or {@code clock} means the host's. */
     public record Options(Duration timeout, List<Path> fontDirs, int maxPages, long maxScratchBytes, FontSet fonts,
             String displayName, String password, HtmlAssets htmlAssets, boolean allowPackages, boolean tableOfContents,
-            boolean pageNumbers, float zoom) {
+            boolean pageNumbers, float zoom, Locale locale, ZoneId zone, Clock clock) {
 
         public static final float MIN_ZOOM = 0.1f;
 
@@ -159,6 +164,13 @@ public final class OfficeToPdf {
             if (!(zoom >= MIN_ZOOM && zoom <= MAX_ZOOM)) {
                 throw new IllegalArgumentException("The zoom must be " + MIN_ZOOM + " to " + MAX_ZOOM + ", was " + zoom);
             }
+        }
+
+        public Options(Duration timeout, List<Path> fontDirs, int maxPages, long maxScratchBytes, FontSet fonts,
+                String displayName, String password, HtmlAssets htmlAssets, boolean allowPackages,
+                boolean tableOfContents, boolean pageNumbers, float zoom) {
+            this(timeout, fontDirs, maxPages, maxScratchBytes, fonts, displayName, password, htmlAssets, allowPackages,
+                    tableOfContents, pageNumbers, zoom, null, null, null);
         }
 
         public Options(Duration timeout, List<Path> fontDirs, int maxPages, long maxScratchBytes, FontSet fonts,
@@ -203,62 +215,93 @@ public final class OfficeToPdf {
 
         public Options timeout(Duration limit) {
             return new Options(limit, fontDirs, maxPages, maxScratchBytes, fonts, displayName, password, htmlAssets,
-                    allowPackages, tableOfContents, pageNumbers, zoom);
+                    allowPackages, tableOfContents, pageNumbers, zoom, locale, zone, clock);
         }
 
         public Options fontDirs(List<Path> dirs) {
             return new Options(timeout, dirs, maxPages, maxScratchBytes, fonts, displayName, password, htmlAssets,
-                    allowPackages, tableOfContents, pageNumbers, zoom);
+                    allowPackages, tableOfContents, pageNumbers, zoom, locale, zone, clock);
         }
 
         public Options fonts(FontSet set) {
             return new Options(timeout, fontDirs, maxPages, maxScratchBytes, set, displayName, password, htmlAssets,
-                    allowPackages, tableOfContents, pageNumbers, zoom);
+                    allowPackages, tableOfContents, pageNumbers, zoom, locale, zone, clock);
         }
 
         public Options maxPages(int pages) {
             return new Options(timeout, fontDirs, pages, maxScratchBytes, fonts, displayName, password, htmlAssets,
-                    allowPackages, tableOfContents, pageNumbers, zoom);
+                    allowPackages, tableOfContents, pageNumbers, zoom, locale, zone, clock);
         }
 
+        /** Bounds the PDF being written; temporary copies of the input are not counted. */
         public Options maxScratchBytes(long bytes) {
             return new Options(timeout, fontDirs, maxPages, bytes, fonts, displayName, password, htmlAssets,
-                    allowPackages, tableOfContents, pageNumbers, zoom);
+                    allowPackages, tableOfContents, pageNumbers, zoom, locale, zone, clock);
         }
 
         public Options displayName(String name) {
             return new Options(timeout, fontDirs, maxPages, maxScratchBytes, fonts, name, password, htmlAssets,
-                    allowPackages, tableOfContents, pageNumbers, zoom);
+                    allowPackages, tableOfContents, pageNumbers, zoom, locale, zone, clock);
         }
 
         public Options password(String secret) {
             return new Options(timeout, fontDirs, maxPages, maxScratchBytes, fonts, displayName, secret, htmlAssets,
-                    allowPackages, tableOfContents, pageNumbers, zoom);
+                    allowPackages, tableOfContents, pageNumbers, zoom, locale, zone, clock);
         }
 
         public Options htmlAssets(HtmlAssets assets) {
             return new Options(timeout, fontDirs, maxPages, maxScratchBytes, fonts, displayName, password, assets,
-                    allowPackages, tableOfContents, pageNumbers, zoom);
+                    allowPackages, tableOfContents, pageNumbers, zoom, locale, zone, clock);
         }
 
+        /** Gates a plain .zip of a page; .htmlz, .fbz and .epub are their own formats and need no flag. */
         public Options allowPackages(boolean allow) {
             return new Options(timeout, fontDirs, maxPages, maxScratchBytes, fonts, displayName, password, htmlAssets,
-                    allow, tableOfContents, pageNumbers, zoom);
+                    allow, tableOfContents, pageNumbers, zoom, locale, zone, clock);
         }
 
         public Options tableOfContents(boolean add) {
             return new Options(timeout, fontDirs, maxPages, maxScratchBytes, fonts, displayName, password, htmlAssets,
-                    allowPackages, add, pageNumbers, zoom);
+                    allowPackages, add, pageNumbers, zoom, locale, zone, clock);
         }
 
         public Options pageNumbers(boolean add) {
             return new Options(timeout, fontDirs, maxPages, maxScratchBytes, fonts, displayName, password, htmlAssets,
-                    allowPackages, tableOfContents, add, zoom);
+                    allowPackages, tableOfContents, add, zoom, locale, zone, clock);
         }
 
         public Options zoom(float scale) {
             return new Options(timeout, fontDirs, maxPages, maxScratchBytes, fonts, displayName, password, htmlAssets,
-                    allowPackages, tableOfContents, pageNumbers, scale);
+                    allowPackages, tableOfContents, pageNumbers, scale, locale, zone, clock);
+        }
+
+        /** The short date order of built-in spreadsheet date formats. */
+        public Options locale(Locale formats) {
+            return new Options(timeout, fontDirs, maxPages, maxScratchBytes, fonts, displayName, password, htmlAssets,
+                    allowPackages, tableOfContents, pageNumbers, zoom, formats, zone, clock);
+        }
+
+        /** The time zone of header dates and the PDF's creation date. */
+        public Options zone(ZoneId id) {
+            return new Options(timeout, fontDirs, maxPages, maxScratchBytes, fonts, displayName, password, htmlAssets,
+                    allowPackages, tableOfContents, pageNumbers, zoom, locale, id, clock);
+        }
+
+        /** The conversion's time; a given clock also fixes the PDF's /ID, so the same input gives the same bytes. */
+        public Options clock(Clock time) {
+            return new Options(timeout, fontDirs, maxPages, maxScratchBytes, fonts, displayName, password, htmlAssets,
+                    allowPackages, tableOfContents, pageNumbers, zoom, locale, zone, time);
+        }
+
+        /** The locale whose short date order built-in spreadsheet formats follow: {@code locale}, else the host's. */
+        public Locale formatLocale() {
+            return locale != null ? locale : Locale.getDefault(Locale.Category.FORMAT);
+        }
+
+        /** The conversion's time: {@code clock}, else the system clock, in {@code zone}, else the clock's zone. */
+        public ZonedDateTime now() {
+            Clock c = clock != null ? clock : Clock.systemDefaultZone();
+            return ZonedDateTime.now(c).withZoneSameInstant(zone != null ? zone : c.getZone());
         }
 
         public FontLibrary fontLibrary() {
@@ -271,7 +314,8 @@ public final class OfficeToPdf {
                     + ", maxScratchBytes=" + maxScratchBytes + ", fonts=" + fonts + ", displayName=" + displayName
                     + ", password=" + (password == null ? "none" : "given") + ", htmlAssets="
                     + (htmlAssets == HtmlAssets.NONE ? "none" : "given") + ", allowPackages=" + allowPackages
-                    + ", tableOfContents=" + tableOfContents + ", pageNumbers=" + pageNumbers + ", zoom=" + zoom + "]";
+                    + ", tableOfContents=" + tableOfContents + ", pageNumbers=" + pageNumbers + ", zoom=" + zoom
+                    + ", locale=" + locale + ", zone=" + zone + ", clock=" + clock + "]";
         }
     }
 
@@ -800,6 +844,7 @@ public final class OfficeToPdf {
             Format format = detect(zip, requested);
             try (Admission.Ticket ticket = Admission.jvm().enter(Footprint.estimate(zip, format));
                     PdfOutput output = new PdfOutput(fonts, options.maxScratchBytes())) {
+                output.timestamp(options.now(), idSeed(source, options));
                 output.info(DocumentInfo.read(zip));
                 RenderJob job = new RenderJob(zip, format, options, fonts, output);
                 job.admitted(ticket);
@@ -887,6 +932,7 @@ public final class OfficeToPdf {
             Renderer renderer, FontLibrary fonts) throws IOException {
         try (Admission.Ticket ticket = Admission.jvm().enter(Footprint.legacy(Files.size(source)));
                 PdfOutput output = new PdfOutput(fonts, options.maxScratchBytes())) {
+            output.timestamp(options.now(), idSeed(source, options));
             RenderJob job = new RenderJob(source, format, options, fonts, output);
             job.admitted(ticket);
             Throwable failed = null;
@@ -1180,6 +1226,27 @@ public final class OfficeToPdf {
         } catch (IOException | RuntimeException e) {
             file.toFile().deleteOnExit();
         }
+    }
+
+    static byte[] idSeed(Path source, Options options) throws IOException {
+        if (options.clock() == null) {
+            return null;
+        }
+        MessageDigest sha;
+        try {
+            sha = MessageDigest.getInstance("SHA-256");
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+        byte[] buffer = new byte[1 << 16];
+        try (InputStream in = Files.newInputStream(source)) {
+            int n;
+            while ((n = in.read(buffer)) >= 0) {
+                stopIfInterrupted();
+                sha.update(buffer, 0, n);
+            }
+        }
+        return sha.digest();
     }
 
     static void stopIfInterrupted() throws InterruptedIOException {

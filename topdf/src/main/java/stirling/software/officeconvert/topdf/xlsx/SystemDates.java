@@ -31,10 +31,6 @@ record SystemDates(String shortDate, boolean hour24) {
         }
     }
 
-    static SystemDates host() {
-        return of(Locale.getDefault(Locale.Category.FORMAT));
-    }
-
     // Excel always shows four year digits for the short date, whatever the locale's pattern says
     static String excel(String pattern) {
         StringBuilder out = new StringBuilder();

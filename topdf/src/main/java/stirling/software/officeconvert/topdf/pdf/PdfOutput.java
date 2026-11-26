@@ -5,9 +5,14 @@ import java.io.Closeable;
 import java.io.FilterOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.ArrayDeque;
 import java.util.Calendar;
+import java.util.GregorianCalendar;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.List;
@@ -15,7 +20,9 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
+import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSName;
+import org.apache.pdfbox.cos.COSString;
 import org.apache.pdfbox.io.MemoryUsageSetting;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDDocumentCatalog;
@@ -72,6 +79,10 @@ public final class PdfOutput implements Closeable {
     private final Map<Integer, Optional<DecodedPicture>> emoji = new HashMap<>();
 
     private DocumentInfo info = DocumentInfo.EMPTY;
+
+    private ZonedDateTime stamped;
+
+    private byte[] idSeed;
 
     private boolean finished;
 
@@ -191,6 +202,14 @@ public final class PdfOutput implements Closeable {
 
     public void info(DocumentInfo value) {
         info = Objects.requireNonNull(value, "info");
+    }
+
+    /** The creation time to stamp, instead of the host clock; a non-null {@code idSeed}, a digest of the source,
+     * also derives the /ID from it, the time and the document info, so the same input and time give the same bytes
+     * and different inputs different IDs. */
+    public void timestamp(ZonedDateTime when, byte[] idSeed) {
+        this.stamped = Objects.requireNonNull(when, "when");
+        this.idSeed = idSeed == null ? null : idSeed.clone();
     }
 
     public DocumentInfo info() {
@@ -345,6 +364,27 @@ public final class PdfOutput implements Closeable {
         }
     }
 
+    // PDFBox seeds a missing /ID from the wall clock, so a pinned clock pins the ID too
+    private void fixId(String now) {
+        MessageDigest md5;
+        try {
+            md5 = MessageDigest.getInstance("MD5");
+        } catch (NoSuchAlgorithmException e) {
+            return;
+        }
+        for (String s : new String[] {now, info.title(), info.author(), info.subject(), info.keywords()}) {
+            md5.update(String.valueOf(s).getBytes(StandardCharsets.UTF_8));
+            md5.update((byte) 0);
+        }
+        md5.update(Integer.toString(document.getNumberOfPages()).getBytes(StandardCharsets.US_ASCII));
+        md5.update(idSeed);
+        COSString id = new COSString(md5.digest());
+        COSArray pair = new COSArray();
+        pair.add(id);
+        pair.add(id);
+        document.getDocument().getTrailer().setItem(COSName.ID, pair);
+    }
+
     private void writeInfo() {
         PDDocumentInformation pdi = document.getDocumentInformation();
         pdi.setTitle(info.title());
@@ -353,9 +393,12 @@ public final class PdfOutput implements Closeable {
         pdi.setKeywords(info.keywords());
         pdi.setCreator(CREATOR);
         pdi.setProducer(CREATOR);
-        String now = DateConverter.toString(Calendar.getInstance());
+        String now = DateConverter.toString(stamped == null ? Calendar.getInstance() : GregorianCalendar.from(stamped));
         pdi.getCOSObject().setString(COSName.CREATION_DATE, now);
         pdi.getCOSObject().setString(COSName.MOD_DATE, now);
+        if (idSeed != null) {
+            fixId(now);
+        }
         if (info.language() != null) {
             document.getDocumentCatalog().setLanguage(info.language());
         }

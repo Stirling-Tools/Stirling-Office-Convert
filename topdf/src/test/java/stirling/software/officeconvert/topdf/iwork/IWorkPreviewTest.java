@@ -3,30 +3,40 @@ package stirling.software.officeconvert.topdf.iwork;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.awt.Color;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
+import java.util.Arrays;
 import java.util.Map;
+import java.util.zip.CRC32;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
 import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
+import org.apache.pdfbox.pdmodel.PDResources;
+import org.apache.pdfbox.pdmodel.common.PDStream;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
+import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
 import org.apache.pdfbox.rendering.PDFRenderer;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import stirling.software.officeconvert.extract.StreamGuard;
 import stirling.software.officeconvert.topdf.OfficeToPdf;
 import stirling.software.officeconvert.topdf.testing.Fixtures;
 import stirling.software.officeconvert.topdf.testing.ZipBytes;
@@ -63,6 +73,61 @@ class IWorkPreviewTest {
             }
             d.save(out);
             return out.toByteArray();
+        }
+    }
+
+    @Test
+    void aPreviewContentStreamPastTheDecodeLimitIsEmptiedBeforeItIsImported() throws IOException {
+        byte[] bomb;
+        try (PDDocument d = new PDDocument(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            PDPage p = new PDPage(PDRectangle.A4);
+            d.addPage(p);
+            long size = StreamGuard.MAX_DECODED + (1 << 20);
+            InputStream spaces = new InputStream() {
+                long left = size;
+
+                @Override
+                public int read() {
+                    return left-- > 0 ? ' ' : -1;
+                }
+
+                @Override
+                public int read(byte[] b, int off, int len) {
+                    if (left <= 0) {
+                        return -1;
+                    }
+                    int n = (int) Math.min(len, left);
+                    Arrays.fill(b, off, off + n, (byte) ' ');
+                    left -= n;
+                    return n;
+                }
+            };
+            p.setContents(new PDStream(d, spaces, COSName.FLATE_DECODE));
+            d.save(out);
+            bomb = out.toByteArray();
+        }
+        ByteArrayOutputStream key = new ByteArrayOutputStream();
+        try (ZipOutputStream z = new ZipOutputStream(key)) {
+            ZipEntry e = new ZipEntry("QuickLook/Preview.pdf");
+            e.setMethod(ZipEntry.STORED);
+            e.setSize(bomb.length);
+            CRC32 crc = new CRC32();
+            crc.update(bomb);
+            e.setCrc(crc.getValue());
+            z.putNextEntry(e);
+            z.write(bomb);
+            z.closeEntry();
+        }
+        Path in = Files.write(dir.resolve("bomb.key"), key.toByteArray());
+        Path out = dir.resolve("bomb.pdf");
+        assertTimeoutPreemptively(Duration.ofMinutes(2), () -> OfficeToPdf.convert(in, out));
+        try (PDDocument d = Loader.loadPDF(out.toFile())) {
+            PDResources res = d.getPage(0).getResources();
+            for (COSName n : res.getXObjectNames()) {
+                if (res.getXObject(n) instanceof PDFormXObject form) {
+                    assertTrue(form.getCOSObject().getLength() < 4096, "form of " + form.getCOSObject().getLength());
+                }
+            }
         }
     }
 

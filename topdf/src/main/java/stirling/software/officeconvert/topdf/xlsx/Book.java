@@ -40,7 +40,8 @@ final class Book {
         StylesTable st = workbook.styles;
         this.colors = new ExcelColors(workbook.theme, st == null ? null : st.getIndexedColors());
         this.styles = new StyleCache(st, colors);
-        this.formatter = new ValueFormatter(colors, workbook.date1904, workbook.strings, SystemDates.host());
+        this.formatter = new ValueFormatter(colors, workbook.date1904, workbook.strings,
+                SystemDates.of(job.options().formatLocale()));
         this.typesetter = new Typesetter(job.fonts());
         FontSpec def = styles.defaultFont();
         this.metrics = new PrintMetrics(typesetter.measure(def), def.size());
