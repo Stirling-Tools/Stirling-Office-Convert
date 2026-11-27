@@ -203,7 +203,7 @@ final class JpxImages {
         int[][] groups = alpha >= 0 ? new int[][] {colours, {alpha}} : new int[][] {colours};
         byte[][] parts;
         try {
-            parts = JpxSplit.split(encoded, groups);
+            parts = JpxSplit.split(encoded, groups, jpx);
         } catch (RuntimeException e) {
             return null;
         }

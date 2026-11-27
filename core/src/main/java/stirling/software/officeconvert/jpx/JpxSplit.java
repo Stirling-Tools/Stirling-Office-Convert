@@ -25,6 +25,10 @@ public final class JpxSplit {
     private JpxSplit() {}
 
     public static byte[][] split(byte[] data, int[][] groups) throws IOException {
+        return split(data, groups, null);
+    }
+
+    public static byte[][] split(byte[] data, int[][] groups, JpxImage decoded) throws IOException {
         Jp2Boxes boxes = Jp2Boxes.read(data);
         int start = boxes.codestreamStart;
         int end = boxes.codestreamEnd;
@@ -79,7 +83,8 @@ public final class JpxSplit {
                 return null;
             }
         }
-        return verified(data, groups, out) ? out : null;
+        JpxRaster whole = decoded != null && decoded.reduce() == 0 ? decoded.raster() : JpxDecoder.decode(data).raster();
+        return verified(whole, groups, out) ? out : null;
     }
 
     private static int[] map(int[] group, int n) {
@@ -301,8 +306,7 @@ public final class JpxSplit {
         }
     }
 
-    private static boolean verified(byte[] data, int[][] groups, byte[][] parts) throws IOException {
-        JpxRaster whole = JpxDecoder.decode(data).raster();
+    private static boolean verified(JpxRaster whole, int[][] groups, byte[][] parts) throws IOException {
         for (int g = 0; g < groups.length; g++) {
             JpxRaster part = JpxDecoder.decode(parts[g]).raster();
             if (part.components() != groups[g].length) {
