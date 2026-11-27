@@ -31,8 +31,6 @@ public final class MqEncoder {
     private static final int[] NLPS = {1, 6, 9, 12, 29, 33, 6, 14, 14, 14, 17, 18, 20, 21, 14, 14, 15, 16, 17, 18, 19,
         19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 46};
 
-    private static final int[] Q = new int[94];
-
     private static final byte[] ON_MPS = new byte[94];
 
     private static final byte[] ON_LPS = new byte[94];
@@ -44,7 +42,6 @@ public final class MqEncoder {
             boolean flip = i == 0 || i == 6 || i == 14;
             for (int mps = 0; mps < 2; mps++) {
                 int st = i << 1 | mps;
-                Q[st] = QE[i];
                 ON_MPS[st] = (byte) (NMPS[i] << 1 | mps);
                 ON_LPS[st] = (byte) (NLPS[i] << 1 | (flip ? 1 - mps : mps));
                 PACKED[st] = QE[i] | (ON_MPS[st] & 0xFF) << 16 | (ON_LPS[st] & 0xFF) << 24;
