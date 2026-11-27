@@ -186,6 +186,42 @@ class MarkdownToPdfTest {
         }
     }
 
+    @Test
+    void missingPicturesKeepTheirLinksAndAltTextWidth() throws IOException {
+        String md = "Sponsors <a href=\"https://one.example/\"><img src=\"https://one.example/a.png\"></a> "
+                + "<a href=\"https://two.example/\"><img src=\"https://two.example/b.png\"></a> "
+                + "[![](https://three.example/c.png)](https://three.example/)\n\n"
+                + "| [<img src=\"https://x.example/e.png\" alt=\"Edge\" width=\"24px\">](https://b.example/)<br>Edge | b |\n"
+                + "| --- | --- |\n| Edge | last 2 versions |\n";
+        try (PDDocument doc = convert(write("sponsors.md", md), OPTIONS)) {
+            List<String> uris = new ArrayList<>();
+            for (PDAnnotation a : doc.getPage(0).getAnnotations()) {
+                if (a instanceof PDAnnotationLink link && link.getAction() instanceof PDActionURI uri) {
+                    uris.add(uri.getURI());
+                }
+            }
+            assertTrue(uris.containsAll(List.of("https://one.example/", "https://two.example/", "https://three.example/",
+                    "https://b.example/")), uris.toString());
+            assertTrue(new PDFTextStripper().getText(doc).contains("[Edge]"));
+        }
+    }
+
+    @Test
+    void closedDetailsAndNamedHeadingsKeepTheirLinks() throws IOException {
+        String md = "<details>\n<summary>Contents</summary>\n\n- [Answer](#answer)\n</details>\n\n"
+                + "<h3 name=\"answer\">The answer</h3>\n\nForty-two.\n";
+        try (PDDocument doc = convert(write("faq.md", md), OPTIONS)) {
+            int internal = 0;
+            for (PDAnnotation a : doc.getPage(0).getAnnotations()) {
+                if (a instanceof PDAnnotationLink link && !(link.getAction() instanceof PDActionURI)) {
+                    internal++;
+                }
+            }
+            assertEquals(1, internal);
+            assertTrue(new PDFTextStripper().getText(doc).contains("Answer"));
+        }
+    }
+
     private static int images(PDDocument doc) throws IOException {
         int n = 0;
         for (PDPage page : doc.getPages()) {

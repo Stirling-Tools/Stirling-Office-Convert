@@ -30,6 +30,23 @@ final class GitHubBlocks implements PostProcessor {
     private static final Pattern FILTERED = Pattern.compile(
             "<(?=/?(?i:title|textarea|style|xmp|iframe|noembed|noframes|script|plaintext)(?:[ \\t\\n\\r\\f>]|/>))");
 
+    private static final Pattern DETAILS = Pattern.compile("<(?i:details)(?=[ \\t\\n\\r\\f>/])");
+
+    private static final Pattern NAMED = Pattern.compile(
+            "<(?i:h[1-6]|p|div|span|li|dt|dd|section|article|td|th|b|strong|em|i|code)(?=[ \\t\\n\\r\\f])([^<>]*)>");
+
+    private static final Pattern NAME = Pattern.compile(
+            "[ \\t\\n\\r\\f](?i:name)[ \\t\\n\\r\\f]*=[ \\t\\n\\r\\f]*(\"[^\"]*\"|'[^']*'|[^ \\t\\n\\r\\f\"'>]+)");
+
+    private static final Pattern IMG = Pattern.compile("<(?i:img)(?=[ \\t\\n\\r\\f/])([^<>]*)>");
+
+    private static final Pattern SRC = Pattern.compile(
+            "([ \\t\\n\\r\\f](?i:src)[ \\t\\n\\r\\f]*=[ \\t\\n\\r\\f]*)(\"[^\"]*\"|'[^']*'|[^ \\t\\n\\r\\f\"'>]+)");
+
+    private static final SafeUrls SAFE = new SafeUrls();
+
+    private static final Pattern ID = Pattern.compile("[ \\t\\n\\r\\f](?i:id)[ \\t\\n\\r\\f]*=");
+
     private static final Pattern HEADING_ID = Pattern.compile("\\{#([A-Za-z0-9_:.\\-]+)(?:[ \\t]+[^}]*)?}");
 
     @Override
@@ -44,12 +61,12 @@ final class GitHubBlocks implements PostProcessor {
 
             @Override
             public void visit(HtmlInline html) {
-                html.setLiteral(filter(html.getLiteral()));
+                html.setLiteral(raw(html.getLiteral()));
             }
 
             @Override
             public void visit(HtmlBlock html) {
-                html.setLiteral(filter(html.getLiteral()));
+                html.setLiteral(raw(html.getLiteral()));
             }
 
             @Override
@@ -111,6 +128,55 @@ final class GitHubBlocks implements PostProcessor {
         String info = code.getInfo() == null ? "" : code.getInfo().strip();
         int space = info.indexOf(' ');
         return (space < 0 ? info : info.substring(0, space)).toLowerCase(Locale.ROOT);
+    }
+
+    static String raw(String html) {
+        if (html == null || html.indexOf('<') < 0) {
+            return html;
+        }
+        String out = pictures(DETAILS.matcher(filter(html)).replaceAll("<details open"));
+        Matcher m = NAMED.matcher(out);
+        StringBuilder b = null;
+        int last = 0;
+        while (m.find()) {
+            String attributes = m.group(1);
+            Matcher name = NAME.matcher(attributes);
+            if (!name.find() || ID.matcher(attributes).find()) {
+                continue;
+            }
+            if (b == null) {
+                b = new StringBuilder(out.length() + 32);
+            }
+            b.append(out, last, m.end(1)).append(" id=").append(name.group(1));
+            last = m.end(1);
+        }
+        return b == null ? out : b.append(out, last, out.length()).toString();
+    }
+
+    private static String pictures(String html) {
+        Matcher m = IMG.matcher(html);
+        StringBuilder b = null;
+        int last = 0;
+        while (m.find()) {
+            Matcher src = SRC.matcher(m.group(1));
+            if (!src.find()) {
+                continue;
+            }
+            String value = src.group(2);
+            if (value.startsWith("\"") || value.startsWith("'")) {
+                value = value.substring(1, value.length() - 1);
+            }
+            if (!SAFE.sanitizeImageUrl(value).isEmpty()) {
+                continue;
+            }
+            if (b == null) {
+                b = new StringBuilder(html.length());
+            }
+            int at = m.start(1) + src.start(2);
+            b.append(html, last, at).append("\"\"");
+            last = m.start(1) + src.end(2);
+        }
+        return b == null ? html : b.append(html, last, html.length()).toString();
     }
 
     static String filter(String html) {

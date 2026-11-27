@@ -51,6 +51,8 @@ final class Flow {
 
     private static final float BROKEN_PICTURE = 12;
 
+    private static final int BROKEN_PICTURE_FILL = 0xE1E4E8;
+
     static final Set<String> SKIPPED = Set.of("head", "script", "style", "template", "title", "meta", "link",
             "base", "iframe", "object", "embed", "applet", "frame", "frameset", "video", "audio", "canvas",
             "map", "area", "input", "select", "option", "datalist", "param", "source", "track", "noembed", "noframes",
@@ -1695,7 +1697,8 @@ final class Flow {
                 float size = e.hasAttr("alt") ? r.size() : Math.max(r.size(), BROKEN_PICTURE);
                 float box = e.hasAttr("alt") ? 0 : BROKEN_PICTURE;
                 inline(new Inline.Text("\u00a0", new RunStyle(r.font(), size, false, false, false, false, r.rgb(),
-                        -1, 0, false, box - size * 0.25f, r.scale(), false, -1), null, -1), look);
+                        box > 0 ? BROKEN_PICTURE_FILL : -1, 0, false, box - size * 0.25f, r.scale(), false, -1), link,
+                        -1), look);
             }
             return;
         }

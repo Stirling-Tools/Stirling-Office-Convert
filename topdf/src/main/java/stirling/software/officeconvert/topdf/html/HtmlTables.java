@@ -491,7 +491,9 @@ final class HtmlTables {
                 if (block || tag.equals("br") || tag.equals("table")) {
                     into.lineEnd();
                 }
-                if (!tag.equals("table") && !tag.equals("br")) {
+                if (tag.equals("img") && element.attr("src").isBlank() && !element.attr("alt").isBlank()) {
+                    into.text("[" + element.attr("alt").strip() + "]", look.child(declared, room, true));
+                } else if (!tag.equals("table") && !tag.equals("br")) {
                     measureChildren(element, look.child(declared, room, !block), room, into, depth + 1);
                 }
                 if (block) {

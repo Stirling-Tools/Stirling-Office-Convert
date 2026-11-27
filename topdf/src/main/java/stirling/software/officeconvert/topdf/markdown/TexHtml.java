@@ -1,5 +1,7 @@
 package stirling.software.officeconvert.topdf.markdown;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -87,22 +89,66 @@ final class TexHtml {
             "arcsin", "arccos", "arctan", "sinh", "cosh", "tanh", "log", "ln", "lg", "exp", "lim", "liminf", "limsup",
             "max", "min", "sup", "inf", "det", "dim", "ker", "deg", "gcd", "arg", "Pr", "hom", "mod", "bmod");
 
+    private static final int MAX_FENCE_ROWS = 4;
+
     private final String s;
+
+    private final boolean block;
 
     private int i;
 
-    private TexHtml(String s) {
+    private TexHtml(String s, boolean block) {
         this.s = s;
+        this.block = block;
     }
 
     static String html(String tex) {
+        return html(tex, false);
+    }
+
+    static String html(String tex, boolean block) {
         if (tex.length() > MAX_LENGTH) {
             return escape(tex);
         }
-        TexHtml t = new TexHtml(tex);
+        TexHtml t = new TexHtml(tex, block);
         StringBuilder out = new StringBuilder();
         t.sequence(out, 0, false);
-        return out.toString();
+        return block ? inline(out.toString()) : out.toString();
+    }
+
+    private static String inline(String html) {
+        String open = "<table class=\"tex\">";
+        if (!html.contains(open)) {
+            return html;
+        }
+        List<String> parts = new ArrayList<>();
+        int from = 0;
+        int at = html.indexOf(open);
+        while (at >= 0) {
+            parts.add(html.substring(from, at));
+            int level = 0;
+            int k = at;
+            while (k < html.length()) {
+                if (html.startsWith("<table", k)) {
+                    level++;
+                } else if (html.startsWith("</table>", k) && --level == 0) {
+                    k += 8;
+                    break;
+                }
+                k++;
+            }
+            parts.add(html.substring(at, k));
+            from = k;
+            at = html.indexOf(open, from);
+        }
+        parts.add(html.substring(from));
+        StringBuilder b = new StringBuilder("<table class=\"tex\"><tr>");
+        for (String part : parts) {
+            if (!part.isBlank()) {
+                b.append("<td>").append(part.strip()).append("</td>");
+            }
+        }
+        return b.append("</tr></table>").toString();
     }
 
     private void sequence(StringBuilder out, int depth, boolean group) {
@@ -160,11 +206,11 @@ final class TexHtml {
             }
             case '<' -> {
                 i++;
-                out.append("&lt;");
+                out.append(" &lt; ");
             }
             case '>' -> {
                 i++;
-                out.append("&gt;");
+                out.append(" &gt; ");
             }
             case ' ', '\n', '\r', '\t' -> i++;
             default -> {
@@ -275,7 +321,8 @@ final class TexHtml {
                         i = close + 1;
                     }
                 }
-                out.append(index).append('√').append(wrap(argument(depth)));
+                String root = index.equals("<sup>3</sup>") ? "∛" : index.equals("<sup>4</sup>") ? "∜" : index + "√";
+                out.append(root).append(wrap(argument(depth)));
             }
             case "text", "textrm", "textnormal", "mathrm", "operatorname", "mbox", "textup", "mathsf", "textsf" ->
                 out.append("<span class=\"up\">").append(escape(rawArgument())).append("</span>");
@@ -303,23 +350,170 @@ final class TexHtml {
                     rawArgument();
                 }
             }
-            case "begin" -> {
-                String env = rawArgument();
-                if (env.equals("array") || env.equals("tabular")) {
-                    rawArgument();
-                }
-                out.append(env.contains("matrix") && !env.equals("matrix") && !env.equals("smallmatrix")
-                        ? env.startsWith("b") ? "[" : env.startsWith("v") ? "|" : env.startsWith("B") ? "{" : "(" : "");
+            case "begin" -> environment(out, rawArgument(), depth);
+            case "end" -> rawArgument();
+            case "hline", "hdashline" -> { }
+            case "\\", "newline", "cr" -> {
+                skipSpacing();
+                out.append(block ? "<br>" : "; ");
             }
-            case "end" -> {
-                String env = rawArgument();
-                out.append(env.contains("matrix") && !env.equals("matrix") && !env.equals("smallmatrix")
-                        ? env.startsWith("b") ? "]" : env.startsWith("v") ? "|" : env.startsWith("B") ? "}" : ")" : "");
-            }
-            case "\\", "newline", "cr" -> out.append("<br>");
             case "not" -> out.append('̸');
             default -> out.append(escape("\\" + name));
         }
+    }
+
+    private void skipSpacing() {
+        int at = i;
+        while (at < s.length() && s.charAt(at) == ' ') {
+            at++;
+        }
+        if (at < s.length() && s.charAt(at) == '[') {
+            int close = s.indexOf(']', at);
+            if (close > 0 && close - at < 16) {
+                i = close + 1;
+            }
+        }
+    }
+
+    private void environment(StringBuilder out, String env, int depth) {
+        String name = env.endsWith("*") ? env.substring(0, env.length() - 1) : env;
+        if (name.equals("array") || name.equals("tabular") || name.equals("alignat") || name.equals("subarray")) {
+            rawArgument();
+        }
+        String body = body(env);
+        List<List<String>> rows = new ArrayList<>();
+        List<String> row = new ArrayList<>();
+        int level = 0;
+        int env0 = 0;
+        int from = 0;
+        for (int k = 0; k <= body.length(); k++) {
+            char c = k < body.length() ? body.charAt(k) : '\0';
+            boolean end = k == body.length();
+            boolean cell = !end && c == '&' && level == 0 && env0 == 0;
+            boolean line = !end && c == '\\' && k + 1 < body.length() && body.charAt(k + 1) == '\\' && level == 0
+                    && env0 == 0;
+            if (cell || line || end) {
+                row.add(cell(body.substring(from, k), depth));
+                from = k + 1;
+                if (line || end) {
+                    rows.add(row);
+                    row = new ArrayList<>();
+                }
+                if (line) {
+                    k++;
+                    from = k + 1;
+                    int at = from;
+                    while (at < body.length() && body.charAt(at) == ' ') {
+                        at++;
+                    }
+                    if (at < body.length() && body.charAt(at) == '[') {
+                        int close = body.indexOf(']', at);
+                        if (close > 0 && close - at < 16) {
+                            k = close;
+                            from = close + 1;
+                        }
+                    }
+                }
+                continue;
+            }
+            if (c == '\\') {
+                if (body.startsWith("begin{", k + 1)) {
+                    env0++;
+                } else if (body.startsWith("end{", k + 1)) {
+                    env0 = Math.max(0, env0 - 1);
+                }
+                k++;
+            } else if (c == '{') {
+                level++;
+            } else if (c == '}') {
+                level = Math.max(0, level - 1);
+            }
+        }
+        while (rows.size() > 1 && rows.getLast().size() == 1 && rows.getLast().getFirst().isBlank()) {
+            rows.removeLast();
+        }
+        String open = switch (name) {
+            case "pmatrix", "psmallmatrix" -> "(";
+            case "bmatrix", "bsmallmatrix" -> "[";
+            case "Bmatrix", "Bsmallmatrix", "cases", "dcases" -> "{";
+            case "vmatrix", "vsmallmatrix" -> "|";
+            case "Vmatrix", "Vsmallmatrix" -> "‖";
+            default -> "";
+        };
+        String close = switch (name) {
+            case "pmatrix", "psmallmatrix" -> ")";
+            case "bmatrix", "bsmallmatrix" -> "]";
+            case "Bmatrix", "Bsmallmatrix", "rcases" -> "}";
+            case "vmatrix", "vsmallmatrix" -> "|";
+            case "Vmatrix", "Vsmallmatrix" -> "‖";
+            default -> "";
+        };
+        boolean aligned = name.startsWith("align") || name.equals("split") || name.equals("eqnarray");
+        boolean left = name.endsWith("cases");
+        if (!block) {
+            out.append(open);
+            for (int r = 0; r < rows.size(); r++) {
+                if (r > 0) {
+                    out.append("; ");
+                }
+                out.append(String.join(aligned ? "" : " ", rows.get(r)));
+            }
+            out.append(close);
+            return;
+        }
+        int columns = 0;
+        for (List<String> r : rows) {
+            columns = Math.max(columns, r.size());
+        }
+        String fence = "<td class=\"fence\" rowspan=\"" + rows.size() + "\" style=\"font-size: "
+                + Math.min(MAX_FENCE_ROWS, Math.max(1, rows.size())) * 1.2f + "em\">";
+        out.append("<table class=\"tex\">");
+        for (int r = 0; r < rows.size(); r++) {
+            out.append("<tr>");
+            if (r == 0 && !open.isEmpty()) {
+                out.append(fence).append(open).append("</td>");
+            }
+            List<String> cells = rows.get(r);
+            for (int c = 0; c < columns; c++) {
+                String align = aligned ? c % 2 == 0 ? "right" : "left" : left ? "left" : "center";
+                out.append("<td style=\"text-align: ").append(align).append("\">")
+                        .append(c < cells.size() ? cells.get(c) : "").append("</td>");
+            }
+            if (r == 0 && !close.isEmpty()) {
+                out.append(fence).append(close).append("</td>");
+            }
+            out.append("</tr>");
+        }
+        out.append("</table>");
+    }
+
+    private String cell(String tex, int depth) {
+        TexHtml t = new TexHtml(tex, block);
+        StringBuilder b = new StringBuilder();
+        t.sequence(b, depth + 1, false);
+        return b.toString();
+    }
+
+    private String body(String env) {
+        int start = i;
+        int level = 0;
+        for (; i < s.length(); i++) {
+            if (s.charAt(i) != '\\') {
+                continue;
+            }
+            if (s.startsWith("begin{", i + 1)) {
+                level++;
+            } else if (s.startsWith("end{", i + 1)) {
+                if (level == 0 && s.startsWith("end{" + env + "}", i + 1)) {
+                    String inner = s.substring(start, i);
+                    i += env.length() + 6;
+                    return inner;
+                }
+                level = Math.max(0, level - 1);
+            }
+            i++;
+        }
+        return s.substring(start);
     }
 
     private static String wrap(String html) {

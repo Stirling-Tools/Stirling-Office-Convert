@@ -606,10 +606,13 @@ through the HTML layout above with a built-in style sheet: A4 pages, a heading s
 in a monospaced font that wrap rather than run off the page. Headings become bookmarks and link targets (GitHub's
 anchors, or an explicit `{#id}`), links stay links, YAML (`---`) or TOML (`+++`) front matter is left out and its
 `title` names the PDF, and right-to-left paragraphs, headings and lists are set right to left. Math in `$…$`, `$$…$$`
-and ```` ```math ```` blocks is typeset as text (Greek letters, operators, scripts, fractions as `a/b`); it is not laid
-out as a formula. Raw HTML is drawn as HTML is. Pictures are drawn from `data:` URIs, and from files beside the page
-only with `HtmlAssets` (`--allow-local-files`), never outside the page's folder; pictures, style sheets and fonts on
-the web are never fetched, even with `--fetch-linked`, and show their alt text. Links keep only `http`, `https`,
+and ```` ```math ```` blocks is typeset as text (Greek letters, operators, scripts, fractions as `a/b`, matrices,
+`cases` and `aligned` in columns in display math); it is not laid out as a formula. Raw HTML is drawn as HTML is,
+except that `<details>` is printed open and a `name` on a heading or other element also makes it a link target.
+Pictures, written in Markdown or as raw `<img>`, are drawn from `data:` URIs, and from files beside the page only with
+`HtmlAssets` (`--allow-local-files`), never outside the page's folder; pictures, style sheets and fonts on the web are
+never fetched, even with `--fetch-linked`, and show their alt text, or a grey box that keeps its link when they have
+none. Links keep only `http`, `https`,
 `mailto` and `#` targets. Text is read as UTF-8, or UTF-16 with a byte order mark, else Windows-1252; files over
 16 MB are refused.
 

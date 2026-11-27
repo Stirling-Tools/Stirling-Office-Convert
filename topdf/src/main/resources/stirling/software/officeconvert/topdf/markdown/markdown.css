@@ -39,5 +39,9 @@ blockquote.headed { border-left: 0; padding-left: 1.25em; }
 .math { font-family: "Liberation Serif", "Times New Roman", serif; }
 .math .up { font-style: normal; }
 .math.display { display: block; text-align: center; font-size: 1.1em; }
+.math table.tex { margin: 0 auto; width: auto; border: 0; }
+.math table.tex tr, .math table.tex tr:nth-child(2n) { background: none; border: 0; }
+.math table.tex td { border: 0; padding: 1px 6px; vertical-align: middle; background: none; }
+.math table.tex td.fence { padding: 0 1px; font-weight: normal; }
 .footnotes { font-size: 0.9em; color: #59636e; border-top: 1px solid #d1d9e0; margin-top: 2em; padding-top: 0.5em; }
 sup.footnote-ref { font-size: 0.75em; }

@@ -193,13 +193,71 @@ class MarkdownPageTest {
     }
 
     @Test
+    void closedDetailsAreOpenedForPrint() {
+        String html = body("<details>\n<summary>More</summary>\n\nInside\n</details>\n\n<DETAILS class=\"x\">y</DETAILS>\n");
+        assertTrue(html.contains("<details open>"), html);
+        assertTrue(html.contains("<details open class=\"x\">"), html);
+    }
+
+    @Test
+    void namedElementsBecomeLinkTargets() {
+        String html = body("<h3 name=\"faq\">Q</h3>\n\n<p name='p1' id=\"keep\">x</p>\n\n<input name=\"field\">\n");
+        assertTrue(html.contains("<h3 name=\"faq\" id=\"faq\">"), html);
+        assertTrue(html.contains("<p name='p1' id=\"keep\">"), html);
+        assertFalse(html.contains("id=\"field\""), html);
+    }
+
+    @Test
+    void rawPicturesFollowTheMarkdownPicturePolicy() {
+        String html = body("<img src=\"https://x.example/a.png\" alt=\"A\"> <img src='pics/b.png'> <img src=/etc/c.png>"
+                + " <img alt=\"d\" src=\"data:image/png;base64,AAAA\">\n");
+        assertTrue(html.contains("<img src=\"\" alt=\"A\">"), html);
+        assertTrue(html.contains("<img src='pics/b.png'>"), html);
+        assertTrue(html.contains("<img src=\"\">"), html);
+        assertTrue(html.contains("src=\"data:image/png;base64,AAAA\""), html);
+    }
+
+    @Test
+    void picturesWithoutAltTextKeepNoEmptyAlt() {
+        String html = body("![](https://x.example/a.png) ![b](https://x.example/b.png)\n");
+        assertTrue(html.contains("<img src=\"\" />"), html);
+        assertTrue(html.contains("<img src=\"\" alt=\"b\" />"), html);
+    }
+
+    @Test
+    void displayEnvironmentsKeepTheirColumns() {
+        String html = body("$$\nA = \\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix}\n$$\n\n$$\n\\begin{aligned} x &= 1 \\\\[2pt]"
+                + " y &= \\frac{1}{1+\\frac{1}{z}} \\end{aligned}\n$$\n");
+        assertTrue(html.contains("<table class=\"tex\"><tr><td><i>A</i> =</td><td><table class=\"tex\"><tr>"
+                + "<td class=\"fence\" rowspan=\"2\""), html);
+        assertTrue(html.contains("<td style=\"text-align: center\"><i>a</i></td><td style=\"text-align: center\"><i>b</i></td>"),
+                html);
+        assertTrue(html.contains("<td style=\"text-align: right\"><i>y</i></td><td style=\"text-align: left\"> = 1/(1 + 1/<i>z</i>)"),
+                html);
+        assertFalse(html.contains("[2pt]"), html);
+    }
+
+    @Test
+    void inlineEnvironmentsAndRootsStayOnTheLine() {
+        String html = body("$\\begin{bmatrix}1 & 2\\\\3 & 4\\end{bmatrix}$ $\\sqrt[3]{x}$ $\\sqrt[n]{y}$ $a<b$\n");
+        assertTrue(html.contains("[1 2; 3 4]"), html);
+        assertTrue(html.contains("∛<i>x</i>"), html);
+        assertTrue(html.contains("<sup><i>n</i></sup>√<i>y</i>") || html.contains("<sup>n</sup>√<i>y</i>"), html);
+        assertTrue(html.contains("<i>a</i> &lt; <i>b</i>"), html);
+        assertFalse(html.contains("<table"), html);
+    }
+
+    @Test
     void hostileInputsStayFast() {
         String[] cases = {">".repeat(50_000) + " x\n", "- ".repeat(20_000) + "y\n", "[".repeat(50_000) + "\n",
             "*a ".repeat(30_000) + "\n", "$a ".repeat(100_000) + "\n", "\\frac{".repeat(5_000) + "\n",
             "$" + "{".repeat(20_000) + "x$\n", "www.a" + ".b".repeat(20_000) + "\n",
             "http://a.b/" + ")".repeat(40_000) + "\n", " " + "www._".repeat(20_000) + "\n",
             "# a" + " ".repeat(80_000) + "b\n", "**".repeat(100_000) + "a" + "**".repeat(100_000) + "\n",
-            "![".repeat(100_000) + "\n", "_".repeat(50_000) + "@" + "a-".repeat(50_000) + "\n"};
+            "![".repeat(100_000) + "\n", "_".repeat(50_000) + "@" + "a-".repeat(50_000) + "\n",
+            "$$\n" + "\\begin{pmatrix}".repeat(1_200) + "\n$$\n", "$$\n\\begin{matrix}" + "a&\\\\".repeat(6_000) + "\n$$\n",
+            "<p name=x ".repeat(30_000) + "\n", "<img src=http://a ".repeat(30_000) + "\n",
+            "<details " + "<details".repeat(30_000) + "\n"};
         for (String input : cases) {
             assertTimeoutPreemptively(Duration.ofSeconds(4), () -> assertTrue(MarkdownPage.html(input).contains("</body>")),
                     input.substring(0, 12));

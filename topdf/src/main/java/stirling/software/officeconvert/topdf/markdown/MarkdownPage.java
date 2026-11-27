@@ -26,6 +26,7 @@ import org.commonmark.node.AbstractVisitor;
 import org.commonmark.node.BlockQuote;
 import org.commonmark.node.Code;
 import org.commonmark.node.Heading;
+import org.commonmark.node.Image;
 import org.commonmark.node.ListBlock;
 import org.commonmark.node.ListItem;
 import org.commonmark.node.Node;
@@ -177,6 +178,7 @@ public final class MarkdownPage {
                 case ListItem item when item.getFirstChild() instanceof Paragraph p
                         && p.getFirstChild() instanceof TaskListItemMarker -> attributes.put("class", "task-list-item");
                 case BlockQuote quote when headed(quote) -> attributes.put("class", "headed");
+                case Image image when attributes.getOrDefault("alt", "").isEmpty() -> attributes.remove("alt");
                 default -> { }
             }
             if (node instanceof Paragraph || node instanceof Heading || node instanceof ListItem
@@ -273,7 +275,7 @@ public final class MarkdownPage {
                 context.getWriter().line();
             } else if (node instanceof MathBlock block) {
                 context.getWriter().line();
-                context.getWriter().raw("<div class=\"math display\">" + TexHtml.html(block.tex()) + "</div>");
+                context.getWriter().raw("<div class=\"math display\">" + TexHtml.html(block.tex(), true) + "</div>");
                 context.getWriter().line();
             } else if (node instanceof MathSpan span) {
                 context.getWriter().raw((span.display() ? "<span class=\"math display\">" : "<span class=\"math\">")
