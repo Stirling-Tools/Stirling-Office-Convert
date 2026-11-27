@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 import org.jsoup.nodes.Comment;
 import org.jsoup.nodes.Element;
@@ -219,6 +220,12 @@ final class Flow {
     private record FloatRun(List<Element> floats, List<Element> beside) {}
 
     static final int MAX_STACKED_FLOATS = 8;
+
+    private static final Pattern SPACES = Pattern.compile("[ \\t\\f\\r]+");
+
+    private static final Pattern SPACES_AND_LINES = Pattern.compile("[ \\t\\n\\f\\r]+");
+
+    private static final Pattern NOT_ANCHOR = Pattern.compile("[^A-Za-z0-9_.:-]");
 
     static final int MAX_BESIDE_BLOCKS = 32;
 
@@ -816,7 +823,7 @@ final class Flow {
     }
 
     static String anchorName(String id) {
-        String clean = id.replaceAll("[^A-Za-z0-9_.:-]", "_");
+        String clean = NOT_ANCHOR.matcher(id).replaceAll("_");
         return "a_" + (clean.length() > 190 ? clean.substring(0, 190) : clean);
     }
 
@@ -1718,7 +1725,7 @@ final class Flow {
         boolean keepSpaces = ws.startsWith("pre") && !ws.equals("pre-line") || ws.equals("break-spaces");
         boolean keepLines = ws.startsWith("pre") || ws.equals("break-spaces");
         if (!keepSpaces) {
-            String collapsed = raw.replaceAll(keepLines ? "[ \\t\\f\\r]+" : "[ \\t\\n\\f\\r]+", " ");
+            String collapsed = (keepLines ? SPACES : SPACES_AND_LINES).matcher(raw).replaceAll(" ");
             if (lastSpace && collapsed.startsWith(" ")) {
                 collapsed = collapsed.substring(1);
             }

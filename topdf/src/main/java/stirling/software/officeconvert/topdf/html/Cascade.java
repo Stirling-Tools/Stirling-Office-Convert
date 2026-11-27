@@ -765,7 +765,7 @@ final class Cascade {
             return null;
         }
         // :has of one child compound costs a pass over the children, so layouts chosen by child count still match
-        Matcher m = PSEUDO.matcher(CHILD_HAS.matcher(s.replaceAll(QUOTED, "")).replaceAll(" $1"));
+        Matcher m = PSEUDO.matcher(CHILD_HAS.matcher(QUOTED.matcher(s).replaceAll("")).replaceAll(" $1"));
         while (m.find()) {
             if (!STRUCTURAL.contains(m.group(1).toLowerCase(Locale.ROOT))) {
                 return null;
@@ -801,7 +801,7 @@ final class Cascade {
     private static final Pattern WORD = Pattern.compile("[-_A-Za-z0-9][-_A-Za-z0-9:/.@]*");
 
     private static final Pattern PSEUDO = Pattern.compile("(?<!\\\\):([a-zA-Z-]+)");
-    private static final String QUOTED = "\"[^\"]*\"|'[^']*'";
+    private static final Pattern QUOTED = Pattern.compile("\"[^\"]*\"|'[^']*'");
     private static final Pattern CHILD_HAS = Pattern.compile(
             ":has[(][ ]*>[ ]*((?:[^\\s>+~,()]|[(][^()]{0,40}[)]){1,200})[ ]*[)]");
 

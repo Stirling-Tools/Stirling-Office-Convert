@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.function.Predicate;
+import java.util.regex.Pattern;
 
 import stirling.software.officeconvert.model.Paragraph;
 import stirling.software.officeconvert.model.RunStyle;
@@ -16,6 +17,10 @@ final class Look {
     private static final int MAX_LINES = 20;
 
     String font = generic("serif");
+    private static final Pattern RELATIVE = Pattern.compile("[0-9]*[.]?[0-9]+(em|%)");
+
+    private static final Pattern QUOTES = Pattern.compile("^[\"']|[\"']$");
+
     float size = ROOT_SIZE;
     boolean bold;
     boolean italic;
@@ -252,7 +257,7 @@ final class Look {
         if (keyword > 0 || parent <= 0) {
             return keyword;
         }
-        if (t.matches("[0-9]*[.]?[0-9]+(em|%)")) {
+        if (RELATIVE.matcher(t).matches()) {
             Float factor = Css.length(t, 1, 1);
             return factor == null || factor <= 0 ? 0 : Math.min(400, parent * factor);
         }
@@ -327,7 +332,7 @@ final class Look {
 
     static String family(String list) {
         for (String raw : Css.splitTopLevel(list, ',')) {
-            String f = raw.strip().replaceAll("^[\"']|[\"']$", "").strip();
+            String f = QUOTES.matcher(raw.strip()).replaceAll("").strip();
             if (f.isEmpty() || f.startsWith("-") || f.equalsIgnoreCase("inherit") || f.equalsIgnoreCase("initial")) {
                 continue;
             }

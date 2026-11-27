@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.TimeZone;
+import java.util.regex.Pattern;
 
 import org.apache.poi.hsmf.MAPIMessage;
 import org.apache.poi.hsmf.datatypes.ByteChunk;
@@ -22,6 +23,8 @@ final class MsgItems {
     static final String ADDRESS = "00062004-0000-0000-C000-000000000046";
 
     private static final int MAX_NAMES = 65_536;
+
+    private static final Pattern LINES = Pattern.compile("\\s*\\R\\s*");
 
     private static final String[] BUSY = {"Free", "Tentative", "Busy", "Out of office", "Working elsewhere"};
     private static final String[] TASK_STATUS = {"Not started", "In progress", "Completed", "Waiting on someone else",
@@ -258,7 +261,7 @@ final class MsgItems {
         if (value == null || value.isBlank()) {
             return;
         }
-        mail.fields.add(new String[] {label, value.strip().replaceAll("\\s*\\R\\s*", ", ")});
+        mail.fields.add(new String[] {label, LINES.matcher(value.strip()).replaceAll(", ")});
     }
 
     private record Props(Chunks main, Map<String, Integer> names) {
@@ -274,7 +277,7 @@ final class MsgItems {
         String string(String set, int dispid) {
             int id = id(set, dispid);
             String s = id < 0 ? null : MsgReader.stringProperty(main, id);
-            return s == null || s.isBlank() ? null : EmlReader.clean(s.strip().replaceAll("\\s*\\R\\s*", ", "));
+            return s == null || s.isBlank() ? null : EmlReader.clean(LINES.matcher(s.strip()).replaceAll(", "));
         }
 
         Calendar time(String set, int dispid) {

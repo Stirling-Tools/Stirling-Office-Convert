@@ -2,6 +2,7 @@ package stirling.software.officeconvert.topdf.mail;
 
 import java.nio.charset.Charset;
 import java.util.List;
+import java.util.regex.Pattern;
 
 public final class EmlReader {
 
@@ -210,11 +211,13 @@ public final class EmlReader {
         return MailCharsets.WESTERN;
     }
 
+    private static final Pattern CONTROLS = Pattern.compile("[\\p{Cntrl}&&[^\\t]]");
+
     static String clean(String s) {
         if (s == null) {
             return null;
         }
-        String t = s.replaceAll("[\\p{Cntrl}&&[^\\t]]", " ").strip();
+        String t = CONTROLS.matcher(s).replaceAll(" ").strip();
         return t.isEmpty() ? null : t;
     }
 
