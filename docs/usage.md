@@ -498,8 +498,9 @@ under 600 pixels on its longer side (what Publisher keeps) is refused with a pla
 converted (WordPerfect, Works, MHTML web archives, Quattro Pro, StarOffice 5, Windows Write and others) fail with a
 reason naming the format, found by extension or by content.
 
-PSD documents (`.psd`, and `.psb` for large documents, found by their content) become one page sized from their
-resolution, drawn from the merged picture the file holds in the document's own color mode: bitmap, grayscale, indexed,
+PSD documents (`.psd`, and `.psb` for large documents; the file needs one of the two extensions, and which format
+it is comes from its content) become one page sized from their resolution, drawn from the merged picture the file
+holds in the document's own color mode: bitmap, grayscale, indexed,
 RGB, CMYK (kept as CMYK), Lab, duotone (as grayscale) and multichannel (as DeviceN inks), at 1, 8, 16 or 32 bits a
 channel, with the embedded ICC profile kept and the merged transparency as a soft mask. 32-bit documents keep their
 linear samples at 16 bits under their own profile, or are encoded as sRGB when they have none. A file saved without a

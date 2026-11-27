@@ -60,12 +60,20 @@ final class Merged {
                 for (int i = 0; i < rows.length; i++) {
                     Rows r = Rows.zip(src.cursor(start + 2, src.size, 1 << 16), rowBytes,
                             compression == Rows.ZIP_PREDICTED, doc.depth, doc.width);
-                    byte[] scratch = new byte[rowBytes];
-                    for (long s = 0; s < channels[i] * h; s++) {
-                        if ((s & 255) == 0) {
-                            PsdPage.checkpoint();
+                    try {
+                        byte[] scratch = new byte[rowBytes];
+                        for (long s = 0; s < channels[i] * h; s++) {
+                            if ((s & 255) == 0) {
+                                PsdPage.checkpoint();
+                            }
+                            r.next(scratch);
                         }
-                        r.next(scratch);
+                    } catch (IOException | RuntimeException e) {
+                        r.close();
+                        for (int j = 0; j < i; j++) {
+                            rows[j].close();
+                        }
+                        throw e;
                     }
                     rows[i] = r;
                 }

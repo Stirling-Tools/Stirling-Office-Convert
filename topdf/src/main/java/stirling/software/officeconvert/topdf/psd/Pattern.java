@@ -44,7 +44,12 @@ final class Pattern {
                 if (len < 8 || len > c.remaining()) {
                     break;
                 }
-                Pattern p = read(src, c, start + len, id, doc);
+                Pattern p;
+                try {
+                    p = read(src, src.cursor(start, start + len, 1 << 14), start + len, id, doc);
+                } catch (IOException e) {
+                    p = null;
+                }
                 if (p != null) {
                     return p;
                 }
@@ -136,9 +141,9 @@ final class Pattern {
             color = new byte[3][width * height];
             for (int k = 0; k < width * height; k++) {
                 int v = planes[0][k] & 0xFF;
-                color[0][k] = palette[v];
-                color[1][k] = palette[256 + v];
-                color[2][k] = palette[512 + v];
+                color[0][k] = palette[3 * v];
+                color[1][k] = palette[3 * v + 1];
+                color[2][k] = palette[3 * v + 2];
             }
         } else if (mode == PsdDocument.GRAY && doc.mode == PsdDocument.RGB) {
             color = new byte[][] {planes[0], planes[0], planes[0]};

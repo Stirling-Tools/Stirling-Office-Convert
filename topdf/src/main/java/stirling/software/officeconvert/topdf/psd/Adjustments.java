@@ -178,6 +178,9 @@ abstract class Adjustments {
             }
         }
         boolean gray = mode == PsdDocument.GRAY || mode == PsdDocument.DUOTONE;
+        if (gray && luts.length > 0 && luts[0] == null) {
+            luts[0] = master;
+        }
         return new Luts(luts, gray ? null : master);
     }
 
@@ -292,10 +295,11 @@ abstract class Adjustments {
         b.getShort();
         float exposure = b.getFloat();
         float offset = b.getFloat();
-        float gamma = Math.max(0.01f, Math.min(9.99f, b.getFloat()));
-        if (!Float.isFinite(exposure) || !Float.isFinite(offset)) {
+        float rawGamma = b.getFloat();
+        if (!Float.isFinite(exposure) || !Float.isFinite(offset) || !Float.isFinite(rawGamma)) {
             return null;
         }
+        float gamma = Math.max(0.01f, Math.min(9.99f, rawGamma));
         double trc = depth == 32 ? 1 : mode == PsdDocument.RGB ? 2.2 : 1.75;
         double scale = Math.pow(2, Math.max(-20, Math.min(20, exposure)));
         float[] lut = lut(v -> {

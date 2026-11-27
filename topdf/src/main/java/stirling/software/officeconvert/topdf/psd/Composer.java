@@ -84,6 +84,15 @@ final class Composer {
         Composer c = new Composer(src, doc);
         c.patternBlocks = layers.patterns;
         Node root = c.build(layers.root, 0);
+        try {
+            return c.render(root, pdf, warnings);
+        } finally {
+            c.close(root);
+        }
+    }
+
+    private COSStream render(Node root, PDDocument pdf, List<String> warnings) throws IOException {
+        Composer c = this;
         c.top = root;
         c.cacheRows(root, false);
         long[] budget = {LayerEffects.MAX_PIXELS * 4};
@@ -120,7 +129,6 @@ final class Composer {
             if (translucent) {
                 image.setItem(COSName.SMASK, alpha.stream());
             }
-            c.close(root);
             if (!c.effects.isEmpty()) {
                 warnings.add("Layer effects that could not be drawn were left out: " + String.join(", ", c.effects));
             }
@@ -300,6 +308,10 @@ final class Composer {
                 case Rows.RLE -> {
                     long table = start + 2;
                     long data = table + (long) h * (doc.big ? 4 : 2);
+                    if (data > end) {
+                        damaged = true;
+                        return;
+                    }
                     rows = Rows.rle(src.cursor(table, data, 1 << 10), src.cursor(data, end, 1 << 13), doc.big, lb);
                 }
                 case Rows.ZIP, Rows.ZIP_PREDICTED -> rows = Rows.zip(src.cursor(start + 2, end, 1 << 13), lb,
@@ -364,8 +376,8 @@ final class Composer {
                 return;
             }
             byte[] line = line(row);
-            int x0 = Math.max(0, left);
-            int x1 = Math.min(width, right);
+            int x0 = Math.max(0, Math.min(width, left));
+            int x1 = Math.max(x0, Math.min(width, right));
             for (int x = 0; x < x0; x++) {
                 into[x * step + offset] = outside;
             }
@@ -807,8 +819,17 @@ final class Composer {
             }
             return;
         }
+        LayerEffects fx = base.fx;
+        float fxOpacity = l.opacity / 255f;
         float[] src = buffer();
         float[] shape = coverage(base, src);
+        if (fx != null && fx.shadow != null) {
+            drawEffect(dest, fx, fx.shadow, l.shadow.color(), l.shadow.opacity(), l.shadow.blend(), fxOpacity,
+                    l.shadow.conceal() && !(l.shadow.spread() > 0) ? shape : null);
+        }
+        if (fx != null && fx.stroke != null && fx.strokeUnder) {
+            drawStroke(dest, base, fxOpacity);
+        }
         if (!l.blendClipped) {
             composite(dest, src, l.blend, opacity, null);
             for (Node c : base.clipped) {
@@ -828,6 +849,9 @@ final class Composer {
         }
         release(src);
         releaseShape(shape);
+        if (fx != null && fx.stroke != null && !fx.strokeUnder) {
+            drawStroke(dest, base, fxOpacity);
+        }
     }
 
     private void clip(Node c, float[] dest, float[] shape) throws IOException {
@@ -884,9 +908,14 @@ final class Composer {
                 continue;
             }
             int at = x * stride;
-            for (int i = 0; i <= n; i++) {
-                dest[at + i] = before[at + i] + (dest[at + i] - before[at + i]) * t;
+            float ab = before[at + n];
+            float ad = dest[at + n];
+            float a = ab + (ad - ab) * t;
+            for (int i = 0; i < n; i++) {
+                float pc = before[at + i] * ab + (dest[at + i] * ad - before[at + i] * ab) * t;
+                dest[at + i] = a > 0 ? pc / a : before[at + i];
             }
+            dest[at + n] = a;
         }
         release(before);
     }
@@ -986,7 +1015,9 @@ final class Composer {
             if (p.overlayGradient == null) {
                 p.overlayGradient = Gradient.of(overlay.gradient(), n, this::solid);
             }
-            if (p.overlayGradient != null) {
+            if (p.overlayGradient == null) {
+                effects.add("gradient overlay");
+            } else {
                 ramp = buffer();
                 double[] b = bounds(p);
                 p.overlayGradient.row(y, width, b[0], b[1], b[2], b[3], ramp, stride, n);
@@ -1149,6 +1180,9 @@ final class Composer {
     }
 
     private void effects(Node node, long[] budget) throws IOException {
+        if (node != top && node.layer.hidden) {
+            return;
+        }
         if (node instanceof Group g) {
             for (Node c : g.children) {
                 effects(c, budget);
@@ -1205,6 +1239,7 @@ final class Composer {
         if (copy == null) {
             return;
         }
+        cacheRows(copy, false);
         int w = x1 - x0;
         int h = y1 - y0;
         float[] alpha = new float[(int) area];
@@ -1259,6 +1294,9 @@ final class Composer {
     }
 
     private void feathers(Node node, long[] budget) throws IOException {
+        if (node != top && node.layer.hidden) {
+            return;
+        }
         if (node instanceof Group g) {
             for (Node c : g.children) {
                 feathers(c, budget);

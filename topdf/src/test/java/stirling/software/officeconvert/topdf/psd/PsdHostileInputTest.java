@@ -162,7 +162,7 @@ class PsdHostileInputTest {
     @Timeout(60)
     void linkedFilesAndRemoteReferencesAreNeverOpened() throws Exception {
         Path canary = Files.writeString(dir.resolve("canary-secret.txt"), "CANARY-7f3a9");
-        ServerSocket server = new ServerSocket(0, 50, InetAddress.getLoopbackAddress());
+        ServerSocket server = new ServerSocket(0, 50, InetAddress.getByName("127.0.0.1"));
         try {
             server.setSoTimeout(200);
             AtomicInteger hits = new AtomicInteger();

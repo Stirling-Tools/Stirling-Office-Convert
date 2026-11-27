@@ -266,12 +266,14 @@ final class PsdDocument {
                         break;
                     }
                     StringBuilder s = new StringBuilder();
-                    for (long i = 0; i < n; i++) {
+                    long kept = Math.min(n, 256);
+                    for (long i = 0; i < kept; i++) {
                         char ch = (char) c.u16();
                         if (ch != 0) {
                             s.append(ch);
                         }
                     }
+                    c.skip((n - kept) * 2);
                     names.add(s.toString());
                 }
                 if (!names.isEmpty()) {

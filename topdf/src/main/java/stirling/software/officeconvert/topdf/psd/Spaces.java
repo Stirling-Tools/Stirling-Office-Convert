@@ -63,12 +63,18 @@ final class Spaces {
                 return false;
             }
             int o = (int) off;
-            if (!new String(icc, o, 4, StandardCharsets.ISO_8859_1).equals("curv")) {
+            String type = new String(icc, o, 4, StandardCharsets.ISO_8859_1);
+            boolean flat;
+            if (type.equals("para")) {
+                flat = o + 16 <= icc.length && ((icc[o + 8] & 0xFF) << 8 | icc[o + 9] & 0xFF) == 0
+                        && u32(icc, o + 12) == 0x00010000L;
+            } else if (type.equals("curv")) {
+                long points = u32(icc, o + 8);
+                flat = points == 0 || points == 1 && o + 14 <= icc.length
+                        && ((icc[o + 12] & 0xFF) << 8 | icc[o + 13] & 0xFF) == 0x0100;
+            } else {
                 return false;
             }
-            long points = u32(icc, o + 8);
-            boolean flat = points == 0 || points == 1 && o + 14 <= icc.length
-                    && ((icc[o + 12] & 0xFF) << 8 | icc[o + 13] & 0xFF) == 0x0100;
             if (!flat) {
                 return false;
             }

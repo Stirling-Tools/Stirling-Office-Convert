@@ -59,21 +59,31 @@ abstract class Rows {
                     damaged = true;
                 }
                 long start = data.position();
+                long limit = start + count;
                 int out = 0;
                 try {
-                    while (data.position() - start < count && out < rowBytes) {
+                    while (data.position() < limit && out < rowBytes) {
                         int n = (byte) data.u8();
                         if (n >= 0) {
-                            int len = Math.min(n + 1, rowBytes - out);
+                            int want = n + 1;
+                            if (want > limit - data.position()) {
+                                want = (int) (limit - data.position());
+                                damaged = true;
+                            }
+                            int len = Math.min(want, rowBytes - out);
                             int got = data.read(row, out, len);
                             out += got;
                             if (got < len) {
                                 break;
                             }
-                            if (len < n + 1) {
-                                data.skip(Math.min(n + 1 - len, data.remaining()));
+                            if (len < want) {
+                                data.skip(Math.min(want - len, data.remaining()));
                             }
                         } else if (n != -128) {
+                            if (data.position() >= limit) {
+                                damaged = true;
+                                break;
+                            }
                             int v = data.u8();
                             int len = Math.min(1 - n, rowBytes - out);
                             Arrays.fill(row, out, out + len, (byte) v);

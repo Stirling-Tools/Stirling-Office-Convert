@@ -191,6 +191,9 @@ final class Layers {
             if ((key == tag("Lr16") || key == tag("Lr32")) && count == 0) {
                 info(src, doc, start, start + len);
             }
+            if (key == tag("Mt16") || key == tag("Mt32") || key == tag("Mtrn")) {
+                mergedAlpha = true;
+            }
             if ((key == tag("Patt") || key == tag("Pat2") || key == tag("Pat3")) && patterns.size() < 16) {
                 patterns.add(new long[] {start, len});
             }
@@ -246,10 +249,12 @@ final class Layers {
     private void tree(List<Layer> records) {
         Deque<Layer> stack = new ArrayDeque<>();
         Layer current = root;
+        int flattened = 0;
         for (Layer l : records) {
             if (l.section == 3) {
                 if (stack.size() >= MAX_DEPTH) {
                     damaged = true;
+                    flattened++;
                     continue;
                 }
                 stack.push(current);
@@ -257,6 +262,10 @@ final class Layers {
                 g.group = true;
                 current = g;
             } else if (l.section == 1 || l.section == 2) {
+                if (flattened > 0) {
+                    flattened--;
+                    continue;
+                }
                 if (stack.isEmpty()) {
                     l.group = true;
                     current.children.add(l);
@@ -324,9 +333,10 @@ final class Layers {
         c.u8();
         long extra = c.u32();
         long extraStart = c.position();
-        long extraEnd = extraStart + extra;
-        long maskLen = c.u32();
+        long extraEnd = Math.min(c.end(), extraStart + extra);
+        long maskLen = Math.min(c.u32(), Math.max(0, extraEnd - c.position()));
         long maskStart = c.position();
+        long maskEnd = maskStart + maskLen;
         if (maskLen >= 18) {
             Mask m = new Mask();
             m.top = c.i32();
@@ -352,24 +362,24 @@ final class Layers {
                 real.channel = -3;
                 l.masks.add(real);
             }
-            if ((mf & 16) != 0 && c.position() < maskStart + maskLen) {
+            if ((mf & 16) != 0 && c.position() < maskEnd) {
                 int params = c.u8();
-                if ((params & 1) != 0) {
+                if ((params & 1) != 0 && maskEnd - c.position() >= 1) {
                     m.density = c.u8();
                 }
-                if ((params & 2) != 0) {
+                if ((params & 2) != 0 && maskEnd - c.position() >= 8) {
                     m.feather = Double.longBitsToDouble(c.u32() << 32 | c.u32());
                 }
-                if ((params & 4) != 0) {
+                if ((params & 4) != 0 && maskEnd - c.position() >= 1) {
                     l.vectorDensity = c.u8();
                 }
-                if ((params & 8) != 0) {
+                if ((params & 8) != 0 && maskEnd - c.position() >= 8) {
                     l.vectorFeather = Double.longBitsToDouble(c.u32() << 32 | c.u32());
                 }
             }
         }
-        c.seek(maskStart + maskLen);
-        long rangesLen = c.u32();
+        c.seek(maskEnd);
+        long rangesLen = Math.min(c.u32(), Math.max(0, extraEnd - c.position()));
         if (rangesLen >= 8) {
             int grayBlack = c.u16();
             int grayWhite = c.u16();
@@ -380,7 +390,7 @@ final class Layers {
             c.seek(c.position() - 8);
         }
         c.skip(Math.min(rangesLen, c.remaining()));
-        int nameLen = c.u8();
+        int nameLen = (int) Math.min(c.u8(), Math.max(0, extraEnd - c.position()));
         byte[] name = new byte[nameLen];
         c.fully(name);
         l.name = new String(name, StandardCharsets.ISO_8859_1);

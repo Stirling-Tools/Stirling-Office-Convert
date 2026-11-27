@@ -3,6 +3,7 @@ package stirling.software.officeconvert.topdf;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
@@ -39,10 +40,11 @@ final class PsdInput {
         }
         try (Admission.Ticket _ = Admission.jvm().enter(PsdPage.estimate(source));
                 PdfOutput output = new PdfOutput(options.fontLibrary(), options.maxScratchBytes())) {
-            List<String> warnings = PsdPage.draw(source, output.document());
+            List<String> warnings = new ArrayList<>();
+            boolean truncated = PsdPage.draw(source, output.document(), warnings);
             OfficeToPdf.stopIfInterrupted();
             output.save(sink);
-            return new Result(1, false, warnings, false);
+            return new Result(1, truncated, warnings, false);
         }
     }
 }

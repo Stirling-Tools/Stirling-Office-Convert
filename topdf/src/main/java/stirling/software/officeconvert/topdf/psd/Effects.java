@@ -81,20 +81,24 @@ final class Effects {
                 boolean gradientPaint = "GrFl".equals(paint) && fx.object("Grad") != null;
                 if (e.getValue().equals("stroke") && stroke == null && (solidPaint || gradientPaint)) {
                     String position = fx.enumValue("Styl");
-                    stroke = new LayerEffects.Stroke((float) fx.number("Sz  ", 3), position == null ? "OutF" : position,
+                    stroke = new LayerEffects.Stroke(bounded(fx.number("Sz  ", 3), 250, 3), position == null ? "OutF" : position,
                             solidPaint ? color : new float[] {0, 0, 0}, opacity, mode, gradientPaint ? fx : null);
                     continue;
                 }
                 if (e.getValue().equals("drop shadow") && shadow == null && color != null) {
                     shadow = new LayerEffects.Shadow(color, opacity, mode, fx.number("lagl", 120),
-                            fx.flag("uglg", true), (float) fx.number("Dstn", 5), (float) fx.number("blur", 5),
-                            (float) (fx.number("Ckmt", 0) / 100), fx.flag("layerConceals", true));
+                            fx.flag("uglg", true), bounded(fx.number("Dstn", 5), 30000, 5), bounded(fx.number("blur", 5), 250, 5),
+                            bounded(fx.number("Ckmt", 0), 100, 0) / 100, fx.flag("layerConceals", true));
                     continue;
                 }
                 into.add(e.getValue());
             }
         }
         return new Found(overlay, stroke, shadow);
+    }
+
+    private static float bounded(double v, double max, double fallback) {
+        return (float) (Double.isFinite(v) ? Math.max(0, Math.min(max, v)) : fallback);
     }
 
     private static int blend(String mode) {

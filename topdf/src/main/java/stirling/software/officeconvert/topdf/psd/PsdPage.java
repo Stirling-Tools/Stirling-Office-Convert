@@ -48,8 +48,8 @@ public final class PsdPage {
         }
     }
 
-    public static List<String> draw(Path file, PDDocument pdf) throws IOException {
-        List<String> warnings = new ArrayList<>();
+    public static boolean draw(Path file, PDDocument pdf, List<String> warnings) throws IOException {
+        boolean lost = false;
         try (Source src = new Source(file)) {
             PsdDocument doc = PsdDocument.read(src);
             Layers layers = Layers.read(src, doc);
@@ -68,12 +68,13 @@ public final class PsdPage {
             COSStream image = compose ? Composer.draw(src, doc, layers, pdf, warnings)
                     : merged(src, doc, layers, pdf, warnings);
             if (!doc.realMerged && !compose) {
+                lost = layers.count > 0;
                 warnings.add("The PSD document was saved without a merged picture and has no layers that can be"
                         + " drawn; the page may be blank. Save it with Maximize Compatibility on");
             }
             place(pdf, doc, image);
         }
-        return warnings;
+        return lost;
     }
 
     static int alphaChannel(PsdDocument doc, Layers layers) {

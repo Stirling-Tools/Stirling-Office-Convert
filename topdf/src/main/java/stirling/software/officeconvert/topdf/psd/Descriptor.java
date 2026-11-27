@@ -61,6 +61,9 @@ final class Descriptor {
     }
 
     private static Object value(ByteBuffer b, String type, int depth, int[] budget) {
+        if (depth > MAX_DEPTH) {
+            throw new IllegalArgumentException("too deep");
+        }
         return switch (type) {
             case "Objc", "GlbO" -> descriptor(b, depth + 1, budget);
             case "VlLs" -> {
