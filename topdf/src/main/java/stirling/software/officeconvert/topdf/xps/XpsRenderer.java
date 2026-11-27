@@ -1979,7 +1979,8 @@ final class XpsRenderer {
             if (gid < 0 || gid >= font.glyphs || font.substitute) {
                 gid = firstCp >= 0 ? font.glyph(firstCp) : 0;
             }
-            double natural = (sideways ? font.verticalAdvance(gid) : font.advance(gid)) + (bold ? BOLD_STROKE : 0);
+            double natural = (sideways ? font.verticalAdvance(gid) : font.advance(gid))
+                    + (bold ? BOLD_STROKE / 2 : 0);
             double adv = fields.length > 1 && !fields[1].isBlank() ? XpsXml.number(fields[1], natural * 100) / 100
                     : natural;
             double u = fields.length > 2 && !fields[2].isBlank() ? XpsXml.number(fields[2], 0) / 100 : 0;
@@ -1988,7 +1989,7 @@ final class XpsRenderer {
             double y;
             if (sideways) {
                 double drawPen = rtl ? pen - adv * em : pen;
-                x = drawPen + (rtl ? -u : u) * em + font.sideAscent * em;
+                x = drawPen + (rtl ? -u : u) * em + font.ascent * em;
                 y = oy - v * em + font.advance(gid) * em / 2;
             } else if (rtl) {
                 pen -= adv * em;
