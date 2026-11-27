@@ -545,6 +545,68 @@ class JpxImagesTest {
         }
     }
 
+    private static JpxEncoder.Planes texturedWithAlpha(int[] depths, int[] values) {
+        int w = 320;
+        int h = 240;
+        java.util.Random rnd = new java.util.Random(3);
+        int[][] s = new int[4][w * h];
+        for (int c = 0; c < 4; c++) {
+            int max = (1 << depths[c]) - 1;
+            for (int y = 0; y < h; y++) {
+                for (int x = 0; x < w; x++) {
+                    double base = c == 3 ? (x < w / 2 ? max : max / 2.0) : values[c] * max / 255.0;
+                    double v = base + max * 0.08 * Math.sin(x * 0.11 + y * 0.07 + c) + rnd.nextGaussian() * max * 0.03;
+                    s[c][y * w + x] = Math.clamp(Math.round(v), 0, max);
+                }
+            }
+        }
+        return new JpxEncoder.Planes(w, h, s, depths, null, JpxEncoder.Colour.SRGB, 3);
+    }
+
+    @Test
+    void anAlphaSplitIsNotUsedWhenTheColoursHaveMixedDepths() throws Exception {
+        JpxEncoder.Planes source = texturedWithAlpha(new int[] {8, 8, 4, 8}, new int[] {30, 120, 150});
+        Path in = page(JpxEncoder.encode(source, JpxEncoder.Options.rate(0.4)), 320, 240, true);
+        Path out = dir.resolve("2b-mixed.pdf");
+        PdfToPdfA.convert(in, out, PdfToPdfA.Options.defaults().level(PdfALevel.A2B));
+        VeraPdf.assertCompliant(out, PdfALevel.A2B);
+        try (PDDocument d = Loader.loadPDF(out.toFile())) {
+            COSStream image = largestImage(d);
+            if (COSName.JPX_DECODE.equals(image.getDictionaryObject(COSName.FILTER))) {
+                JpxRaster kept = JpxDecoder.decode(samples(image, true)).raster();
+                for (int c = 1; c < kept.components(); c++) {
+                    assertEquals(kept.depth(0), kept.depth(c));
+                }
+            }
+        }
+    }
+
+    @Test
+    void anAlphaSplitKeepsTheChannelOrderTheFileDefines() throws Exception {
+        JpxEncoder.Planes source = texturedWithAlpha(new int[] {8, 8, 8, 8}, new int[] {30, 120, 220});
+        byte[] jp2 = JpxEncoder.encode(source, JpxEncoder.Options.rate(0.4));
+        int at = new String(jp2, java.nio.charset.StandardCharsets.ISO_8859_1).indexOf("cdef") + 6;
+        jp2[at + 5] = 3;
+        jp2[at + 6 * 2 + 5] = 1;
+        Path in = page(jp2, 320, 240, true);
+        Path out = dir.resolve("2b-order.pdf");
+        PdfToPdfA.convert(in, out, PdfToPdfA.Options.defaults().level(PdfALevel.A2B));
+        VeraPdf.assertCompliant(out, PdfALevel.A2B);
+        try (PDDocument d = Loader.loadPDF(out.toFile())) {
+            COSStream image = largestImage(d);
+            BufferedImage img = new PDImageXObject(new PDStream(image), null).getImage();
+            long red = 0;
+            long blue = 0;
+            for (int y = 0; y < 240; y += 8) {
+                for (int x = 0; x < 320; x += 8) {
+                    red += img.getRGB(x, y) >> 16 & 0xFF;
+                    blue += img.getRGB(x, y) & 0xFF;
+                }
+            }
+            assertTrue(red > blue * 3, red + " vs " + blue);
+        }
+    }
+
     @Test
     void partTwoStoresGreyAndAlphaAsLosslessJpegTwoThousand() throws Exception {
         JpxEncoder.Planes source = photoWithAlpha(400, 300, false);

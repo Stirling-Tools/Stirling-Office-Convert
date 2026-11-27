@@ -7,6 +7,7 @@ import java.awt.image.DataBuffer;
 import java.awt.image.Raster;
 import java.awt.image.WritableRaster;
 import java.io.IOException;
+import java.io.InterruptedIOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.List;
@@ -146,9 +147,6 @@ final class JpxImages {
         try (InputStream in = from.createRawInputStream()) {
             data = in.readAllBytes();
         }
-        if (copied(s, copy, from, mask, smaskInData)) {
-            return;
-        }
         for (COSName k : REPLACED) {
             s.removeItem(k);
         }
@@ -166,10 +164,10 @@ final class JpxImages {
         report.warn("Converted JPEG 2000 images, which " + level.label() + " does not allow as they were");
     }
 
-    private record Copy(byte[][] parts, int[][] sizes, int colours, long kept) {
+    private record Copy(byte[][] parts, int[][] sizes, int colours) {
 
         long bytes() {
-            long n = kept;
+            long n = 0;
             for (byte[] p : parts) {
                 n += p.length;
             }
@@ -181,7 +179,7 @@ final class JpxImages {
             throws IOException {
         JpxHeader h = JpxHeader.parse(encoded);
         if (h == null || h.palette() || jpx.palette() || !plainColour(h)
-                || colourSpace == null && h.colours().isEmpty()) {
+                || colourSpace == null && h.colours().isEmpty() || colourSpace != null && !plainSpace(colourSpace)) {
             return null;
         }
         int n = colourSpace != null ? components(colourSpace) : switch (h.colours().get(0)[2]) {
@@ -200,11 +198,16 @@ final class JpxImages {
                 colours[i++] = c;
             }
         }
+        if (!uniform(jpx, colours) || !inOrder(jpx, colours)) {
+            return null;
+        }
         int[][] groups = alpha >= 0 ? new int[][] {colours, {alpha}} : new int[][] {colours};
         byte[][] parts;
         try {
             parts = JpxSplit.split(encoded, groups, jpx);
-        } catch (RuntimeException e) {
+        } catch (InterruptedIOException e) {
+            throw e;
+        } catch (IOException | RuntimeException e) {
             return null;
         }
         if (parts == null) {
@@ -220,8 +223,40 @@ final class JpxImages {
                 return null;
             }
         }
-        long kept = s.getDictionaryObject(COSName.SMASK) instanceof COSStream m ? m.getLength() : 0;
-        return new Copy(wrapped, sizes, n, kept);
+        return new Copy(wrapped, sizes, n);
+    }
+
+    private static boolean uniform(JpxImage jpx, int[] colours) {
+        for (int c : colours) {
+            if (jpx.raster().depth(c) != jpx.raster().depth(colours[0])
+                    || jpx.raster().signed(c) != jpx.raster().signed(colours[0])) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean inOrder(JpxImage jpx, int[] colours) {
+        int[][] defs = jpx.channelDefinitions();
+        if (defs == null) {
+            return true;
+        }
+        for (int[] d : defs) {
+            for (int i = 0; i < colours.length; i++) {
+                if (d[0] == colours[i] && d[1] == 0 && d[2] != i + 1) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    private static boolean plainSpace(COSBase colourSpace) {
+        if (COSName.DEVICEGRAY.equals(colourSpace) || COSName.DEVICERGB.equals(colourSpace)
+                || COSName.DEVICECMYK.equals(colourSpace)) {
+            return true;
+        }
+        return colourSpace instanceof COSArray a && a.size() == 2 && COSName.ICCBASED.equals(a.getObject(0));
     }
 
     private void apply(COSStream s, Copy copy, int smaskInData) throws IOException {

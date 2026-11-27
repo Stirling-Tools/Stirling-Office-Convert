@@ -22,6 +22,8 @@ public final class JpxSplit {
     private static final int SOD = 0xFF93;
     private static final int EOC = 0xFFD9;
 
+    private static final int MAX_PACKETS = 1 << 22;
+
     private JpxSplit() {}
 
     public static byte[][] split(byte[] data, int[][] groups) throws IOException {
@@ -56,17 +58,21 @@ public final class JpxSplit {
         if (!tileParts(data, mainSegments, end, tileSegments)) {
             return null;
         }
-        List<List<int[]>> packets = new ArrayList<>();
+        List<int[]> packets = new ArrayList<>();
+        int[] counted = new int[1];
         List<byte[]> bodies = new ArrayList<>();
         for (int t = 0; t < cs.tiles.length; t++) {
             TileStream ts = cs.tiles[t];
             if (ts.separateHeaders() || !ts.markers.pocs.isEmpty() || !ts.markers.roi.isEmpty()) {
                 return null;
             }
-            List<int[]> spans = new ArrayList<>();
+            int[] spans = new int[1];
             byte[][] holder = new byte[1][];
             if (ts.present()) {
-                spans = spans(cs, t, holder);
+                spans = spans(cs, t, holder, counted);
+                if (spans == null) {
+                    return null;
+                }
             }
             packets.add(spans);
             bodies.add(holder[0]);
@@ -166,7 +172,7 @@ public final class JpxSplit {
         return true;
     }
 
-    private static List<int[]> spans(Codestream cs, int t, byte[][] holder) throws IOException {
+    private static int[] spans(Codestream cs, int t, byte[][] holder, int[] counted) throws IOException {
         TileStream ts = cs.tiles[t];
         MarkerSet tile = ts.markers;
         MarkerSet main = cs.main;
@@ -180,20 +186,34 @@ public final class JpxSplit {
         }
         int[] range = ts.body(cs.data, holder);
         PacketReader reader = new PacketReader(comps, holder[0], range[0], range[1], null, cod.sop(), cod.eph());
-        List<int[]> spans = new ArrayList<>();
+        int[][] spans = {new int[1 + 3 * 64]};
+        boolean[] overflow = new boolean[1];
         Progression.run(comps, cs.siz, rect, cod.layers(), cod.order(), List.of(), (layer, r, c, k) -> {
             int from = reader.position();
             boolean more = reader.packet(layer, r, c, k);
             if (reader.position() > from) {
-                spans.add(new int[] {c, from, reader.position()});
+                if (++counted[0] > MAX_PACKETS) {
+                    overflow[0] = true;
+                    return false;
+                }
+                int[] a = spans[0];
+                int n = a[0];
+                if (1 + 3 * (n + 1) > a.length) {
+                    a = java.util.Arrays.copyOf(a, a.length * 2);
+                    spans[0] = a;
+                }
+                a[1 + 3 * n] = c;
+                a[2 + 3 * n] = from;
+                a[3 + 3 * n] = reader.position();
+                a[0] = n + 1;
             }
             return more;
         });
-        return spans;
+        return overflow[0] ? null : spans[0];
     }
 
     private static byte[] assemble(byte[] data, Siz siz, List<int[]> mainSegments, List<List<int[]>> tileSegments,
-            List<List<int[]>> packets, List<byte[]> bodies, int[] group, int[] map) {
+            List<int[]> packets, List<byte[]> bodies, int[] group, int[] map) {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         u16(out, SOC);
         boolean dropMct = group[0] != 0 || group.length < 3 || group[1] != 1 || group[2] != 2;
@@ -206,7 +226,7 @@ public final class JpxSplit {
             }
         }
         for (int t = 0; t < packets.size(); t++) {
-            List<int[]> spans = packets.get(t);
+            int[] spans = packets.get(t);
             if (tileSegments.get(t) == null) {
                 continue;
             }
@@ -219,12 +239,12 @@ public final class JpxSplit {
             ByteArrayOutputStream body = new ByteArrayOutputStream();
             byte[] source = bodies.get(t);
             int sequence = 0;
-            for (int[] span : spans) {
-                if (map[span[0]] < 0) {
+            for (int p = 0; p < spans[0]; p++) {
+                if (map[spans[1 + 3 * p]] < 0) {
                     continue;
                 }
-                int from = span[1];
-                int length = span[2] - from;
+                int from = spans[2 + 3 * p];
+                int length = spans[3 + 3 * p] - from;
                 byte[] packet = java.util.Arrays.copyOfRange(source, from, from + length);
                 if (length >= 6 && (packet[0] & 0xFF) == 0xFF && (packet[1] & 0xFF) == 0x91) {
                     packet[4] = (byte) (sequence >> 8);
