@@ -32,6 +32,8 @@ final class PsdFixture {
 
     final List<Layer> layers = new ArrayList<>();
 
+    final ByteArrayOutputStream globalBlocks = new ByteArrayOutputStream();
+
     boolean mergedAlpha;
 
     boolean hasMerged = true;
@@ -129,6 +131,81 @@ final class PsdFixture {
         return this;
     }
 
+    PsdFixture global(String key, byte[] data) throws IOException {
+        DataOutputStream d = new DataOutputStream(globalBlocks);
+        d.writeBytes("8BIM");
+        d.writeBytes(key);
+        d.writeInt(data.length);
+        d.write(data);
+        d.write(new byte[(4 - data.length % 4) % 4]);
+        return this;
+    }
+
+    static byte[] patternFill(String id) throws IOException {
+        ByteArrayOutputStream bo = new ByteArrayOutputStream();
+        DataOutputStream o = new DataOutputStream(bo);
+        o.writeInt(16);
+        o.writeInt(0);
+        o.writeInt(0);
+        o.writeBytes("null");
+        o.writeInt(1);
+        o.writeInt(0);
+        o.writeBytes("Ptrn");
+        o.writeBytes("Objc");
+        o.writeInt(0);
+        o.writeInt(0);
+        o.writeBytes("Ptrn");
+        o.writeInt(1);
+        o.writeInt(0);
+        o.writeBytes("Idnt");
+        o.writeBytes("TEXT");
+        o.writeInt(id.length());
+        o.writeChars(id);
+        return bo.toByteArray();
+    }
+
+    static byte[] pattern(String id, int w, int h, byte[]... planes) throws IOException {
+        ByteArrayOutputStream body = new ByteArrayOutputStream();
+        DataOutputStream o = new DataOutputStream(body);
+        o.writeInt(1);
+        o.writeInt(PsdDocument.RGB);
+        o.writeShort(h);
+        o.writeShort(w);
+        o.writeInt(0);
+        o.write(id.length());
+        o.writeBytes(id);
+        ByteArrayOutputStream vma = new ByteArrayOutputStream();
+        DataOutputStream v = new DataOutputStream(vma);
+        v.writeInt(0);
+        v.writeInt(0);
+        v.writeInt(h);
+        v.writeInt(w);
+        v.writeInt(planes.length);
+        for (byte[] p : planes) {
+            v.writeInt(1);
+            v.writeInt(23 + p.length);
+            v.writeInt(8);
+            v.writeInt(0);
+            v.writeInt(0);
+            v.writeInt(h);
+            v.writeInt(w);
+            v.writeShort(8);
+            v.write(0);
+            v.write(p);
+        }
+        v.writeInt(0);
+        v.writeInt(0);
+        o.writeInt(3);
+        o.writeInt(vma.size());
+        o.write(vma.toByteArray());
+        ByteArrayOutputStream all = new ByteArrayOutputStream();
+        DataOutputStream a = new DataOutputStream(all);
+        a.writeInt(body.size());
+        a.write(body.toByteArray());
+        a.write(new byte[(4 - body.size() % 4) % 4]);
+        return all.toByteArray();
+    }
+
     byte[] bytes() throws IOException {
         ByteArrayOutputStream bo = new ByteArrayOutputStream();
         DataOutputStream o = new DataOutputStream(bo);
@@ -160,12 +237,13 @@ final class PsdFixture {
         o.writeInt(res.size());
         o.write(res.toByteArray());
         byte[] layerInfo = layers.isEmpty() && layerCount < 0 ? new byte[0] : layerInfo(big);
-        long section = layerInfo.length == 0 ? 0 : layerInfo.length + (big ? 8 : 4) + 4;
+        long section = layerInfo.length == 0 ? 0 : layerInfo.length + (big ? 8 : 4) + 4 + globalBlocks.size();
         length(o, section, big);
         if (section > 0) {
             length(o, layerInfo.length, big);
             o.write(layerInfo);
             o.writeInt(0);
+            o.write(globalBlocks.toByteArray());
         }
         o.writeShort(compression);
         int rb = rowBytes();

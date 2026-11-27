@@ -9,6 +9,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -374,6 +376,86 @@ class PsdPageTest {
         try (PDDocument pdf = open("invert.psd")) {
             assertArrayEquals(new byte[] {(byte) 0xBF, (byte) 0xBF}, samples(image(pdf.getPage(0))));
         }
+    }
+
+    @Test
+    void aDeepKnockoutLayerShowsTheBackgroundThroughTheLayersBelowIt() throws IOException {
+        PsdFixture f = new PsdFixture(2, 1);
+        f.hasMerged = false;
+        f.flat(255).flat(255).flat(255);
+        f.layers.add(new PsdFixture.Layer().rect(0, 0, 1, 2).fill(0, 250).fill(1, 240).fill(2, 230));
+        f.layers.add(new PsdFixture.Layer().rect(0, 0, 1, 2).fill(-1, 255).fill(0, 255).fill(1, 0).fill(2, 0));
+        f.layers.add(new PsdFixture.Layer().rect(0, 0, 1, 1).fill(-1, 255).fill(0, 0).fill(1, 0).fill(2, 255)
+                .block("knko", new byte[] {2, 0, 0, 0}).block("iOpa", new byte[] {0, 0, 0, 0}));
+        convert(f, "knockout.psd");
+        try (PDDocument pdf = open("knockout.psd")) {
+            byte[] s = samples(image(pdf.getPage(0)));
+            assertArrayEquals(new int[] {250, 240, 230}, ints(s, 0));
+            assertArrayEquals(new int[] {255, 0, 0}, ints(s, 3));
+        }
+    }
+
+    @Test
+    void legacyBrightnessAndContrastShiftAndStretchAroundTheMean() throws IOException {
+        PsdFixture f = new PsdFixture(1, 1);
+        f.hasMerged = false;
+        f.mode = PsdDocument.GRAY;
+        f.flat(255);
+        f.layers.add(new PsdFixture.Layer().rect(0, 0, 1, 1).fill(0, 100));
+        java.nio.ByteBuffer brit = java.nio.ByteBuffer.allocate(8);
+        brit.putShort((short) 20).putShort((short) 50).putShort((short) 127).put((byte) 0);
+        f.layers.add(new PsdFixture.Layer().rect(0, 0, 0, 0).block("brit", brit.array()));
+        convert(f, "brightness.psd");
+        try (PDDocument pdf = open("brightness.psd")) {
+            assertEquals(113, samples(image(pdf.getPage(0)))[0] & 0xFF);
+        }
+    }
+
+    @Test
+    void aPatternFillLayerRepeatsItsPatternAcrossTheCanvas() throws IOException {
+        PsdFixture f = new PsdFixture(4, 1);
+        f.hasMerged = false;
+        f.flat(255).flat(255).flat(255);
+        f.global("Patt", PsdFixture.pattern("p1", 2, 1, new byte[] {10, (byte) 200}, new byte[] {20, 100},
+                new byte[] {30, 50}));
+        f.layers.add(new PsdFixture.Layer().rect(0, 0, 0, 0).block("PtFl", PsdFixture.patternFill("p1")));
+        OfficeToPdf.Result r = convert(f, "pattern.psd");
+        assertFalse(r.warnings().stream().anyMatch(w -> w.contains("left out")), r.warnings().toString());
+        try (PDDocument pdf = open("pattern.psd")) {
+            byte[] s = samples(image(pdf.getPage(0)));
+            assertArrayEquals(new int[] {10, 20, 30}, ints(s, 0));
+            assertArrayEquals(new int[] {200, 100, 50}, ints(s, 3));
+            assertArrayEquals(new int[] {10, 20, 30}, ints(s, 6));
+        }
+    }
+
+    @Test
+    void aPatternTooLargeToHoldIsLeftOutWithAWarning() throws IOException {
+        PsdFixture f = new PsdFixture(2, 1);
+        f.hasMerged = false;
+        f.flat(255).flat(255).flat(255);
+        ByteArrayOutputStream huge = new ByteArrayOutputStream();
+        DataOutputStream o = new DataOutputStream(huge);
+        o.writeInt(1);
+        o.writeInt(PsdDocument.RGB);
+        o.writeInt(0);
+        o.writeInt(0);
+        o.write(2);
+        o.writeBytes("p2");
+        o.writeInt(3);
+        o.writeInt(20);
+        o.writeInt(0);
+        o.writeInt(0);
+        o.writeInt(30000);
+        o.writeInt(30000);
+        o.writeInt(3);
+        ByteArrayOutputStream block = new ByteArrayOutputStream();
+        new DataOutputStream(block).writeInt(huge.size());
+        block.write(huge.toByteArray());
+        f.global("Patt", block.toByteArray());
+        f.layers.add(new PsdFixture.Layer().rect(0, 0, 0, 0).block("PtFl", PsdFixture.patternFill("p2")));
+        OfficeToPdf.Result r = convert(f, "huge-pattern.psd");
+        assertTrue(r.warnings().stream().anyMatch(w -> w.contains("pattern fill")), r.warnings().toString());
     }
 
     @Test

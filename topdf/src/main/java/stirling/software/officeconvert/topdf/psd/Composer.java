@@ -35,7 +35,21 @@ final class Composer {
 
     private boolean damaged;
 
+    static final long MAX_PATTERN_BYTES = 64L << 20;
+
     private final List<float[]> pool = new ArrayList<>();
+
+    private Node top;
+
+    private List<long[]> patternBlocks = List.of();
+
+    private final java.util.Map<String, Pattern> patterns = new java.util.HashMap<>();
+
+    private long patternBytes;
+
+    private float[] shallowBase;
+
+    private float[] deepBase;
 
     private float[] maskRow;
 
@@ -62,7 +76,9 @@ final class Composer {
     static COSStream draw(Source src, PsdDocument doc, Layers layers, PDDocument pdf, List<String> warnings)
             throws IOException {
         Composer c = new Composer(src, doc);
+        c.patternBlocks = layers.patterns;
         Node root = c.build(layers.root, 0);
+        c.top = root;
         c.cacheRows(root, false);
         long[] budget = {LayerEffects.MAX_PIXELS * 4};
         c.feathers(root, budget);
@@ -179,6 +195,10 @@ final class Composer {
         LayerEffects fx;
         VectorMask line;
         Gradient overlayGradient;
+        Pattern pattern;
+        double[] patternPlace;
+        Pattern overlayPattern;
+        double[] overlayPlace;
         float[] lineColor;
         float lineOpacity;
         boolean noFill;
@@ -383,7 +403,7 @@ final class Composer {
         p.layer = l;
         masks(p, l);
         if (l.adjustment != null) {
-            Adjustments a = Adjustments.of(l.adjustment, l.adjustData, doc.mode, doc.depth);
+            Adjustments a = Adjustments.of(l.adjustment, l.adjustData, l.generator, doc.mode, doc.depth);
             if (a == null) {
                 if (!l.hidden) {
                     skipped.add("adjustment layer '" + l.name + "'");
@@ -413,7 +433,12 @@ final class Composer {
             p.solid = solid(l.solid);
         } else if (l.fill) {
             p.gradient = l.gradient == null ? null : Gradient.of(Descriptor.read(l.gradient, 4), n, this::solid);
-            if (p.gradient == null) {
+            if (p.gradient == null && l.pattern != null) {
+                Descriptor d = Descriptor.read(l.pattern, 4);
+                p.pattern = pattern(d);
+                p.patternPlace = place(d, 0, 0);
+            }
+            if (p.gradient == null && p.pattern == null) {
                 if (!l.hidden) {
                     skipped.add("gradient or pattern fill layer '" + l.name + "'");
                 }
@@ -425,8 +450,48 @@ final class Composer {
             l.blend = Blend.NORMAL;
         }
         vectorStroke(p, l);
+        if (l.overlay != null && l.overlay.pattern() != null && pattern(l.overlay.pattern()) == null) {
+            if (!l.hidden) {
+                effects.add("pattern overlay");
+            }
+            l.overlay = null;
+        }
         effects(l);
         return p;
+    }
+
+    private Pattern pattern(Descriptor d) {
+        Descriptor ref = d == null ? null : d.object("Ptrn");
+        Object id = ref == null ? null : ref.get("Idnt");
+        if (!(id instanceof String s)) {
+            return null;
+        }
+        String key = s.replace("\0", "");
+        if (patterns.containsKey(key)) {
+            return patterns.get(key);
+        }
+        Pattern found;
+        try {
+            found = Pattern.find(src, patternBlocks, key, doc);
+        } catch (IOException | RuntimeException e) {
+            found = null;
+        }
+        if (found != null && patternBytes + found.bytes() > MAX_PATTERN_BYTES) {
+            found = null;
+        }
+        if (found != null) {
+            patternBytes += found.bytes();
+        }
+        patterns.put(key, found);
+        return found;
+    }
+
+    private static double[] place(Descriptor d, double x, double y) {
+        Descriptor phase = d == null ? null : d.object("phase");
+        double scale = d == null ? 100 : d.number("Scl ", 100);
+        double px = phase == null ? 0 : phase.number("Hrzn", 0);
+        double py = phase == null ? 0 : phase.number("Vrtc", 0);
+        return new double[] {x + px, y + py, Math.max(1, Math.min(1000, scale)) / 100};
     }
 
     private double[] bounds(Pixels p) {
@@ -445,10 +510,10 @@ final class Composer {
 
     private void vectorStroke(Pixels p, Layers.Layer l) {
         Descriptor d = l.vectorStroke;
-        if (d == null || p.vector == null || p.color != null) {
+        if (d == null || p.vector == null || p.color != null && !l.strokeApart) {
             return;
         }
-        p.noFill = !d.flag("fillEnabled", true);
+        p.noFill = p.color == null && !d.flag("fillEnabled", true);
         if (!d.flag("strokeEnabled", false)) {
             return;
         }
@@ -555,11 +620,89 @@ final class Composer {
     }
 
     private void children(Node group, float[] dest) throws IOException {
-        for (Node child : ((Group) group).children) {
-            if (child.layer.hidden) {
-                continue;
+        List<Node> list = ((Group) group).children;
+        float[] savedShallow = shallowBase;
+        boolean root = group == top;
+        boolean own = false;
+        if (!root && knocks(list, 1)) {
+            shallowBase = buffer();
+            System.arraycopy(dest, 0, shallowBase, 0, dest.length);
+            own = true;
+        }
+        try {
+            for (int i = 0; i < list.size(); i++) {
+                Node child = list.get(i);
+                if (child.layer.hidden) {
+                    continue;
+                }
+                item(child, dest);
+                if (root && i == 0 && background(child)) {
+                    deepBase = buffer();
+                    System.arraycopy(dest, 0, deepBase, 0, dest.length);
+                    shallowBase = deepBase;
+                }
             }
-            item(child, dest);
+        } finally {
+            if (own) {
+                release(shallowBase);
+            }
+            if (root && deepBase != null) {
+                release(deepBase);
+                deepBase = null;
+            }
+            shallowBase = savedShallow;
+        }
+    }
+
+    private static boolean knocks(List<Node> list, int kind) {
+        for (Node c : list) {
+            if (c.layer.knockout == kind && !c.layer.hidden && !(c instanceof Adjust)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean background(Node n) {
+        return n instanceof Pixels p && p.color != null && p.transparency == null && p.layer.masks.isEmpty()
+                && n.vector == null && n.layer.blend == Blend.NORMAL;
+    }
+
+    private void knockout(Node base, float[] dest) throws IOException {
+        Layers.Layer l = base.layer;
+        float[] knock = l.knockout == 1 ? shallowBase : deepBase;
+        float[] src = buffer();
+        float[] tmp = buffer();
+        try {
+            float[] shape = coverage(base, src);
+            if (knock == null) {
+                Arrays.fill(tmp, 0);
+            } else {
+                System.arraycopy(knock, 0, tmp, 0, tmp.length);
+            }
+            boolean group = base instanceof Group;
+            composite(tmp, src, l.blend == Blend.PASS_THROUGH ? Blend.NORMAL : l.blend,
+                    group ? l.fillOpacity / 255f : 1, null);
+            float opacity = l.opacity / 255f;
+            for (int x = 0; x < width; x++) {
+                float t = shape[x] * opacity;
+                if (t <= 0) {
+                    continue;
+                }
+                int at = x * stride;
+                float ab = dest[at + n];
+                float ak = tmp[at + n];
+                float ao = ab + (ak - ab) * t;
+                for (int i = 0; i < n; i++) {
+                    float pb = dest[at + i] * ab;
+                    float pk = tmp[at + i] * ak;
+                    dest[at + i] = ao <= 0 ? tmp[at + i] : (pb + (pk - pb) * t) / ao;
+                }
+                dest[at + n] = ao;
+            }
+        } finally {
+            release(src);
+            release(tmp);
         }
     }
 
@@ -567,6 +710,10 @@ final class Composer {
         Layers.Layer l = base.layer;
         if (base instanceof Adjust a) {
             adjust(a, dest, null);
+            return;
+        }
+        if (l.knockout != 0 && base.clipped.isEmpty()) {
+            knockout(base, dest);
             return;
         }
         float opacity = l.opacity / 255f * (base instanceof Group ? l.fillOpacity / 255f : 1);
@@ -717,7 +864,16 @@ final class Composer {
         Layers.Layer l = node.layer;
         if (node instanceof Group g) {
             Arrays.fill(out, 0);
-            children(g, out);
+            float[] savedDeep = deepBase;
+            float[] savedShallow = shallowBase;
+            deepBase = null;
+            shallowBase = null;
+            try {
+                children(g, out);
+            } finally {
+                deepBase = savedDeep;
+                shallowBase = savedShallow;
+            }
             float[] m = mask(g);
             if (m != null) {
                 for (int x = 0; x < width; x++) {
@@ -746,6 +902,8 @@ final class Composer {
         } else if (p.gradient != null) {
             double[] b = bounds(p);
             p.gradient.row(y, width, b[0], b[1], b[2], b[3], out, stride, n);
+        } else if (p.pattern != null) {
+            p.pattern.row(y, width, p.patternPlace[0], p.patternPlace[1], p.patternPlace[2], out, stride, n);
         } else if (p.solid != null) {
             for (int x = 0; x < width; x++) {
                 int at = x * stride;
@@ -769,6 +927,18 @@ final class Composer {
                 ramp = buffer();
                 double[] b = bounds(p);
                 p.overlayGradient.row(y, width, b[0], b[1], b[2], b[3], ramp, stride, n);
+            }
+        }
+        if (overlay != null && overlay.pattern() != null) {
+            if (p.overlayPattern == null) {
+                p.overlayPattern = pattern(overlay.pattern());
+                double[] b = bounds(p);
+                boolean linked = overlay.pattern().flag("Algn", true);
+                p.overlayPlace = place(overlay.pattern(), linked ? b[0] : 0, linked ? b[1] : 0);
+            }
+            if (p.overlayPattern != null) {
+                ramp = buffer();
+                p.overlayPattern.row(y, width, p.overlayPlace[0], p.overlayPlace[1], p.overlayPlace[2], ramp, stride, n);
             }
         }
         float[] mixed = new float[3];

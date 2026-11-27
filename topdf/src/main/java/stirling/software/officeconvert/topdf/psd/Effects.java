@@ -24,7 +24,7 @@ final class Effects {
 
     private Effects() {}
 
-    record Overlay(float[] color, float opacity, int blend, Descriptor gradient) {}
+    record Overlay(float[] color, float opacity, int blend, Descriptor gradient, Descriptor pattern) {}
 
     record Found(Overlay overlay, LayerEffects.Stroke stroke, LayerEffects.Shadow shadow) {}
 
@@ -65,11 +65,15 @@ final class Effects {
                     if (overlay != null) {
                         into.add("gradient overlay");
                     }
-                    overlay = new Overlay(color, opacity, mode, null);
+                    overlay = new Overlay(color, opacity, mode, null, null);
                     continue;
                 }
                 if (e.getValue().equals("gradient overlay") && overlay == null && fx.object("Grad") != null) {
-                    overlay = new Overlay(null, opacity, mode, fx);
+                    overlay = new Overlay(null, opacity, mode, fx, null);
+                    continue;
+                }
+                if (e.getValue().equals("pattern overlay") && overlay == null && fx.object("Ptrn") != null) {
+                    overlay = new Overlay(null, opacity, mode, null, fx);
                     continue;
                 }
                 if (e.getValue().equals("stroke") && stroke == null && color != null

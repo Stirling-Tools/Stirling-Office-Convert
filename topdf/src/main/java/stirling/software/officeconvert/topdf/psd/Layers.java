@@ -65,6 +65,9 @@ final class Layers {
         boolean modernEffects;
         String adjustment;
         byte[] adjustData;
+        byte[] generator;
+        byte[] pattern;
+        boolean strokeApart;
         byte[] gradient;
         Descriptor vectorStroke;
         Effects.Overlay overlay;
@@ -96,6 +99,8 @@ final class Layers {
     }
 
     final Layer root = new Layer();
+
+    final List<long[]> patterns = new ArrayList<>();
 
     boolean mergedAlpha;
 
@@ -185,6 +190,9 @@ final class Layers {
             if ((key == tag("Lr16") || key == tag("Lr32")) && count == 0) {
                 info(src, doc, start, start + len);
             }
+            if ((key == tag("Patt") || key == tag("Pat2") || key == tag("Pat3")) && patterns.size() < 16) {
+                patterns.add(new long[] {start, len});
+            }
             c.seek(start + (len + 3 & ~3L));
         }
     }
@@ -220,7 +228,7 @@ final class Layers {
                 vectors++;
                 blobs += l.vector.length;
             }
-            blobs += (l.adjustData == null ? 0 : l.adjustData.length) + (l.gradient == null ? 0 : l.gradient.length);
+            blobs += (l.adjustData == null ? 0 : l.adjustData.length) + (l.generator == null ? 0 : l.generator.length) + (l.pattern == null ? 0 : l.pattern.length) + (l.gradient == null ? 0 : l.gradient.length);
             l.channels.clear();
             l.channels.addAll(placed);
         }
@@ -453,8 +461,17 @@ final class Layers {
             l.fill = true;
             l.gradient = new byte[(int) len];
             c.fully(l.gradient);
+        } else if (key == tag("PtFl") && len <= Adjustments.MAX_BYTES && keep(len)) {
+            l.fill = true;
+            l.pattern = new byte[(int) len];
+            c.fully(l.pattern);
         } else if (key == tag("GdFl") || key == tag("PtFl")) {
             l.fill = true;
+        } else if (key == tag("vowv")) {
+            l.strokeApart = true;
+        } else if (key == tag("CgEd") && len <= Adjustments.MAX_BYTES && keep(len)) {
+            l.generator = new byte[(int) len];
+            c.fully(l.generator);
         } else if (ADJUSTMENTS.contains(key)) {
             l.adjustment = new String(new byte[] {(byte) (key >> 24), (byte) (key >> 16), (byte) (key >> 8),
                 (byte) key}, StandardCharsets.ISO_8859_1);

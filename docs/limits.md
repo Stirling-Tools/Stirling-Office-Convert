@@ -163,6 +163,7 @@ misses a drawn form. Images are charged wherever they are listed.
 | PSD canvas / channels / layers / group depth | 30,000 (PSD) or 300,000 (PSB) pixels a side, 2^32 pixels in all / 56 / 8,000 / 64 | refused; with more layers none are read and the merged picture is used, groups deeper than 64 are flattened into their parent, with a warning |
 | PSD compositing (no merged picture) | 2^30 canvas pixels, 16 G pixel-layer steps, layers up to 1.2 M pixels a side | refused with a reason; larger layers are left out |
 | PSD shape, adjustment and effect data kept / one effect or feather buffer / all of them | 64 MB / 4 M pixels / 16 M pixels | left out with a warning naming it |
+| PSD patterns: one pattern / all patterns held | 4 M pixels / 64 MB | left out with a warning naming the fill or overlay |
 | SVG elements / depth / pixels | 20,000 / 48 / 4 M | further elements and deeper ones are skipped; larger pictures are scaled down |
 | ODS repeated rows and columns | 8–192 MB of work | truncated with a warning |
 | Spreadsheet cells / merged ranges | 4 M / 100,000 | truncated |

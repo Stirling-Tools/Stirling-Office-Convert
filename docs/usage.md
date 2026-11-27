@@ -504,9 +504,10 @@ RGB, CMYK (kept as CMYK), Lab, duotone (as grayscale) and multichannel (as Devic
 channel, with the embedded ICC profile kept and the merged transparency as a soft mask. 32-bit documents keep their
 linear samples at 16 bits under their own profile, or are encoded as sRGB when they have none. A file saved without a
 merged picture (Maximize Compatibility off) has its layers composited: blend modes, opacity and fill, masks, vector
-masks and shapes, clipping groups, groups, hidden layers, solid and gradient fills, the common adjustment layers
-(levels, curves, invert, posterize, threshold, exposure, hue/saturation), color and gradient overlays, strokes, drop
-shadows and mask feathering; anything else that cannot be drawn is named in a warning. Pictures are read row by row,
+masks and shapes, shape strokes, clipping groups, groups, knockout, hidden layers, solid, gradient and pattern fills,
+the common adjustment layers (levels, curves, invert, posterize, threshold, exposure, brightness/contrast,
+hue/saturation without color ranges), color, gradient and pattern overlays, strokes, drop shadows and mask feathering;
+anything else that cannot be drawn is named in a warning. Pictures are read row by row,
 so a large PSB needs little heap.
 
 Plain text (`.txt .text .log .asc`) prints the way LibreOffice Writer prints it: A4 with 2 cm margins, Liberation Mono

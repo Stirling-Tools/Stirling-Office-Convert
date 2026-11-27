@@ -11,6 +11,10 @@ abstract class Adjustments {
     abstract void apply(float[] buf, int at, int n, float[] out);
 
     static Adjustments of(String key, byte[] data, int mode, int depth) {
+        return of(key, data, null, mode, depth);
+    }
+
+    static Adjustments of(String key, byte[] data, byte[] generator, int mode, int depth) {
         if (data == null) {
             return null;
         }
@@ -23,6 +27,7 @@ abstract class Adjustments {
                 case "curv" -> curves(data, mode);
                 case "hue2" -> hueSaturation(data, mode);
                 case "expA" -> exposure(data, mode, depth);
+                case "brit" -> brightness(data, generator, mode);
                 default -> null;
             };
         } catch (RuntimeException e) {
@@ -184,13 +189,24 @@ abstract class Adjustments {
         double[] x = new double[count];
         double[] y = new double[count];
         for (int i = 0; i < count; i++) {
-            y[i] = (b.getShort() & 0xFFFF) / 255.0;
-            x[i] = (b.getShort() & 0xFFFF) / 255.0;
+            y[i] = b.getShort() & 0xFFFF;
+            x[i] = b.getShort() & 0xFFFF;
         }
         for (int i = 1; i < count; i++) {
             if (x[i] <= x[i - 1]) {
                 throw new IllegalArgumentException("curve order");
             }
+        }
+        return curve(x, y);
+    }
+
+    private static float[] curve(double[] px, double[] py) {
+        int count = px.length;
+        double[] x = new double[count];
+        double[] y = new double[count];
+        for (int i = 0; i < count; i++) {
+            x[i] = px[i] / 255.0;
+            y[i] = py[i] / 255.0;
         }
         double[] m = natural(x, y);
         return lut(v -> {
@@ -225,6 +241,47 @@ abstract class Adjustments {
             m[k] = m[k] * m[k + 1] + u[k];
         }
         return m;
+    }
+
+    private static Adjustments brightness(byte[] data, byte[] generator, int mode) {
+        ByteBuffer b = ByteBuffer.wrap(data);
+        double brightness = b.getShort();
+        double contrast = b.getShort();
+        double mean = b.getShort();
+        boolean legacy = true;
+        Descriptor d = generator == null || generator.length < 8 ? null : Descriptor.read(generator, 4);
+        if (d != null && d.get("Brgh") != null) {
+            brightness = d.number("Brgh", 0);
+            contrast = d.number("Cntr", 0);
+            mean = d.number("means", 127);
+            legacy = d.flag("useLegacy", false);
+        }
+        brightness = Math.max(-150, Math.min(150, brightness));
+        contrast = Math.max(-100, Math.min(100, contrast));
+        float[] lut;
+        if (legacy) {
+            double k = contrast >= 0 ? 1 / Math.max(1 / 255.0, 1 - contrast / 100) : 1 + contrast / 100;
+            double bright = brightness;
+            double m = mean;
+            lut = lut(v -> (float) (((v * 255 + bright - m) * k + m) / 255));
+        } else {
+            float[] first = brightness == 0 ? null
+                    : curve(new double[] {0, 128 - 0.4039 * brightness, 255}, new double[] {0, 128 + 0.2616 * brightness, 255});
+            double shift = -0.3131 * contrast;
+            float[] second = contrast == 0 ? null
+                    : curve(new double[] {-18.85, 0, 255, 273.85}, new double[] {-18.85 - shift, 0, 255, 273.85 + shift});
+            lut = lut(v -> {
+                float t = first == null ? v : look(first, v);
+                return second == null ? t : look(second, t);
+            });
+        }
+        float[][] luts = new float[channels(mode)][];
+        if (mode == PsdDocument.LAB) {
+            luts[0] = lut;
+        } else {
+            java.util.Arrays.fill(luts, lut);
+        }
+        return new Luts(luts, null);
     }
 
     private static Adjustments exposure(byte[] data, int mode, int depth) {
@@ -299,14 +356,13 @@ abstract class Adjustments {
                     lightness = cLight;
                 } else {
                     h += hue;
-                    s = Colors.clamp(s * (1 + sat / 100f));
+                    s = sat > 0 ? (sat >= 100 ? (s > 0 ? 1 : 0) : s / (1 - sat / 100f)) : s * (1 + sat / 100f);
                     lightness = light;
                 }
-                float[] rgb = hsl(((h % 360) + 360) % 360, Colors.clamp(s), l);
+                l = lightness < 0 ? l * (1 + lightness / 100f) : l + (1 - l) * lightness / 100f;
+                float[] rgb = hsl(((h % 360) + 360) % 360, Colors.clamp(s), Colors.clamp(l));
                 for (int i = 0; i < 3; i++) {
-                    float v = rgb[i];
-                    v = lightness < 0 ? v * (1 + lightness / 100f) : v + (1 - v) * lightness / 100f;
-                    out[i] = Colors.clamp(v);
+                    out[i] = Colors.clamp(rgb[i]);
                 }
             }
         };
