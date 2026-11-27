@@ -6,10 +6,12 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Locale;
+import java.util.zip.ZipEntry;
 
 import org.apache.poi.poifs.filesystem.DirectoryNode;
 import org.apache.poi.poifs.filesystem.POIFSFileSystem;
 
+import stirling.software.officeconvert.topdf.io.BoundedZip;
 import stirling.software.officeconvert.topdf.io.LegacyOffice;
 
 /** The plain reason for each kind of file the converter does not read, by its extension or, when the name gives
@@ -87,6 +89,10 @@ public final class UnsupportedFormats {
         if (wps != null) {
             return wps;
         }
+        if (head.length >= 2 && head[0] == 'P' && head[1] == 'K' && uof2(file)) {
+            return "The file is a UOF 2.0 package, which is not supported yet; save it as UOF 1.0 (.uot, .uos or .uop)"
+                    + " or as .docx, .xlsx or .pptx";
+        }
         String text = new String(head, StandardCharsets.ISO_8859_1).stripLeading().toLowerCase(Locale.ROOT);
         if ((text.startsWith("mime-version:") || text.startsWith("from:") || text.startsWith("content-type:"))
                 && text.contains("multipart/related")) {
@@ -116,6 +122,21 @@ public final class UnsupportedFormats {
             return null;
         } catch (IOException | RuntimeException e) {
             return null;
+        }
+    }
+
+    private static boolean uof2(Path file) {
+        try (BoundedZip z = BoundedZip.open(file)) {
+            ZipEntry e = z.entry("uof.xml");
+            if (e == null || e.isDirectory()) {
+                return false;
+            }
+            try (InputStream in = z.open(e, 1 << 20)) {
+                String head = new String(in.readNBytes(8192), StandardCharsets.UTF_8);
+                return head.contains("schemas.uof.org/cn/2009/uof");
+            }
+        } catch (IOException | RuntimeException e) {
+            return false;
         }
     }
 

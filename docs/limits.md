@@ -178,6 +178,7 @@ misses a drawn form. Images are charged wherever they are listed.
 | UOF rewritten package text | 32 MB + 16 × the file size, at most 256 M characters | refused as too large to convert |
 | UOF paragraphs and tables / nesting | 2,000,000 / 40 | the rest is skipped |
 | UOF pictures (base64) | 32 MB each, 256 MB in all | the picture is left out |
+| UOF slide group nesting / members per group | 16 / 10,000 | deeper groups and later members are left out |
 | UOF slides / shapes / sheets / cells | 5,000 / 200,000 / 1,000 / 1,000,000 | the rest is left out |
 
 The library changes this JVM-wide state, which also affects other code in the same JVM:

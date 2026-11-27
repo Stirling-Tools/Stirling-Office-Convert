@@ -21,6 +21,10 @@ final class UofSlides {
 
     static final int MAX_SHAPES = 200_000;
 
+    static final int MAX_GROUP_DEPTH = 16;
+
+    static final int MAX_GROUP_MEMBERS = 10_000;
+
     static final String P_NS = "xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\""
             + " xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\""
             + " xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"";
@@ -39,6 +43,8 @@ final class UofSlides {
 
     private final Map<String, Element> masters = new LinkedHashMap<>();
 
+    private final Map<String, long[]> offsets = new HashMap<>();
+
     private final Map<byte[], String> written = new IdentityHashMap<>();
 
     private int shapeCount;
@@ -55,10 +61,17 @@ final class UofSlides {
         this.units = UofUnits.of(unit.isEmpty() ? "cm" : unit);
         this.objects = new UofObjects(root, units);
         this.runs = new UofRuns(root);
-        for (Element g : Uof.kids(Uof.kid(root, "对象集"), "图形")) {
-            String id = Uof.attr(g, "标识符");
-            if (id != null) {
-                shapes.putIfAbsent(id, g);
+        String last = null;
+        for (Element g : Uof.kids(Uof.kid(root, "对象集"))) {
+            String kind = Uof.name(g);
+            if (kind.equals("图形")) {
+                last = Uof.attr(g, "标识符");
+                if (last != null) {
+                    shapes.putIfAbsent(last, g);
+                    offset(last, Uof.kid(g, "组合位置"));
+                }
+            } else if (kind.equals("组合位置") && last != null) {
+                offset(last, g);
             }
         }
         for (Element m : Uof.kids(Uof.path(root, "演示文稿", "主体", "母版集"), "母版")) {
@@ -66,6 +79,17 @@ final class UofSlides {
             if (id != null) {
                 masters.putIfAbsent(id, m);
             }
+        }
+    }
+
+    private void offset(String id, Element at) {
+        if (at == null || offsets.containsKey(id)) {
+            return;
+        }
+        long x = emu(Uof.attr(at, "x坐标"));
+        long y = emu(Uof.attr(at, "y坐标"));
+        if (x != Long.MIN_VALUE && y != Long.MIN_VALUE) {
+            offsets.put(id, new long[] {x, y});
         }
     }
 
@@ -190,7 +214,10 @@ final class UofSlides {
         String colour = Uof.colour(Uof.text(Uof.kid(bg, "颜色")));
         Element picture = Uof.kid(bg, "图片");
         if (picture != null) {
-            byte[] data = objects.picture(String.valueOf(Uof.attr(picture, "名称")));
+            byte[] data = objects.picture(Uof.attr(picture, "图形引用"));
+            if (data == null) {
+                data = objects.picture(Uof.attr(picture, "名称"));
+            }
             String rel = data == null ? null : media(data, rels);
             if (rel != null) {
                 return "<a:blipFill><a:blip r:embed=\"" + rel + "\"/><a:stretch><a:fillRect/></a:stretch></a:blipFill>";
@@ -224,7 +251,8 @@ final class UofSlides {
         if (shapeCount++ > MAX_SHAPES) {
             return id;
         }
-        Element g = shapes.get(String.valueOf(Uof.attr(anchor, "图形引用")));
+        String ref = Uof.attr(anchor, "图形引用");
+        Element g = shapes.get(String.valueOf(ref));
         if (g == null) {
             return id;
         }
@@ -239,17 +267,27 @@ final class UofSlides {
         if (!(h >= 0)) {
             h = emu(Uof.text(Uof.kid(props, "高度")));
         }
-        if (x == Long.MIN_VALUE || y == Long.MIN_VALUE || w < 0 || h < 0 || w > 1L << 33 || h > 1L << 33) {
-            return id;
-        }
         String placeholder = Uof.attr(anchor, "占位符");
         if ("notes".equals(placeholder) || "page".equals(placeholder) || "handout".equals(placeholder)) {
             return id;
         }
+        return place(b, ref, g, x, y, w, h, placeholder, rels, id, 0);
+    }
+
+    private int place(StringBuilder b, String ref, Element g, long x, long y, long w, long h, String placeholder,
+            List<String[]> rels, int id, int depth) throws IOException {
+        if (x == Long.MIN_VALUE || y == Long.MIN_VALUE || w < 0 || h < 0 || w > 1L << 33 || h > 1L << 33) {
+            return id;
+        }
+        String members = Uof.attr(g, "组合列表");
+        if (members != null && !members.isBlank()) {
+            return group(b, members, x, y, w, h, rels, id, depth);
+        }
+        Element props = Uof.path(g, "预定义图形", "属性");
         double rot = Uof.number(Uof.text(Uof.kid(props, "旋转角度")));
         String xfrm = "<a:xfrm" + (rot > 0 && rot < 360 ? " rot=\"" + Math.round((360 - rot) * 60000) % 21_600_000 + "\""
                 : "") + "><a:off x=\"" + x + "\" y=\"" + y + "\"/><a:ext cx=\"" + w + "\" cy=\"" + h + "\"/></a:xfrm>";
-        UofObjects.Shape found = objects.shape(Uof.attr(anchor, "图形引用"));
+        UofObjects.Shape found = objects.shape(ref);
         byte[] picture = found == null ? null : found.picture();
         Element text = Uof.kid(g, "文本内容");
         if (picture != null && (text == null || Uof.kids(text, "段落").isEmpty())) {
@@ -281,6 +319,52 @@ final class UofSlides {
         b.append(runs.textBody(text, placeholder));
         b.append("</p:sp>");
         return id + 1;
+    }
+
+    private int group(StringBuilder b, String members, long x, long y, long w, long h, List<String[]> rels, int id,
+            int depth) throws IOException {
+        if (depth >= MAX_GROUP_DEPTH) {
+            return id;
+        }
+        List<String> loose = new ArrayList<>();
+        List<String> listed = new ArrayList<>();
+        for (String m : members.split("[,\\s]+")) {
+            if (!m.isEmpty() && listed.size() < MAX_GROUP_MEMBERS) {
+                listed.add(m);
+            }
+        }
+        for (String m : listed) {
+            Element c = shapes.get(m);
+            if (c == null || shapeCount++ > MAX_SHAPES) {
+                continue;
+            }
+            Element props = Uof.path(c, "预定义图形", "属性");
+            long cw = emu(Uof.text(Uof.kid(props, "宽度")));
+            long ch = emu(Uof.text(Uof.kid(props, "高度")));
+            long[] at = offsets.get(m);
+            if (at != null && cw >= 0 && ch >= 0) {
+                id = place(b, m, c, x + at[0], y + at[1], cw, ch, null, rels, id, depth + 1);
+            } else if (Uof.attr(c, "组合列表") != null || objects.shape(m) != null || hasText(c)) {
+                loose.add(m);
+            }
+        }
+        boolean rows = h > w;
+        for (int i = 0; i < loose.size(); i++) {
+            String m = loose.get(i);
+            long each = (rows ? h : w) / loose.size();
+            id = rows ? place(b, m, shapes.get(m), x, y + each * i, w, each, null, rels, id, depth + 1)
+                    : place(b, m, shapes.get(m), x + each * i, y, each, h, null, rels, id, depth + 1);
+        }
+        return id;
+    }
+
+    private static boolean hasText(Element g) {
+        for (Element p : Uof.kids(Uof.kid(g, "文本内容"), "段落")) {
+            if (!Uof.text(p).isBlank()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static String geometry(Element g) {

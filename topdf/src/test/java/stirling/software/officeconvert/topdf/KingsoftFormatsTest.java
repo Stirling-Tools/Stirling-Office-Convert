@@ -112,6 +112,17 @@ class KingsoftFormatsTest {
     }
 
     @Test
+    void uof2PackagesAreRefusedPlainly() {
+        byte[] uof2 = new stirling.software.officeconvert.topdf.testing.ZipBytes()
+                .add("uof.xml", "<uof:UOF_0000 xmlns:uof=\"http://schemas.uof.org/cn/2009/uof\" version_0003=\"2.0\"/>")
+                .add("content.xml", "<字:文字处理文档_4225 xmlns:字=\"http://schemas.uof.org/cn/2009/wordproc\"/>").bytes();
+        for (String name : new String[] {"a.uot", "a.uos", "a.uop", "a.uof"}) {
+            String m = refusal(name, uof2);
+            assertTrue(m.contains("UOF 2.0"), m);
+        }
+    }
+
+    @Test
     void proprietaryChineseFormatsAreRefusedWithTheirReason() {
         assertTrue(refusal("book.ceb", new byte[] {1, 2, 3}).contains("Founder Apabi"));
         assertTrue(refusal("paper.caj", new byte[] {1, 2, 3}).contains("CNKI"));

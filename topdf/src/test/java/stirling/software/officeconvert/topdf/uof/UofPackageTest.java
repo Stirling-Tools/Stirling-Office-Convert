@@ -139,6 +139,31 @@ class UofPackageTest {
         }
     }
 
+    @Test
+    void groupsDrawTheirMembersAndNotThemselves() throws IOException {
+        String member = "<图:图形 图:标识符=\"m2\"><图:文本内容><字:段落>" + run("Right member", "")
+                + "</字:段落></图:文本内容></图:图形><图:组合位置 图:x坐标=\"NaN\" 图:y坐标=\"NaN\"/>";
+        String sized = "<图:图形 图:标识符=\"m1\"><图:预定义图形><图:名称>rect</图:名称><图:属性><图:填充><图:颜色>#ff0000"
+                + "</图:颜色></图:填充><图:宽度>2</图:宽度><图:高度>2</图:高度></图:属性></图:预定义图形></图:图形>"
+                + "<图:组合位置 图:x坐标=\"1\" 图:y坐标=\"1\"/>";
+        String nested = "<图:图形 图:标识符=\"inner\" 图:组合列表=\"m2\"/><图:图形 图:标识符=\"cycle\" 图:组合列表=\"cycle\"/>";
+        String group = "<图:图形 图:标识符=\"grp\" 图:组合列表=\"m1,inner,cycle\"><图:预定义图形><图:名称>group</图:名称>"
+                + "<图:属性><图:填充><图:颜色>#0000ff</图:颜色></图:填充></图:属性></图:预定义图形></图:图形>";
+        String xml = HEAD + "vnd.uof.presentation\"><uof:对象集>" + sized + member + nested + group + "</uof:对象集>"
+                + "<uof:演示文稿><演:主体><演:幻灯片集><演:幻灯片><uof:锚点 uof:x坐标=\"2\" uof:y坐标=\"2\""
+                + " uof:宽度=\"20\" uof:高度=\"10\" uof:图形引用=\"grp\"/></演:幻灯片></演:幻灯片集></演:主体>"
+                + "</uof:演示文稿></uof:UOF>";
+        Path pdf = convert("group.uop", xml);
+        assertTrue(text(pdf).contains("Right member"));
+        try (PDDocument doc = Loader.loadPDF(pdf.toFile())) {
+            BufferedImage page = new PDFRenderer(doc).renderImageWithDPI(0, 72);
+            Color member1 = new Color(page.getRGB(Math.round(4 * 72 / 2.54f), Math.round(4 * 72 / 2.54f)));
+            assertTrue(member1.getRed() > 200 && member1.getBlue() < 80, "member: " + member1);
+            Color inside = new Color(page.getRGB(Math.round(15 * 72 / 2.54f), Math.round(10 * 72 / 2.54f)));
+            assertTrue(inside.getBlue() < 200 || inside.getRed() > 200, "group fill drawn: " + inside);
+        }
+    }
+
     private byte[] rewrite(String name, String xml, UofPackage.Kind kind) throws IOException {
         Path in = Files.writeString(dir.resolve(name), xml, StandardCharsets.UTF_8);
         ByteArrayOutputStream out = new ByteArrayOutputStream();
