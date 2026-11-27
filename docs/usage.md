@@ -26,7 +26,7 @@ For Word, PowerPoint and Excel input (`.docx .docm .dotx .dotm .pptx .pptm .ppsx
 .xltx .xltm .xlsb`, Word 6.0 to 2003 `.doc .dot`, Excel 2.0 to 2003 `.xls .xlt`, PowerPoint 97-2003 `.ppt .pps .pot`,
 `.rtf`, Word 2003 XML, XML Spreadsheet 2003 and Flat OPC `.xml`, Visio 2013 and later `.vsdx .vsdm .vssx .vstx`,
 OpenDocument `.odt .ott .fodt .odm .ods .ots .fods .odp .otp .fodp .odg .otg .fodg`, OpenOffice.org 1.x `.sxw .stw .sxc
-.stc .sxi .sti .sxd .std`, SYLK, DIF and dBASE `.slk .dif .dbf`, Lotus 1-2-3 `.wk1 .wks .wk3 .wk4 .123`, Apple iWork `.pages .numbers .key`, Publisher `.pub` and Visio 2003-2010 `.vsd .vss .vst .vsw` (from the preview they hold), plain text `.txt .text .log .asc`, tables
+.stc .sxi .sti .sxd .std`, SYLK, DIF and dBASE `.slk .dif .dbf`, Lotus 1-2-3 `.wk1 .wks .wk3 .wk4 .123`, Apple iWork `.pages .numbers .key`, Publisher `.pub` and Visio 2003-2010 `.vsd .vss .vst .vsw` (from the preview they hold), PSD `.psd .psb`, plain text `.txt .text .log .asc`, tables
 `.csv .tsv .tab`, HTML `.html .htm .xhtml` or a `.zip` of a page (with `--allow-packages`), eBooks `.epub .mobi .azw3 .azw .prc .pdb .fb2 .fbz` and this library's JSON `.json`), which converts to PDF: `--password p` (a password protected document), `--max-pages n` (default 10000, 0 = all), `--timeout s` (default 300, 0 =
 none), `--fonts dir` (repeatable; an extra folder of fonts), `--font-map Family=Installed` (repeatable; draw a
 family with an installed one, such as `Aptos=Inter`), `--font-width Family=scale` (repeatable; scale a substituted
@@ -497,6 +497,17 @@ the paper its shape matches, with a warning. A file without a preview, with a bl
 under 600 pixels on its longer side (what Publisher keeps) is refused with a plain reason. Formats that are not
 converted (WordPerfect, Works, MHTML web archives, Quattro Pro, StarOffice 5, Windows Write and others) fail with a
 reason naming the format, found by extension or by content.
+
+PSD documents (`.psd`, and `.psb` for large documents, found by their content) become one page sized from their
+resolution, drawn from the merged picture the file holds in the document's own color mode: bitmap, grayscale, indexed,
+RGB, CMYK (kept as CMYK), Lab, duotone (as grayscale) and multichannel (as DeviceN inks), at 1, 8, 16 or 32 bits a
+channel, with the embedded ICC profile kept and the merged transparency as a soft mask. 32-bit documents keep their
+linear samples at 16 bits under their own profile, or are encoded as sRGB when they have none. A file saved without a
+merged picture (Maximize Compatibility off) has its layers composited: blend modes, opacity and fill, masks, vector
+masks and shapes, clipping groups, groups, hidden layers, solid and gradient fills, the common adjustment layers
+(levels, curves, invert, posterize, threshold, exposure, hue/saturation), color and gradient overlays, strokes, drop
+shadows and mask feathering; anything else that cannot be drawn is named in a warning. Pictures are read row by row,
+so a large PSB needs little heap.
 
 Plain text (`.txt .text .log .asc`) prints the way LibreOffice Writer prints it: A4 with 2 cm margins, Liberation Mono
 10 pt at 64 lines a page, tab stops every 1.25 cm, long lines wrapped, no widow control, and a form feed starts a new
