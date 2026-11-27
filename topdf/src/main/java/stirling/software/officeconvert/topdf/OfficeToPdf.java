@@ -64,7 +64,8 @@ public final class OfficeToPdf {
         TSV,
         HTML,
         EPUB,
-        JSON;
+        JSON,
+        SVG;
 
         public static Format of(Path file) {
             Objects.requireNonNull(file, "file");
@@ -82,6 +83,7 @@ public final class OfficeToPdf {
                 case "html", "htm", "xhtml", "zip", "htmlz", "mobi", "azw3", "azw", "prc", "pdb", "fb2", "fbz" -> HTML;
                 case "epub" -> EPUB;
                 case "json" -> JSON;
+                case "svg", "svgz" -> SVG;
                 case "ppt", "pps", "pot" -> PPT;
                 default -> {
                     String reason = UnsupportedFormats.byExtension(ext);
@@ -92,7 +94,7 @@ public final class OfficeToPdf {
                             + " .sxc, .stc, .sxi, .sti, .sxd, .std, .vsdx, .vsdm, .vssx, .vssm, .vstx, .vstm, .xml, .slk,"
                             + " .dif, .dbf, .wk1, .wks, .wk3, .wk4, .123, .pages, .numbers, .key, .pub, .vsd, .vss, .vst, .vsw,"
                             + " .txt,"
-                            + " .text, .log, .asc, .csv, .tsv, .tab, .html, .htm, .xhtml, .zip of HTML, .htmlz, .epub, .mobi, .azw3, .azw, .prc, .pdb, .fb2, .fbz or .json");
+                            + " .text, .log, .asc, .csv, .tsv, .tab, .html, .htm, .xhtml, .zip of HTML, .htmlz, .epub, .mobi, .azw3, .azw, .prc, .pdb, .fb2, .fbz, .svg, .svgz or .json");
                 }
             };
         }
@@ -105,6 +107,7 @@ public final class OfficeToPdf {
                         "odm", "ods", "ots", "fods", "odp", "otp", "fodp", "odg", "otg", "fodg", "xml", "sxw", "stw", "sxc",
                         "stc", "sxi", "sti", "sxd", "std", "vsdx", "vsdm", "vssx", "vssm", "vstx", "vstm" -> true;
                 case "txt", "text", "log", "asc", "csv", "tsv", "tab", "html", "htm", "xhtml", "json" -> true;
+                case "svg", "svgz" -> true;
                 case "mobi", "azw3", "azw", "prc", "fb2", "fbz", "htmlz" -> true;
                 case "slk", "sylk", "dif", "dbf", "pages", "numbers", "key", "wk1", "wks", "wk3", "wk4", "123" -> true;
                 case "pub", "vsd", "vss", "vst", "vsw" -> true;
@@ -416,6 +419,10 @@ public final class OfficeToPdf {
         if (EncryptedPackage.is(in)) {
             return Footprint.legacy(Files.size(in)) + 2 * Admission.BASE_BYTES;
         }
+        Long svg = SvgInput.estimate(in);
+        if (svg != null) {
+            return svg;
+        }
         Long drawing = LegacyDrawingInput.estimate(in);
         if (drawing != null) {
             return drawing;
@@ -538,6 +545,7 @@ public final class OfficeToPdf {
             case PPT -> PptRenderer.render(source, job);
             case TEXT, HTML, JSON -> DocxRenderer.render(source, job);
             case CSV, TSV -> XlsxRenderer.render(source, job);
+            case SVG -> throw new UnsupportedFormatException("The SVG drawing could not be read");
         }
     }
 
@@ -574,6 +582,10 @@ public final class OfficeToPdf {
         Result unlocked = encryptedPackage(source, requested, sink, options, renderer);
         if (unlocked != null) {
             return unlocked;
+        }
+        Result svg = SvgInput.render(source, requested, sink, options);
+        if (svg != null) {
+            return svg;
         }
         Result drawing = LegacyDrawingInput.render(source, sink, options);
         if (drawing != null) {

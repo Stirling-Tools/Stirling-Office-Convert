@@ -15,9 +15,11 @@ import stirling.software.officeconvert.PdfToOdp;
 import stirling.software.officeconvert.PdfToOdt;
 import stirling.software.officeconvert.PdfToPptx;
 import stirling.software.officeconvert.PdfToRtf;
+import stirling.software.officeconvert.PdfToSvg;
 import stirling.software.officeconvert.PdfToText;
 import stirling.software.officeconvert.PdfToXlsx;
 import stirling.software.officeconvert.legacy.PdfToPpt;
+import stirling.software.officeconvert.pdfa.WebFonts;
 
 enum OutputFormat {
     DOCX((pdf, target, s) -> PdfToDocx.convert(pdf, target, s.document())),
@@ -36,7 +38,9 @@ enum OutputFormat {
     PPT((pdf, target, s) -> PdfToPpt.convert(pdf, target, s.slides())),
     XLSX((pdf, target, s) -> PdfToXlsx.convert(pdf, target, s.books())),
     ODS((pdf, target, s) -> PdfToXlsx.convert(pdf, target, s.books())),
-    CSV((pdf, target, s) -> PdfToXlsx.convert(pdf, target, s.books()));
+    CSV((pdf, target, s) -> PdfToXlsx.convert(pdf, target, s.books())),
+    SVG((pdf, target, s) -> PdfToSvg.convert(pdf, target, new PdfToSvg.Options(s.document().firstPage(),
+            s.document().lastPage(), s.document().password(), WebFonts::toTrueType)));
 
     static final String PDF = "pdf";
 

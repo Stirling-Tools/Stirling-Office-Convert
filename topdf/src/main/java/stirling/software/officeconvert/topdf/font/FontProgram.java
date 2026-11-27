@@ -599,6 +599,33 @@ final class FontProgram {
         }
     }
 
+    private volatile Object pairs;
+
+    int pairKerning(int leftGlyph, int rightGlyph) {
+        if (kerning != null || gpos != null) {
+            return kerning(leftGlyph, rightGlyph);
+        }
+        Object p = pairs;
+        if (p == null) {
+            synchronized (this) {
+                p = pairs;
+                if (p == null) {
+                    GposKerning loaded = null;
+                    if (!entry.postScript()) {
+                        try (Opened o = open(entry)) {
+                            loaded = gpos(o.font());
+                        } catch (IOException | RuntimeException e) {
+                            loaded = null;
+                        }
+                    }
+                    p = loaded == null ? Boolean.FALSE : loaded;
+                    pairs = p;
+                }
+            }
+        }
+        return p instanceof GposKerning g ? g.kerning(leftGlyph, rightGlyph) : 0;
+    }
+
     private static GposKerning gpos(TrueTypeFont ttf) {
         try {
             TTFTable t = ttf.getTableMap().get("GPOS");
