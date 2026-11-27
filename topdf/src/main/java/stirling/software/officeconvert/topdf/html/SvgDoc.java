@@ -51,7 +51,8 @@ final class SvgDoc {
         byte[] bytes = gunzip(data);
         Document doc;
         try (InputStream in = new ByteArrayInputStream(bytes)) {
-            doc = Jsoup.parse(in, null, "", Parser.xmlParser());
+            doc = Jsoup.parse(in, null, "",
+                    Parser.xmlParser().setMaxDepth(stirling.software.officeconvert.topdf.io.SecureXml.MAX_ELEMENT_DEPTH + 2));
         }
         bounded(doc);
         namespaces(doc);
@@ -217,7 +218,7 @@ final class SvgDoc {
             return null;
         }
         String s = ref.strip();
-        if (s.startsWith("url(")) {
+        if (s.regionMatches(true, 0, "url(", 0, 4)) {
             int close = s.indexOf(')');
             s = s.substring(4, close < 0 ? s.length() : close).strip();
             if (s.length() >= 2 && (s.charAt(0) == '"' || s.charAt(0) == '\'')) {

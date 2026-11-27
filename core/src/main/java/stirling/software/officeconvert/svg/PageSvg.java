@@ -78,6 +78,7 @@ final class PageSvg extends PDFGraphicsStreamEngine {
 
     static final int MAX_PATH_SEGMENTS = 2_000_000;
 
+    private static final COSName MATTE = COSName.getPDFName("Matte");
     private static final AffineTransform FLIP = new AffineTransform(1, 0, 0, -1, 0, 0);
 
     record Stats(int textGlyphs, int pathGlyphs, int invisibleGlyphs, int images, int rasterShadings) {}
@@ -421,11 +422,17 @@ final class PageSvg extends PDFGraphicsStreamEngine {
         if (n != 4) {
             return null;
         }
+        boolean first = false;
         for (int i = 0; i < 4; i++) {
             int j = (i + 1) % 4;
             boolean horizontal = Math.abs(ys[i] - ys[j]) < 1e-6;
             boolean vertical = Math.abs(xs[i] - xs[j]) < 1e-6;
-            if (!horizontal && !vertical) {
+            if (horizontal == vertical) {
+                return null;
+            }
+            if (i == 0) {
+                first = horizontal;
+            } else if (horizontal != (first == (i % 2 == 0))) {
                 return null;
             }
         }
@@ -501,12 +508,18 @@ final class PageSvg extends PDFGraphicsStreamEngine {
         out = new Out(new StringBuilder(), saved.toSvg, saved.area,
                 getGraphicsState().getCurrentClippingPaths().size(), saved.decimals);
         depth++;
+        boolean done = false;
         try {
             nested(() -> processSoftMask(group));
             flushText();
             closeAll(out);
+            done = true;
         } finally {
             depth--;
+            if (!done) {
+                run = null;
+                out = saved;
+            }
         }
         StringBuilder content = out.sb;
         out = saved;
@@ -681,13 +694,19 @@ final class PageSvg extends PDFGraphicsStreamEngine {
                 bbox.getHeight());
         out = new Out(new StringBuilder(), new AffineTransform(), area, 1, 4);
         depth++;
+        boolean done = false;
         try {
             nested(() -> processTilingPattern(tp, uncoloured ? color : null, uncoloured ? underlying : null,
                     new Matrix()));
             flushText();
             closeAll(out);
+            done = true;
         } finally {
             depth--;
+            if (!done) {
+                run = null;
+                out = saved;
+            }
         }
         StringBuilder content = out.sb;
         out = saved;
@@ -1000,6 +1019,10 @@ final class PageSvg extends PDFGraphicsStreamEngine {
         }
         int w = Math.max(1, (int) Math.ceil(area.getWidth() * scale));
         int h = Math.max(1, (int) Math.ceil(area.getHeight() * scale));
+        if (imagePixels + (long) w * h > MAX_PAGE_IMAGE_PIXELS) {
+            return null;
+        }
+        imagePixels += (long) w * h;
         BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g = img.createGraphics();
         try {
@@ -1152,9 +1175,19 @@ final class PageSvg extends PDFGraphicsStreamEngine {
         StringBuilder sb = defs;
         String smaskId = null;
         Pictures.Encoded enc = null;
-        if (!stencil && image instanceof PDImageXObject x && x.getMask() == null) {
+        if (!stencil && fitted == image && image instanceof PDImageXObject x && x.getMask() == null) {
             enc = Pictures.jpeg(x);
             PDImageXObject smask = enc == null ? null : x.getSoftMask();
+            if (smask != null) {
+                long mpx = (long) smask.getWidth() * smask.getHeight();
+                if (ImageBudget.fitted(smask) != smask || smask.getCOSObject().containsKey(MATTE)
+                        || imagePixels + mpx > MAX_PAGE_IMAGE_PIXELS) {
+                    enc = null;
+                    smask = null;
+                } else {
+                    imagePixels += mpx;
+                }
+            }
             if (smask != null) {
                 BufferedImage m = smask.getOpaqueImage();
                 Pictures.Encoded menc = Pictures.encode(Pictures.gray(m));
@@ -1205,6 +1238,7 @@ final class PageSvg extends PDFGraphicsStreamEngine {
         final String stroke;
         final List<Path2D> clips;
         final PDSoftMask mask;
+        final String maskId;
         final BlendMode blend;
         final RenderingMode mode;
         final double lineWidth;
@@ -1229,8 +1263,9 @@ final class PageSvg extends PDFGraphicsStreamEngine {
             this.fillOpacity = fillOpacity;
             this.stroke = stroke;
             this.lineWidth = lineWidth;
-            this.clips = gs.getCurrentClippingPaths();
+            this.clips = List.copyOf(gs.getCurrentClippingPaths());
             this.mask = gs.getSoftMask();
+            this.maskId = mask == null ? null : softMask(mask);
             this.blend = gs.getBlendMode();
             this.mode = gs.getTextState().getRenderingMode();
         }
@@ -1239,8 +1274,20 @@ final class PageSvg extends PDFGraphicsStreamEngine {
                 PDGraphicsState gs) {
             return f == face && Math.abs(s - size) <= 1e-3 * size && close(l, linear) && fill.equals(this.fill)
                     && fo == fillOpacity && stroke.equals(this.stroke) && lw == lineWidth
-                    && gs.getCurrentClippingPaths() == clips && gs.getSoftMask() == mask && gs.getBlendMode() == blend
+                    && sameClips(gs.getCurrentClippingPaths()) && gs.getSoftMask() == mask && gs.getBlendMode() == blend
                     && gs.getTextState().getRenderingMode() == mode && chars < 4000;
+        }
+
+        private boolean sameClips(List<Path2D> now) {
+            if (now.size() != clips.size()) {
+                return false;
+            }
+            for (int i = 0; i < now.size(); i++) {
+                if (now.get(i) != clips.get(i)) {
+                    return false;
+                }
+            }
+            return true;
         }
 
         void add(String chars, double x, double y, boolean show, double advance) {
@@ -1367,7 +1414,7 @@ final class PageSvg extends PDFGraphicsStreamEngine {
         Out o = out;
         if (++elements <= MAX_ELEMENTS) {
             syncFor(r.clips, o);
-            String mask = r.mask == null ? null : softMask(r.mask);
+            String mask = r.maskId;
             String blend = blend(r.blend);
             if (mask != null || blend != null) {
                 o.sb.append("<g");

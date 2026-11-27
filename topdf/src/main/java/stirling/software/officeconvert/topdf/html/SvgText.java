@@ -163,10 +163,33 @@ final class SvgText {
         return Arrays.copyOf(out, n);
     }
 
+    private static int lowerBound(List<Integer> sorted, int value, int size) {
+        int lo = 0;
+        int hi = size;
+        while (lo < hi) {
+            int mid = (lo + hi) >>> 1;
+            if (sorted.get(mid) < value) {
+                lo = mid + 1;
+            } else {
+                hi = mid;
+            }
+        }
+        return lo;
+    }
+
     private void collect(Element e, SvgStyle style, Layout l, boolean preserve, int[] depth, Element path) {
-        if (depth[0]++ > 64 || l.chars.size() >= MAX_CHARS) {
+        if (depth[0] > 64 || l.chars.size() >= MAX_CHARS) {
             return;
         }
+        depth[0]++;
+        try {
+            spans(e, style, l, preserve, depth, path);
+        } finally {
+            depth[0]--;
+        }
+    }
+
+    private void spans(Element e, SvgStyle style, Layout l, boolean preserve, int[] depth, Element path) {
         String space = SvgDoc.attr(e, "xml:space");
         boolean keep = space.isEmpty() ? preserve : space.equalsIgnoreCase("preserve");
         String ws = SvgDoc.lower(style.get("white-space"));
@@ -716,11 +739,9 @@ final class SvgText {
             boolean rtl = (bidi.getRunLevel(r) & 1) == 1;
             List<int[]> segments = new ArrayList<>();
             int segStart = -1;
-            for (int k = 0; k < idx.size(); k++) {
-                int off = offsets.get(k);
-                if (off < start || off >= limit) {
-                    continue;
-                }
+            int kFrom = lowerBound(offsets, start, idx.size());
+            int kTo = lowerBound(offsets, limit, idx.size());
+            for (int k = kFrom; k < kTo; k++) {
                 Ch c = l.chars.get(idx.get(k));
                 if (segStart >= 0) {
                     Ch s0 = l.chars.get(idx.get(segStart));
@@ -733,11 +754,7 @@ final class SvgText {
                 }
             }
             if (segStart >= 0) {
-                int last = segStart;
-                for (int k = segStart; k < idx.size() && offsets.get(k) < limit; k++) {
-                    last = k;
-                }
-                segments.add(new int[] {segStart, last + 1});
+                segments.add(new int[] {segStart, kTo});
             }
             if (rtl) {
                 java.util.Collections.reverse(segments);
@@ -909,9 +926,13 @@ final class SvgText {
         PathIterator it = shape.getPathIterator(null, tolerance);
         float[] c = new float[6];
         boolean started = false;
+        float mx = 0;
+        float my = 0;
         while (!it.isDone() && pts.size() < 200_000) {
             int type = it.currentSegment(c);
             if (type == PathIterator.SEG_MOVETO) {
+                mx = c[0];
+                my = c[1];
                 if (started) {
                     pts.add(new float[] {c[0], c[1], 1});
                 } else {
@@ -921,7 +942,7 @@ final class SvgText {
             } else if (type == PathIterator.SEG_LINETO) {
                 pts.add(new float[] {c[0], c[1]});
             } else if (type == PathIterator.SEG_CLOSE && !pts.isEmpty()) {
-                pts.add(pts.get(0).clone());
+                pts.add(new float[] {mx, my});
             }
             it.next();
         }

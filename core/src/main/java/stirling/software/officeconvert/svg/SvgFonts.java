@@ -94,7 +94,11 @@ final class SvgFonts {
             if (known != null) {
                 return known;
             }
-            boolean ok = checked++ < MAX_CHECKED_GLYPHS && same(code, codePoint);
+            if (checked >= MAX_CHECKED_GLYPHS) {
+                return false;
+            }
+            checked++;
+            boolean ok = same(code, codePoint);
             glyphs.put(key, ok);
             return ok;
         }

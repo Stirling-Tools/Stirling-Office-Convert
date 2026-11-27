@@ -79,7 +79,7 @@ class SvgHostileTest {
     @Test
     @Timeout(value = 60, unit = TimeUnit.SECONDS)
     void remoteReferencesAreNeverFetched() throws Exception {
-        try (ServerSocket server = new ServerSocket(0, 50, InetAddress.getLoopbackAddress())) {
+        try (ServerSocket server = new ServerSocket(0, 50, InetAddress.getByName("127.0.0.1"))) {
             server.setSoTimeout(200);
             AtomicInteger connections = new AtomicInteger();
             Thread listener = new Thread(() -> {
@@ -165,11 +165,9 @@ class SvgHostileTest {
     @Test
     void deepNestingIsRefusedNotOverflowed() throws IOException {
         String deep = "<g>".repeat(50_000) + "<text y=\"5\">deep</text>" + "</g>".repeat(50_000);
-        try {
-            convert("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\">" + deep + "</svg>");
-        } catch (IOException e) {
-            assertTrue(e.getMessage().contains("nest"), e.getMessage());
-        }
+        IOException e = assertThrows(IOException.class,
+                () -> convert("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\">" + deep + "</svg>"));
+        assertTrue(e.getMessage().contains("nest"), e.getMessage());
         String text = convert("<svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\""
                 + " width=\"10\" height=\"10\"><g id=\"a\"><use xlink:href=\"#a\"/><text y=\"5\">loop</text></g>"
                 + "<use xlink:href=\"#a\"/></svg>");

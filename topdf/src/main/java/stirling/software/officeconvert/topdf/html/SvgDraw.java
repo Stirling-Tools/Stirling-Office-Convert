@@ -639,10 +639,14 @@ final class SvgDraw {
         }
         String[] p = l.substring(open + 1, close).strip().split("\\s+");
         if (l.startsWith("inset(")) {
-            float t = length(p[0], s.fontSize, (float) b.getHeight(), 0);
-            float r = p.length > 1 ? length(p[1], s.fontSize, (float) b.getWidth(), 0) : t;
-            float bo = p.length > 2 ? length(p[2], s.fontSize, (float) b.getHeight(), 0) : t;
-            float le = p.length > 3 ? length(p[3], s.fontSize, (float) b.getWidth(), 0) : r;
+            String pt = p[0];
+            String pr = p.length > 1 ? p[1] : pt;
+            String pb = p.length > 2 ? p[2] : pt;
+            String pl = p.length > 3 ? p[3] : pr;
+            float t = length(pt, s.fontSize, (float) b.getHeight(), 0);
+            float r = length(pr, s.fontSize, (float) b.getWidth(), 0);
+            float bo = length(pb, s.fontSize, (float) b.getHeight(), 0);
+            float le = length(pl, s.fontSize, (float) b.getWidth(), 0);
             return new Rectangle2D.Double(b.getX() + le, b.getY() + t, b.getWidth() - le - r, b.getHeight() - t - bo);
         }
         if (l.startsWith("circle(")) {
@@ -668,7 +672,7 @@ final class SvgDraw {
         }
         boolean fill = !paint(s.get("fill"), s).none();
         boolean stroke = !paint(s.get("stroke"), s).none() && strokeWidth(s) > 0;
-        boolean markers = (tag.equals("path") || tag.equals("line") || tag.equals("polyline") || tag.equals("polygon"))
+        boolean markers = isShape(tag)
                 && (!s.get("marker-start").equalsIgnoreCase("none") || !s.get("marker-mid").equalsIgnoreCase("none")
                         || !s.get("marker-end").equalsIgnoreCase("none"));
         return !(fill && stroke) && !markers;
@@ -1367,7 +1371,7 @@ final class SvgDraw {
                     }
                 }
                 default -> {
-                    if (markable) {
+                    if (markable && visible) {
                         markers(p, e, s);
                     }
                 }
@@ -2528,6 +2532,10 @@ final class SvgDraw {
         boolean svg = mime.contains("svg") || looksLikeSvg(data);
         if (svg) {
             nestedSvgImage(data, e, s, x, y, alpha);
+            return;
+        }
+        charge(data.length);
+        if (spent()) {
             return;
         }
         if (WebP.is(data)) {

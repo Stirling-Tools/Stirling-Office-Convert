@@ -199,7 +199,8 @@ class SvgToPdfTest {
         StringBuilder lol = new StringBuilder("<?xml version=\"1.0\"?><!DOCTYPE svg [<!ENTITY a \"");
         lol.append("x".repeat(60_000)).append("\">]><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\"><text>");
         lol.append("&a;".repeat(2_000)).append("</text></svg>");
-        draw(lol.toString());
+        Drawn entities = draw(lol.toString());
+        assertFalse(entities.text().contains("x"));
         draw("<svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" width=\"10\" height=\"10\">"
                 + "<g id=\"a\"><use xlink:href=\"#b\"/><use xlink:href=\"#b\"/></g>"
                 + "<g id=\"b\"><use xlink:href=\"#a\"/><use xlink:href=\"#a\"/></g></svg>");

@@ -204,7 +204,7 @@ public final class Main {
         List<Path> targets = Targets.of(files, a.output(), batch.mode().rewritesPdf() ? batch.mode().suffix() : a.format(),
                 a.inputs().stream().anyMatch(Files::isDirectory));
         Guard guard = new Guard(files, a.overwrite());
-        Conversion conversion = conversion(batch);
+        Conversion conversion = conversion(batch, guard);
         for (int k = 0; k < files.size(); k++) {
             Path in = files.get(k);
             Path target = targets.get(k);
@@ -254,7 +254,7 @@ public final class Main {
         return failures;
     }
 
-    private static Conversion conversion(Batch batch) {
+    private static Conversion conversion(Batch batch, Guard guard) {
         Args a = batch.args();
         OfficeToPdf.Options office = a.office();
         return switch (batch.mode()) {
@@ -279,7 +279,7 @@ public final class Main {
                     return new Outcome(officeToPdf(in, target, page).warnings(), List.of());
                 }
                 OfficeConvert.run(office.timeout(), () -> {
-                    pdfToOffice(in, target, batch.settings());
+                    pdfToOffice(in, target, batch.settings().writable(guard::writable));
                     return null;
                 });
                 return notes(List.of());

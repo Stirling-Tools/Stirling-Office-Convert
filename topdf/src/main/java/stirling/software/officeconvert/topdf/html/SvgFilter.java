@@ -81,7 +81,7 @@ final class SvgFilter {
     }
 
     private static boolean validArgs(String name, List<String> args, String raw) {
-        if (raw.contains(",")) {
+        if (Css.splitTopLevel(raw, ',').size() > 1) {
             return false;
         }
         switch (name) {
@@ -127,6 +127,19 @@ final class SvgFilter {
         }
     }
 
+    private static int closing(String s, int open) {
+        int depth = 0;
+        for (int i = open; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c == '(') {
+                depth++;
+            } else if (c == ')' && --depth == 0) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
     private static List<Step> parse(SvgDraw d, String value) {
         List<Step> out = new ArrayList<>();
         boolean missing = false;
@@ -140,7 +153,7 @@ final class SvgFilter {
                 break;
             }
             int open = s.indexOf('(', i);
-            int close = open < 0 ? -1 : s.indexOf(')', open);
+            int close = open < 0 ? -1 : closing(s, open);
             if (open < 0 || close < 0) {
                 return List.of();
             }
@@ -224,7 +237,7 @@ final class SvgFilter {
         if (form == null) {
             return;
         }
-        long bytes = (long) w * h * 16L * 6;
+        long bytes = (long) w * h * 16L * (6 + MAX_RESULTS);
         stirling.software.officeconvert.memory.Admission.Ticket ticket =
                 stirling.software.officeconvert.memory.Admission.jvm().enter(bytes);
         try {
@@ -413,6 +426,8 @@ final class SvgFilter {
             }
             if (out == null) {
                 out = in1.copy();
+            } else if (out == in1 || out == src || out == last || results.containsValue(out)) {
+                out = out.copy();
             }
             out.linear = lin;
             out.area = sub;
@@ -620,6 +635,10 @@ final class SvgFilter {
                 for (Element node : p.children()) {
                     if (!SvgDoc.local(node).equalsIgnoreCase("femergenode")) {
                         continue;
+                    }
+                    d.charge((long) in1.w * in1.h);
+                    if (d.spent() || Thread.currentThread().isInterrupted()) {
+                        break;
                     }
                     Img in = space(input(SvgDoc.attr(node, "in"), results, last, src), lin);
                     out = composite(in, out, "over", 0, 0, 0, 0);

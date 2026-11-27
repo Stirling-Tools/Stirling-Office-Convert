@@ -3,6 +3,7 @@ package stirling.software.officeconvert;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.awt.image.BufferedImage;
@@ -11,6 +12,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -277,6 +279,19 @@ class PdfToSvgTest {
         String second = Files.readString(dir.resolve("second.svg"));
         assertTrue(second.contains("Hello SVG 2"));
         assertNotNull(xml(second.getBytes(StandardCharsets.UTF_8)));
+    }
+
+    @Test
+    void anExistingPageFileStopsTheRunBeforeAnyPageIsWritten() throws Exception {
+        Path pdf = dir.resolve("in.pdf");
+        try (PDDocument doc = drawing(2)) {
+            doc.save(pdf.toFile());
+        }
+        Files.writeString(dir.resolve("kept-2.svg"), "mine");
+        PdfToSvg.Options options = PdfToSvg.Options.defaults().writable(p -> !Files.exists(p));
+        assertThrows(FileAlreadyExistsException.class, () -> PdfToSvg.convert(pdf, dir.resolve("kept.svg"), options));
+        assertFalse(Files.exists(dir.resolve("kept-1.svg")));
+        assertEquals("mine", Files.readString(dir.resolve("kept-2.svg")));
     }
 
     private static void link(PDPage page, float x, org.apache.pdfbox.pdmodel.interactive.action.PDAction action)

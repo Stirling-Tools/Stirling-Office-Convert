@@ -4,9 +4,13 @@ import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
+import java.util.function.Predicate;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -21,22 +25,31 @@ import stirling.software.officeconvert.svg.SvgPages;
 
 public final class PdfToSvg {
 
-    public record Options(int firstPage, int lastPage, String password, FixedHtml.FontSource fonts) {
+    public record Options(int firstPage, int lastPage, String password, FixedHtml.FontSource fonts,
+            Predicate<Path> writable) {
+
+        public Options(int firstPage, int lastPage, String password, FixedHtml.FontSource fonts) {
+            this(firstPage, lastPage, password, fonts, null);
+        }
 
         public static Options defaults() {
-            return new Options(1, Integer.MAX_VALUE, null, null);
+            return new Options(1, Integer.MAX_VALUE, null, null, null);
         }
 
         public Options pages(int first, int last) {
-            return new Options(first, last, password, fonts);
+            return new Options(first, last, password, fonts, writable);
         }
 
         public Options password(String secret) {
-            return new Options(firstPage, lastPage, secret, fonts);
+            return new Options(firstPage, lastPage, secret, fonts, writable);
         }
 
         public Options fonts(FixedHtml.FontSource source) {
-            return new Options(firstPage, lastPage, password, source);
+            return new Options(firstPage, lastPage, password, source, writable);
+        }
+
+        public Options writable(Predicate<Path> check) {
+            return new Options(firstPage, lastPage, password, fonts, check);
         }
     }
 
@@ -72,12 +85,21 @@ public final class PdfToSvg {
             }
             int dot = name.lastIndexOf('.');
             String stem = dot > 0 ? name.substring(0, dot) : name;
+            List<Path> files = new ArrayList<>();
+            for (int i = range[0]; i <= range[1]; i++) {
+                Path page = target.resolveSibling(stem + "-" + (i + 1) + ".svg");
+                if (options.writable() != null && !options.writable().test(page)) {
+                    throw new FileAlreadyExistsException(page.toString(), null,
+                            "already exists or is an input; give --overwrite to replace an output");
+                }
+                files.add(page);
+            }
             Result total = new Result(0, 0, 0, 0);
             SvgPages pages = pages(doc, options);
             try {
                 for (int i = range[0]; i <= range[1]; i++) {
                     int index = i;
-                    Path page = target.resolveSibling(stem + "-" + (i + 1) + ".svg");
+                    Path page = files.get(i - range[0]);
                     SvgPages.Page p = PdfFiles.writeThenMove(page, ".office-convert-", part -> {
                         try (OutputStream os = new BufferedOutputStream(Files.newOutputStream(part), 1 << 16)) {
                             return pages.write(index, os);

@@ -130,9 +130,7 @@ final class Num {
 
     private static void point(StringBuilder sb, double x, double y, int decimals) {
         append(sb, x, decimals);
-        if (!(y < 0 || y != y)) {
-            sb.append(' ');
-        }
+        sb.append(' ');
         append(sb, y, decimals);
     }
 

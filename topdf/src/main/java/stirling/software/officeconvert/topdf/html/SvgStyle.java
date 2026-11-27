@@ -120,7 +120,9 @@ final class SvgStyle {
         }
         int c = color;
         String cv = specified.get("color");
-        if (cv != null) {
+        if (cv != null && cv.strip().equalsIgnoreCase("initial")) {
+            c = 0;
+        } else if (cv != null) {
             Integer parsed = Css.color(cv);
             if (parsed != null && parsed >= 0) {
                 c = parsed;
@@ -135,7 +137,7 @@ final class SvgStyle {
             case "xx-small": return 9;
             case "x-small": return 10;
             case "small": return 13;
-            case "medium": return 16;
+            case "medium", "initial": return 16;
             case "large": return 18;
             case "x-large": return 24;
             case "xx-large": return 32;
@@ -145,7 +147,8 @@ final class SvgStyle {
             default: break;
         }
         if (s.endsWith("%")) {
-            return parent * SvgDraw.number(s.substring(0, s.length() - 1), 100) / 100f;
+            double pc = (double) parent * SvgDraw.number(s.substring(0, s.length() - 1), Float.NaN) / 100;
+            return Double.isFinite(pc) && pc >= 0 && pc <= Float.MAX_VALUE ? (float) pc : parent;
         }
         float px = SvgDraw.length(s, parent, 0, Float.NaN);
         return Float.isFinite(px) && px >= 0 ? px : parent;

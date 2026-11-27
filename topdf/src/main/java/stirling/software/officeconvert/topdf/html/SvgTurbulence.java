@@ -3,6 +3,7 @@ package stirling.software.officeconvert.topdf.html;
 import java.awt.geom.AffineTransform;
 import java.awt.geom.NoninvertibleTransformException;
 import java.awt.geom.Point2D;
+import java.awt.geom.Rectangle2D;
 
 import org.jsoup.nodes.Element;
 
@@ -175,7 +176,7 @@ final class SvgTurbulence {
             return out;
         }
         int octaves = (int) Math.min(MAX_OCTAVES, Math.max(0, SvgDraw.number(SvgDoc.attr(p, "numOctaves"), 1)));
-        long seed = Math.round(SvgDraw.number(SvgDoc.attr(p, "seed"), 0));
+        long seed = (long) SvgDraw.number(SvgDoc.attr(p, "seed"), 0);
         boolean fractal = SvgDoc.lower(SvgDoc.attr(p, "type")).equals("fractalnoise");
         boolean stitch = SvgDoc.lower(SvgDoc.attr(p, "stitchTiles")).equals("stitch");
         SvgTurbulence t = new SvgTurbulence(seed);
@@ -185,6 +186,7 @@ final class SvgTurbulence {
         } catch (NoninvertibleTransformException e) {
             return out;
         }
+        Rectangle2D tile = inv.createTransformedShape(new Rectangle2D.Double(0, 0, w, h)).getBounds2D();
         Point2D.Double pt = new Point2D.Double();
         for (int y = 0; y < h; y++) {
             for (int x = 0; x < w; x++) {
@@ -192,7 +194,8 @@ final class SvgTurbulence {
                 Point2D u = inv.transform(pt, null);
                 double[] c = new double[4];
                 for (int k = 0; k < 4; k++) {
-                    double v = t.turbulence(k, u.getX(), u.getY(), fx, fy, octaves, fractal, stitch, 0, 0, w, h);
+                    double v = t.turbulence(k, u.getX(), u.getY(), fx, fy, octaves, fractal, stitch, tile.getX(), tile.getY(),
+                            tile.getWidth(), tile.getHeight());
                     v = fractal ? (v + 1) / 2 : v;
                     c[k] = Math.max(0, Math.min(1, v));
                 }

@@ -3,6 +3,7 @@ package stirling.software.officeconvert.cli;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Locale;
+import java.util.function.Predicate;
 
 import stirling.software.officeconvert.EbookOptions;
 import stirling.software.officeconvert.PdfToAzw3;
@@ -40,11 +41,21 @@ enum OutputFormat {
     ODS((pdf, target, s) -> PdfToXlsx.convert(pdf, target, s.books())),
     CSV((pdf, target, s) -> PdfToXlsx.convert(pdf, target, s.books())),
     SVG((pdf, target, s) -> PdfToSvg.convert(pdf, target, new PdfToSvg.Options(s.document().firstPage(),
-            s.document().lastPage(), s.document().password(), WebFonts::toTrueType)));
+            s.document().lastPage(), s.document().password(), WebFonts::toTrueType, s.writable())));
 
     static final String PDF = "pdf";
 
-    record Settings(PdfToDocx.Options document, PdfToPptx.Options slides, PdfToXlsx.Options books, EbookOptions ebook) {}
+    record Settings(PdfToDocx.Options document, PdfToPptx.Options slides, PdfToXlsx.Options books, EbookOptions ebook,
+            Predicate<Path> writable) {
+
+        Settings(PdfToDocx.Options document, PdfToPptx.Options slides, PdfToXlsx.Options books, EbookOptions ebook) {
+            this(document, slides, books, ebook, null);
+        }
+
+        Settings writable(Predicate<Path> check) {
+            return new Settings(document, slides, books, ebook, check);
+        }
+    }
 
     @FunctionalInterface
     interface Converter {

@@ -139,7 +139,10 @@ final class SvgCss {
         boolean start = true;
         for (int i = 0; i < selector.length(); i++) {
             char c = selector.charAt(i);
-            if (c == '#') {
+            if (c == ':' && selector.regionMatches(true, i, ":not(", 0, 5)) {
+                i += 4;
+                start = true;
+            } else if (c == '#') {
                 ids++;
                 start = false;
             } else if (c == '.' || c == '[' || c == ':') {
@@ -228,7 +231,9 @@ final class SvgCss {
             int slash = size.indexOf('/');
             out.put("font-size", slash >= 0 ? size.substring(0, slash) : size);
             i++;
-            if (i < parts.size() && parts.get(i).startsWith("/")) {
+            if (i < parts.size() && parts.get(i).equals("/")) {
+                i += 2;
+            } else if (i < parts.size() && parts.get(i).startsWith("/")) {
                 i++;
             }
             if (i < parts.size()) {
