@@ -351,9 +351,11 @@ final class Downsample {
             if (toGray) {
                 jpeg = noLargerThan(resized.image, quality, jpeg, stream.getLength());
             }
-            options.add(new Encoded(jpeg, COSName.DCT_DECODE, null, 8, width, height,
-                    grayOut ? Output.GRAY : Output.RGB, null));
-            byte[] jpx = onlyJpx(stream) ? jpx(resized.image, jpeg, grayOut) : null;
+            Encoded dct = new Encoded(jpeg, COSName.DCT_DECODE, null, 8, width, height,
+                    grayOut ? Output.GRAY : Output.RGB, null);
+            options.add(dct);
+            boolean jpegReplaces = toGray || cost(dct) < stream.getLength() * MIN_SAVING;
+            byte[] jpx = onlyJpx(stream) && jpegReplaces ? jpx(resized.image, jpeg, grayOut) : null;
             if (jpx != null) {
                 options.add(new Encoded(jpx, COSName.JPX_DECODE, null, 8, width, height,
                         grayOut ? Output.GRAY : Output.RGB, null));

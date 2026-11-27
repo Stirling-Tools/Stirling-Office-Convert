@@ -968,8 +968,8 @@ further; the JDK default is 240 MB.
 - Input of a kind the library does not read, by extension or content, throws `UnsupportedFormatException`, an
   `IOException` subclass; a damaged or empty file of a kind it reads still throws a plain `IOException`.
 - `JpxEncoder` writes JPEG 2000. PDF/A parts 2 to 4 store JPEG 2000 pictures that break the JPX rules as rule-abiding
-  JPEG 2000 when that is smaller at no lower quality, and the optimizer may keep a JPEG 2000 photograph as JPEG 2000
-  for the same reason. The MQ arithmetic coder moved from the line-art module to
+  JPEG 2000 when that is smaller at no lower quality, and where the optimizer would re-encode a JPEG 2000 photograph
+  as JPEG it keeps it as JPEG 2000 instead when that is smaller at no lower quality. The MQ arithmetic coder moved from the line-art module to
   `stirling.software.officeconvert.mq.MqEncoder` in the core library, where JBIG2 and JPEG 2000 share it.
 
 ### 0.2.0

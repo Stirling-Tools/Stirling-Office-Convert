@@ -1,5 +1,6 @@
 package stirling.software.officeconvert.optimize;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
@@ -35,6 +36,8 @@ import org.junit.jupiter.api.io.TempDir;
 import stirling.software.officeconvert.jpx.JpxEncoder;
 
 class DownsampleTest {
+
+    private static final double BPP_JPEG_CANNOT_BEAT = 0.2;
 
     private static final PdfOptimizer.Options AT_150_DPI = PdfOptimizer.Options.defaults()
             .images(new PdfOptimizer.Images(150, 0.7f));
@@ -358,6 +361,26 @@ class DownsampleTest {
         JpxEncoder.Planes before = JpxEncoder.planes(source);
         JpxEncoder.Planes after = JpxEncoder.planes(decoded);
         assertTrue(before.psnr(after) > 30, "psnr " + before.psnr(after));
+    }
+
+    @Test
+    void aJpegTwoThousandPhotoThatAJpegWouldNotShrinkIsLeftAsItWas() throws Exception {
+        BufferedImage source = photo(600, 600);
+        byte[] jpx = JpxEncoder.encode(source, JpxEncoder.Options.rate(BPP_JPEG_CANNOT_BEAT));
+        Path in = pdf(doc -> draw(doc, jpxImage(doc, jpx, 600, 600), 288));
+
+        Path out = optimize(in, AT_150_DPI);
+
+        try (PDDocument doc = Loader.loadPDF(out.toFile())) {
+            PDPage page = doc.getPage(0);
+            COSName name = page.getResources().getXObjectNames().iterator().next();
+            COSStream image = page.getResources().getXObject(name).getCOSObject();
+            assertEquals(COSName.JPX_DECODE, filters(image).getLast());
+            try (java.io.InputStream kept = new PDStream(image).createInputStream(
+                    List.of(COSName.JPX_DECODE.getName()))) {
+                assertArrayEquals(jpx, kept.readAllBytes());
+            }
+        }
     }
 
     private static PDImageXObject jpxImage(PDDocument doc, byte[] data, int width, int height) throws Exception {

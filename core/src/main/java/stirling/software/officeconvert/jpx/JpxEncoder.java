@@ -305,11 +305,13 @@ public final class JpxEncoder {
 
     private static final double FIRST_MARGIN = 0.05;
 
-    private static final int ATTEMPTS = 8;
+    private static final int ATTEMPTS = 12;
 
     private static final double MIN_STEP = 0.25;
 
     private static final double SSIM_TO_DB = 40;
+
+    private static final double RESOLUTION = 0.05;
 
     private JpxEncoder() {}
 
@@ -334,21 +336,41 @@ public final class JpxEncoder {
         double ssim = source.ssim(reference);
         EncodeJob job = new EncodeJob(source, Options.quality(psnr));
         job.prepare();
+        byte[] best = null;
+        double failed = Double.NEGATIVE_INFINITY;
+        double passed = Double.POSITIVE_INFINITY;
+        double step = MIN_STEP;
         double target = psnr + FIRST_MARGIN;
-        for (int i = 0; i < ATTEMPTS; i++) {
+        for (int i = 0; i < ATTEMPTS && passed - failed > RESOLUTION; i++) {
             byte[] data = job.emit(target, 0);
-            if (data.length >= maxBytes) {
-                return null;
+            boolean close = false;
+            if (data.length < maxBytes) {
+                Planes back = decoded(data, source);
+                double p = source.psnr(back);
+                double s = source.ssim(back);
+                close = p >= psnr && s >= ssim;
+                if (!close) {
+                    step = Math.max(step, Math.max(psnr - p, 0) + Math.max(ssim - s, 0) * SSIM_TO_DB);
+                }
             }
-            Planes back = decoded(data, source);
-            double p = source.psnr(back);
-            double s = source.ssim(back);
-            if (p >= psnr && s >= ssim) {
-                return data;
+            if (close || data.length >= maxBytes) {
+                passed = target;
+                if (close && (best == null || data.length < best.length)) {
+                    best = data;
+                }
+            } else {
+                failed = target;
             }
-            target += Math.max(MIN_STEP, Math.max(psnr - p, 0) + Math.max(ssim - s, 0) * SSIM_TO_DB);
+            if (passed == Double.POSITIVE_INFINITY) {
+                target = failed + step;
+                step *= 2;
+            } else if (failed == Double.NEGATIVE_INFINITY) {
+                break;
+            } else {
+                target = (failed + passed) / 2;
+            }
         }
-        return null;
+        return best;
     }
 
     private static Planes decoded(byte[] data, Planes like) throws IOException {
