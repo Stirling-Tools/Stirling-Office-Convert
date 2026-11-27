@@ -528,6 +528,42 @@ class PsdPageTest {
     }
 
     @Test
+    void aStrokeOnAGroupFollowsWhatTheGroupDraws() throws IOException {
+        PsdFixture f = new PsdFixture(9, 9);
+        f.hasMerged = false;
+        f.mode = PsdDocument.GRAY;
+        f.flat(255);
+        f.layers.add(new PsdFixture.Layer().rect(0, 0, 9, 9).fill(0, 255));
+        f.layers.add(new PsdFixture.Layer().rect(0, 0, 0, 0).section(3));
+        f.layers.add(new PsdFixture.Layer().rect(3, 3, 6, 6).fill(-1, 255).fill(0, 200));
+        f.layers.add(new PsdFixture.Layer().rect(0, 0, 0, 0).section(1).block("lfxs", effects("FrFX", 2)));
+        convert(f, "group-stroke.psd");
+        try (PDDocument pdf = open("group-stroke.psd")) {
+            byte[] s = samples(image(pdf.getPage(0)));
+            assertEquals(200, s[4 * 9 + 4] & 0xFF);
+            assertEquals(0, s[4 * 9 + 1] & 0xFF);
+        }
+    }
+
+    @Test
+    void anOutsideStrokeStaysOutsideATranslucentLayer() throws IOException {
+        PsdFixture f = new PsdFixture(9, 9);
+        f.hasMerged = false;
+        f.mode = PsdDocument.GRAY;
+        f.flat(255);
+        f.layers.add(new PsdFixture.Layer().rect(0, 0, 9, 9).fill(0, 255));
+        PsdFixture.Layer box = new PsdFixture.Layer().rect(3, 3, 6, 6).fill(-1, 128).fill(0, 200);
+        box.block("lfx2", effects("FrFX", 2));
+        f.layers.add(box);
+        convert(f, "translucent-stroke.psd");
+        try (PDDocument pdf = open("translucent-stroke.psd")) {
+            byte[] s = samples(image(pdf.getPage(0)));
+            assertEquals(227, s[4 * 9 + 4] & 0xFF, 2);
+            assertEquals(0, s[4 * 9 + 1] & 0xFF);
+        }
+    }
+
+    @Test
     void levelsMapTheInputRange() throws IOException {
         PsdFixture f = new PsdFixture(1, 1);
         f.hasMerged = false;

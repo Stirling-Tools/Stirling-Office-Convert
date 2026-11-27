@@ -281,6 +281,8 @@ final class Layers {
                 g.vectorDensity = l.vectorDensity;
                 g.vectorFeather = l.vectorFeather;
                 g.overlay = l.overlay;
+                g.stroke = l.stroke;
+                g.shadow = l.shadow;
                 g.knockout = l.knockout;
                 g.blendClipped = l.blendClipped;
                 current = stack.pop();
@@ -445,7 +447,7 @@ final class Layers {
             l.vectorMask = true;
             l.vector = new byte[(int) len];
             c.fully(l.vector);
-        } else if (key == tag("lfx2") || key == tag("lmfx")) {
+        } else if (key == tag("lfx2") || key == tag("lmfx") || key == tag("lfxs")) {
             l.modernEffects = true;
             Effects.Found found = Effects.scan(c, len, l.effects);
             if (found != null) {

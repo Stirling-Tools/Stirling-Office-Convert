@@ -184,6 +184,8 @@ final class Composer {
         VectorMask vector;
         float vectorDensity = 1;
         boolean vectorBaked;
+        LayerEffects fx;
+        Gradient strokeGradient;
     }
 
     private static final class Group extends Node {
@@ -199,7 +201,6 @@ final class Composer {
         Plane transparency;
         float[] solid;
         Gradient gradient;
-        LayerEffects fx;
         VectorMask line;
         Gradient overlayGradient;
         Pattern pattern;
@@ -755,7 +756,19 @@ final class Composer {
         float opacity = l.opacity / 255f * (base instanceof Group ? l.fillOpacity / 255f : 1);
         if (base instanceof Group g && l.blend == Blend.PASS_THROUGH && (l.fillOpacity >= 255 || !adjusts(g))) {
             if (base.clipped.isEmpty()) {
+                LayerEffects fx = base.fx;
+                float fxOpacity = l.opacity / 255f;
+                if (fx != null && fx.shadow != null) {
+                    drawEffect(dest, fx, fx.shadow, l.shadow.color(), l.shadow.opacity(), l.shadow.blend(), fxOpacity,
+                            null);
+                }
+                if (fx != null && fx.stroke != null && fx.strokeUnder) {
+                    drawStroke(dest, base, fxOpacity);
+                }
                 passThrough(g, dest, opacity);
+                if (fx != null && fx.stroke != null && !fx.strokeUnder) {
+                    drawStroke(dest, base, fxOpacity);
+                }
                 return;
             }
             float[] isolated = buffer();
@@ -772,19 +785,24 @@ final class Composer {
             return;
         }
         if (base.clipped.isEmpty()) {
-            LayerEffects fx = base instanceof Pixels p ? p.fx : null;
+            LayerEffects fx = base.fx;
+            float fxOpacity = l.opacity / 255f;
+            float[] src = buffer();
+            float[] shape = coverage(base, src);
+            int lo = spanLo;
+            int hi = spanHi;
             if (fx != null && fx.shadow != null) {
-                drawEffect(dest, fx, fx.shadow, l.shadow.color(), l.shadow.opacity(), l.shadow.blend(), opacity);
+                drawEffect(dest, fx, fx.shadow, l.shadow.color(), l.shadow.opacity(), l.shadow.blend(), fxOpacity,
+                        l.shadow.conceal() && !(l.shadow.spread() > 0) ? shape : null);
             }
             if (fx != null && fx.stroke != null && fx.strokeUnder) {
-                drawEffect(dest, fx, fx.stroke, l.stroke.color(), l.stroke.opacity(), l.stroke.blend(), opacity);
+                drawStroke(dest, base, fxOpacity);
             }
-            float[] src = buffer();
-            releaseShape(coverage(base, src));
-            composite(dest, src, l.blend, opacity, null, spanLo, spanHi);
+            releaseShape(shape);
+            composite(dest, src, l.blend, opacity, null, lo, hi);
             release(src);
             if (fx != null && fx.stroke != null && !fx.strokeUnder) {
-                drawEffect(dest, fx, fx.stroke, l.stroke.color(), l.stroke.opacity(), l.stroke.blend(), opacity);
+                drawStroke(dest, base, fxOpacity);
             }
             return;
         }
@@ -1135,7 +1153,8 @@ final class Composer {
                 effects(c, budget);
             }
         }
-        if (!(node instanceof Pixels p) || node.layer.hidden || node.layer.stroke == null && node.layer.shadow == null) {
+        if (!(node instanceof Pixels || node instanceof Group) || node == top || node.layer.hidden
+                || node.layer.stroke == null && node.layer.shadow == null) {
             return;
         }
         Layers.Layer l = node.layer;
@@ -1144,12 +1163,20 @@ final class Composer {
         int y0 = 0;
         int x1 = width;
         int y1 = doc.height;
-        if (p.color != null) {
+        if (node instanceof Group g) {
+            int[] b = {Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MIN_VALUE, Integer.MIN_VALUE};
+            if (extent(g, b)) {
+                x0 = b[0];
+                y0 = b[1];
+                x1 = b[2];
+                y1 = b[3];
+            }
+        } else if (node instanceof Pixels p && p.color != null) {
             x0 = l.left;
             y0 = l.top;
             x1 = l.right;
             y1 = l.bottom;
-        } else if (p.vector != null) {
+        } else if (node instanceof Pixels p && p.vector != null) {
             java.awt.geom.Rectangle2D b = p.vector.shape();
             x0 = (int) Math.floor(b.getMinX());
             y0 = (int) Math.floor(b.getMinY());
@@ -1173,7 +1200,10 @@ final class Composer {
             return;
         }
         budget[0] -= area;
-        Pixels copy = (Pixels) build(l, 0);
+        Node copy = build(l, node instanceof Group ? 1 : 0);
+        if (copy == null) {
+            return;
+        }
         int w = x1 - x0;
         int h = y1 - y0;
         float[] alpha = new float[(int) area];
@@ -1199,7 +1229,32 @@ final class Composer {
             y = 0;
             close(copy);
         }
-        p.fx = LayerEffects.build(alpha, x0, y0, w, h, l.stroke, l.shadow, doc.globalAngle);
+        node.fx = LayerEffects.build(alpha, x0, y0, w, h, l.stroke, l.shadow, doc.globalAngle);
+    }
+
+    private static boolean extent(Group g, int[] b) {
+        boolean found = false;
+        for (Node c : g.children) {
+            if (c.layer.hidden) {
+                continue;
+            }
+            if (c instanceof Group inner) {
+                found |= extent(inner, b);
+            } else if (c instanceof Pixels p && p.color != null) {
+                b[0] = Math.min(b[0], c.layer.left);
+                b[1] = Math.min(b[1], c.layer.top);
+                b[2] = Math.max(b[2], c.layer.right);
+                b[3] = Math.max(b[3], c.layer.bottom);
+                found = true;
+            } else if (!(c instanceof Adjust)) {
+                b[0] = Math.min(b[0], 0);
+                b[1] = Math.min(b[1], 0);
+                b[2] = Math.max(b[2], Integer.MAX_VALUE / 2);
+                b[3] = Math.max(b[3], Integer.MAX_VALUE / 2);
+                found = true;
+            }
+        }
+        return found;
     }
 
     private void feathers(Node node, long[] budget) throws IOException {
@@ -1279,14 +1334,41 @@ final class Composer {
         return true;
     }
 
+    private void drawStroke(float[] dest, Node node, float layerOpacity) {
+        Layers.Layer l = node.layer;
+        LayerEffects fx = node.fx;
+        if (l.stroke.gradient() == null) {
+            drawEffect(dest, fx, fx.stroke, l.stroke.color(), l.stroke.opacity(), l.stroke.blend(), layerOpacity, null);
+            return;
+        }
+        if (node.strokeGradient == null) {
+            node.strokeGradient = Gradient.of(l.stroke.gradient(), n, this::solid);
+            if (node.strokeGradient == null) {
+                drawEffect(dest, fx, fx.stroke, l.stroke.color(), l.stroke.opacity(), l.stroke.blend(), layerOpacity,
+                        null);
+                return;
+            }
+        }
+        double[] b = node instanceof Pixels p ? bounds(p)
+                : new double[] {fx.left, fx.top, fx.left + fx.width, fx.top + fx.height};
+        float[] src = buffer();
+        node.strokeGradient.row(y, width, b[0], b[1], b[2], b[3], src, stride, n);
+        for (int x = 0; x < width; x++) {
+            int at = x * stride + n;
+            src[at] *= fx.at(fx.stroke, x, y) * l.stroke.opacity();
+        }
+        composite(dest, src, l.stroke.blend(), layerOpacity, null);
+        release(src);
+    }
+
     private void drawEffect(float[] dest, LayerEffects fx, byte[] raster, float[] color, float opacity, int blend,
-            float layerOpacity) {
+            float layerOpacity, float[] conceal) {
         float[] src = buffer();
         float[] tint = solid(color);
         for (int x = 0; x < width; x++) {
             int at = x * stride;
             System.arraycopy(tint, 0, src, at, n);
-            src[at + n] = fx.at(raster, x, y) * opacity;
+            src[at + n] = fx.at(raster, x, y) * opacity * (conceal == null ? 1 : 1 - conceal[x]);
         }
         composite(dest, src, blend, layerOpacity, null);
         release(src);

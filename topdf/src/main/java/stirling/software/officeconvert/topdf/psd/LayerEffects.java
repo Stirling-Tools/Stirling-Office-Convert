@@ -8,10 +8,10 @@ final class LayerEffects {
 
     static final double INF = 1e20;
 
-    record Stroke(float size, String position, float[] color, float opacity, int blend) {}
+    record Stroke(float size, String position, float[] color, float opacity, int blend, Descriptor gradient) {}
 
     record Shadow(float[] color, float opacity, int blend, double angle, boolean global, float distance, float size,
-            float spread) {}
+            float spread, boolean conceal) {}
 
     final int left;
 
@@ -53,18 +53,30 @@ final class LayerEffects {
         byte[] s = null;
         boolean under = false;
         if (stroke != null && stroke.size() > 0) {
-            float[] dOut = distance(alpha, width, height, true);
-            float[] dIn = stroke.position().equals("OutF") ? null : distance(alpha, width, height, false);
+            float peak = 0;
+            for (float a : alpha) {
+                peak = Math.max(peak, a);
+            }
+            float interior = peak >= 0.999f ? 1 : 0;
+            float[] shape = alpha;
+            if (peak < 0.999f) {
+                shape = new float[alpha.length];
+                for (int i = 0; i < alpha.length; i++) {
+                    shape[i] = alpha[i] > 0.5f / 255 ? 1 : 0;
+                }
+            }
+            float[] dOut = distance(shape, width, height, true);
+            float[] dIn = stroke.position().equals("OutF") ? null : distance(shape, width, height, false);
             s = new byte[width * height];
             float size = stroke.size();
             under = stroke.position().equals("OutF");
             for (int i = 0; i < s.length; i++) {
                 float v;
                 switch (stroke.position()) {
-                    case "InsF" -> v = alpha[i] >= 0.5f ? clamp(size + 1 - dIn[i]) * alpha[i] : 0;
-                    case "CtrF" -> v = alpha[i] >= 0.5f ? clamp(size / 2 + 1 - dIn[i])
+                    case "InsF" -> v = shape[i] >= 0.5f ? clamp(size + 1 - dIn[i]) * shape[i] : 0;
+                    case "CtrF" -> v = shape[i] >= 0.5f ? clamp(size / 2 + 1 - dIn[i])
                             : clamp(size / 2 + 1 - dOut[i]);
-                    default -> v = alpha[i] >= 0.5f ? 1 : Math.max(alpha[i], clamp(size + 1 - dOut[i]));
+                    default -> v = shape[i] >= 0.5f ? interior : Math.max(shape[i], clamp(size + 1 - dOut[i]));
                 }
                 s[i] = (byte) Math.round(v * 255);
             }
@@ -77,11 +89,18 @@ final class LayerEffects {
             float spread = Math.max(0, Math.min(1, shadow.spread()));
             float grow = shadow.size() * spread;
             float[] grown = alpha;
-            if (grow > 0) {
-                float[] d = distance(alpha, width, height, true);
-                grown = new float[alpha.length];
-                for (int i = 0; i < d.length; i++) {
-                    grown[i] = alpha[i] >= 0.5f ? 1 : Math.max(alpha[i], clamp(grow + 1 - d[i]));
+            if (spread > 0) {
+                float[] solid = new float[alpha.length];
+                for (int i = 0; i < alpha.length; i++) {
+                    solid[i] = alpha[i] > 0.5f / 255 ? 1 : 0;
+                }
+                grown = solid;
+                if (grow > 0) {
+                    float[] d = distance(solid, width, height, true);
+                    grown = new float[alpha.length];
+                    for (int i = 0; i < d.length; i++) {
+                        grown[i] = solid[i] > 0 ? 1 : clamp(grow + 1 - d[i]);
+                    }
                 }
             }
             float[] base = new float[width * height];

@@ -76,17 +76,19 @@ final class Effects {
                     overlay = new Overlay(null, opacity, mode, null, fx);
                     continue;
                 }
-                if (e.getValue().equals("stroke") && stroke == null && color != null
-                        && "SClr".equals(fx.enumValue("PntT") == null ? "SClr" : fx.enumValue("PntT"))) {
+                String paint = fx.enumValue("PntT") == null ? "SClr" : fx.enumValue("PntT");
+                boolean solidPaint = "SClr".equals(paint) && color != null;
+                boolean gradientPaint = "GrFl".equals(paint) && fx.object("Grad") != null;
+                if (e.getValue().equals("stroke") && stroke == null && (solidPaint || gradientPaint)) {
                     String position = fx.enumValue("Styl");
                     stroke = new LayerEffects.Stroke((float) fx.number("Sz  ", 3), position == null ? "OutF" : position,
-                            color, opacity, mode);
+                            solidPaint ? color : new float[] {0, 0, 0}, opacity, mode, gradientPaint ? fx : null);
                     continue;
                 }
                 if (e.getValue().equals("drop shadow") && shadow == null && color != null) {
                     shadow = new LayerEffects.Shadow(color, opacity, mode, fx.number("lagl", 120),
                             fx.flag("uglg", true), (float) fx.number("Dstn", 5), (float) fx.number("blur", 5),
-                            (float) (fx.number("Ckmt", 0) / 100));
+                            (float) (fx.number("Ckmt", 0) / 100), fx.flag("layerConceals", true));
                     continue;
                 }
                 into.add(e.getValue());
