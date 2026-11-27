@@ -224,11 +224,18 @@ final class XpsPackage implements Closeable {
         String startPart = start.part();
         Element root = xml(startPart).getDocumentElement();
         List<String> docs = new ArrayList<>();
+        boolean capped = false;
         if ("FixedDocumentSequence".equals(root.getLocalName())) {
             for (Element ref : XpsXml.children(root, "DocumentReference")) {
                 String target = source(startPart, XpsXml.attr(ref, "Source"));
-                if (target != null && docs.size() < MAX_DOCUMENTS && !docs.contains(target)) {
-                    docs.add(target);
+                if (target != null && !docs.contains(target)) {
+                    if (docs.size() < MAX_DOCUMENTS) {
+                        docs.add(target);
+                    } else if (!capped) {
+                        capped = true;
+                        notes.add("The XPS file holds more than " + MAX_DOCUMENTS
+                                + " documents; the documents after those were left out");
+                    }
                 }
             }
         } else if ("FixedDocument".equals(root.getLocalName())) {

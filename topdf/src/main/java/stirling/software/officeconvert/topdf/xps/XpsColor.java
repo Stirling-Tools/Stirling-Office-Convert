@@ -1,10 +1,16 @@
 package stirling.software.officeconvert.topdf.xps;
 
+import stirling.software.officeconvert.topdf.io.OfficeZip;
+
 record XpsColor(float alpha, float[] rgb, String profile, float[] components) {
 
     static final XpsColor BLACK = new XpsColor(1, new float[] {0, 0, 0}, null, null);
 
     static XpsColor parse(String value, Profiles profiles) {
+        return parse(value, null, profiles);
+    }
+
+    static XpsColor parse(String value, String base, Profiles profiles) {
         if (value == null) {
             return null;
         }
@@ -43,6 +49,12 @@ record XpsColor(float alpha, float[] rgb, String profile, float[] components) {
                 return null;
             }
             String profile = rest.substring(0, space);
+            if (base != null) {
+                String resolved = OfficeZip.resolve(base, profile);
+                if (resolved != null) {
+                    profile = resolved;
+                }
+            }
             double[] n = XpsXml.numbers(rest.substring(space + 1));
             if (n.length < 2) {
                 return null;

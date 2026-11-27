@@ -64,6 +64,7 @@ class XpsTiffTest {
         ByteBuffer b = ByteBuffer.wrap(huge).order(ByteOrder.LITTLE_ENDIAN);
         b.putInt(10 + 8, 200_000);
         b.putInt(10 + 12 + 8, 200_000);
+        b.putInt(10 + 12 * 7 + 8, 200_000);
         byte[] outside = tiff(10, 10, 3, 5, 1, pixels(10, 10, 3));
         ByteBuffer.wrap(outside).order(ByteOrder.LITTLE_ENDIAN).putInt(10 + 12 * 5 + 8, Integer.MAX_VALUE - 4);
         byte[] lying = tiff(10, 10, 3, 1, 1, pixels(10, 10, 3));

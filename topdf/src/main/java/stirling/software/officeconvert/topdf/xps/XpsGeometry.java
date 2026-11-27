@@ -111,6 +111,8 @@ final class XpsGeometry {
 
     private boolean open;
 
+    private boolean broken;
+
     private boolean figureFilled = true;
 
     private void flush() throws IOException {
@@ -138,6 +140,7 @@ final class XpsGeometry {
         cx = sx = x;
         cy = sy = y;
         open = true;
+        broken = false;
     }
 
     private void ensureOpen() throws IOException {
@@ -161,6 +164,7 @@ final class XpsGeometry {
             stroke.lineTo(x, y);
         } else {
             stroke.moveTo(x, y);
+            broken = true;
         }
         cx = x;
         cy = y;
@@ -182,6 +186,7 @@ final class XpsGeometry {
             stroke.curveTo(x1, y1, x2, y2, x, y);
         } else {
             stroke.moveTo(x, y);
+            broken = true;
         }
         cx = x;
         cy = y;
@@ -201,7 +206,9 @@ final class XpsGeometry {
             fill.closePath();
         }
         if (separate) {
-            if (stroked) {
+            if (stroked && broken) {
+                stroke.lineTo(sx, sy);
+            } else if (stroked) {
                 stroke.closePath();
             } else {
                 stroke.moveTo(sx, sy);
@@ -548,8 +555,11 @@ final class XpsGeometry {
                     return Double.isFinite(v) ? v : 0;
                 }
             }
-            double v = scale >= 0 && scale < POW10.length ? mantissa / POW10[scale]
-                    : scale < 0 && -scale < POW10.length ? mantissa * POW10[-scale] : 0;
+            if (scale >= POW10.length || -scale >= POW10.length) {
+                double v = Double.parseDouble(s.substring(start, pos));
+                return Double.isFinite(v) ? v : 0;
+            }
+            double v = scale >= 0 ? mantissa / POW10[scale] : mantissa * POW10[-scale];
             return negative ? -v : v;
         }
 

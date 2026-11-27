@@ -372,6 +372,67 @@ class XpsToPdfTest {
     }
 
     @Test
+    void missingPackageRelationshipsFallBackToTheSequenceContentType() throws IOException {
+        Map<String, byte[]> parts = xps(List.of(page(glyphs("Hello", 50, 100, ""))));
+        parts.remove("_rels/.rels");
+        Path in = write("norels.xps", parts);
+        Path out = dir.resolve("norels.pdf");
+        OfficeToPdf.Result r = convert(in, out);
+        assertEquals(1, r.pages());
+    }
+
+    @Test
+    void canvasOpacityMaskAppliesToTheCompositedChildren() throws IOException {
+        String mask = "<Canvas.OpacityMask><LinearGradientBrush MappingMode='Absolute' StartPoint='0,0'"
+                + " EndPoint='300,0'><LinearGradientBrush.GradientStops><GradientStop Color='#80000000' Offset='0'/>"
+                + "<GradientStop Color='#80000000' Offset='1'/></LinearGradientBrush.GradientStops>"
+                + "</LinearGradientBrush></Canvas.OpacityMask>";
+        Path in = write("canvasmask.xps", xps(List.of(page("<Canvas>" + mask
+                + "<Path Data='M 0,0 L 200,0 200,100 0,100 Z' Fill='#FF000000'/>"
+                + "<Path Data='M 100,0 L 300,0 300,100 100,100 Z' Fill='#FF000000'/></Canvas>"))));
+        Path out = dir.resolve("canvasmask.pdf");
+        convert(in, out);
+        try (PDDocument pdf = Loader.loadPDF(out.toFile())) {
+            int single = pixel(pdf, 0, 50, 50).getRed();
+            int both = pixel(pdf, 0, 150, 50).getRed();
+            assertTrue(single > 100 && single < 160, "single " + single);
+            assertTrue(Math.abs(single - both) < 12, single + " vs " + both);
+        }
+    }
+
+    @Test
+    void pathOpacityAppliesAfterFillAndStrokeAreComposited() throws IOException {
+        String fill = "<Path.Fill><LinearGradientBrush MappingMode='Absolute' StartPoint='0,0' EndPoint='300,0'>"
+                + "<LinearGradientBrush.GradientStops><GradientStop Color='#FF000000' Offset='0'/>"
+                + "<GradientStop Color='#FF000000' Offset='1'/></LinearGradientBrush.GradientStops>"
+                + "</LinearGradientBrush></Path.Fill>";
+        Path in = write("pathopacity.xps", xps(List.of(page("<Path Opacity='0.5' Stroke='#FF000000'"
+                + " StrokeThickness='40' Data='M 50,50 L 250,50 250,250 50,250 Z'>" + fill + "</Path>"))));
+        Path out = dir.resolve("pathopacity.pdf");
+        convert(in, out);
+        try (PDDocument pdf = Loader.loadPDF(out.toFile())) {
+            int inside = pixel(pdf, 0, 150, 150).getRed();
+            int edge = pixel(pdf, 0, 150, 60).getRed();
+            assertTrue(inside > 100 && inside < 160, "inside " + inside);
+            assertTrue(Math.abs(inside - edge) < 12, inside + " vs " + edge);
+        }
+    }
+
+    @Test
+    void aClosedFigureWithAnUnstrokedSegmentStrokesBackToItsStart() throws IOException {
+        Path in = write("brokenclose.xps", xps(List.of(page("<Path Stroke='#FF000000' StrokeThickness='10'>"
+                + "<Path.Data><PathGeometry><PathFigure StartPoint='20,20' IsClosed='true'>"
+                + "<PolyLineSegment Points='200,20'/><PolyLineSegment Points='200,200' IsStroked='false'/>"
+                + "<PolyLineSegment Points='20,200'/></PathFigure></PathGeometry></Path.Data></Path>"))));
+        Path out = dir.resolve("brokenclose.pdf");
+        convert(in, out);
+        try (PDDocument pdf = Loader.loadPDF(out.toFile())) {
+            assertTrue(pixel(pdf, 0, 20, 110).getRed() < 60);
+            assertTrue(pixel(pdf, 0, 200, 110).getRed() > 200);
+        }
+    }
+
+    @Test
     void rectangleSubpathsKeepTheirWinding() throws IOException {
         Path in = write("winding.xps", xps(List.of(page(
                 "<Path Fill='#FF000000' Data='F1 M 0,0 L 200,0 200,200 0,200 Z M 50,50 V 150 H 150 V 50 Z'/>"

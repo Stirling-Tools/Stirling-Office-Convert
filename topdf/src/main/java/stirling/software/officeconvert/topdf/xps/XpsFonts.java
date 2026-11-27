@@ -17,6 +17,9 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 
+import org.apache.fontbox.cff.CFFCIDFont;
+import org.apache.fontbox.cff.CFFCharset;
+import org.apache.fontbox.cff.CFFFont;
 import org.apache.fontbox.ttf.CmapLookup;
 import org.apache.fontbox.ttf.HorizontalHeaderTable;
 import org.apache.fontbox.ttf.OS2WindowsMetricsTable;
@@ -145,6 +148,10 @@ final class XpsFonts {
 
         private final boolean symbol;
 
+        private final int[] cids;
+
+        final boolean noSubsetting;
+
         Font(String part, TrueTypeFont ttf, byte[] data, boolean collection) throws IOException {
             this.part = part;
             this.ttf = ttf;
@@ -208,6 +215,12 @@ final class XpsFonts {
                 sym = false;
             }
             this.symbol = sym;
+            this.cids = cff ? cidMap((OpenTypeFont) ttf, glyphs) : null;
+            this.noSubsetting = os2 != null && (os2.getFsType() & OS2WindowsMetricsTable.FSTYPE_NO_SUBSETTING) != 0;
+        }
+
+        int code(int gid) {
+            return cids == null || gid < 0 || gid >= cids.length ? gid : cids[gid];
         }
 
         float advance(int gid) {
@@ -408,7 +421,7 @@ final class XpsFonts {
         descriptor.setItem(COSName.TYPE, COSName.FONT_DESC);
         boolean embedded = false;
         String tag = tag();
-        if (!f.cff) {
+        if (!f.cff && !(f.noSubsetting && !f.collection && f.data != null)) {
             try {
                 Set<Integer> gids = new HashSet<>();
                 for (int g = f.used.nextSetBit(0); g >= 0; g = f.used.nextSetBit(g + 1)) {
@@ -506,16 +519,20 @@ final class XpsFonts {
     private static COSArray widths(Font f) {
         COSArray w = new COSArray();
         float scale = 1000f / f.unitsPerEm;
-        int g = f.used.nextSetBit(0);
-        while (g >= 0) {
-            COSArray run = new COSArray();
-            int start = g;
-            while (g >= 0 && g == start + run.size()) {
-                run.add(COSInteger.get(Math.round(f.advances[g] * scale)));
-                g = f.used.nextSetBit(g + 1);
+        java.util.TreeMap<Integer, Integer> byCode = new java.util.TreeMap<>();
+        for (int g = f.used.nextSetBit(0); g >= 0; g = f.used.nextSetBit(g + 1)) {
+            byCode.putIfAbsent(f.code(g), Math.round(f.advances[g] * scale));
+        }
+        COSArray run = null;
+        int next = -1;
+        for (Map.Entry<Integer, Integer> e : byCode.entrySet()) {
+            if (run == null || e.getKey() != next) {
+                run = new COSArray();
+                w.add(COSInteger.get(e.getKey()));
+                w.add(run);
             }
-            w.add(COSInteger.get(start));
-            w.add(run);
+            run.add(COSInteger.get(e.getValue()));
+            next = e.getKey() + 1;
         }
         return w;
     }
@@ -526,8 +543,11 @@ final class XpsFonts {
         b.append("/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def\n");
         b.append("/CMapName /Adobe-Identity-UCS def\n/CMapType 2 def\n");
         b.append("1 begincodespacerange\n<0000> <FFFF>\nendcodespacerange\n");
-        List<Integer> keys = new ArrayList<>(f.text.keySet());
-        keys.sort(null);
+        Map<Integer, String> byCode = new java.util.TreeMap<>();
+        for (Map.Entry<Integer, String> e : f.text.entrySet()) {
+            byCode.putIfAbsent(f.code(e.getKey()), e.getValue());
+        }
+        List<Integer> keys = new ArrayList<>(byCode.keySet());
         for (int i = 0; i < keys.size(); i += 100) {
             int n = Math.min(100, keys.size() - i);
             b.append(n).append(" beginbfchar\n");
@@ -536,7 +556,7 @@ final class XpsFonts {
                 b.append('<');
                 hex(b, g);
                 b.append("> <");
-                String t = f.text.get(g);
+                String t = byCode.get(g);
                 for (int c = 0; c < t.length() && c < 64; c++) {
                     hex(b, t.charAt(c));
                 }
@@ -593,6 +613,24 @@ final class XpsFonts {
             b.append((char) ('A' + r.nextInt(26)));
         }
         return b.toString();
+    }
+
+    private static int[] cidMap(OpenTypeFont otf, int glyphs) {
+        try {
+            CFFFont font = otf.getCFF().getFont();
+            if (!(font instanceof CFFCIDFont) || font.getCharset() == null) {
+                return null;
+            }
+            CFFCharset charset = font.getCharset();
+            int[] map = new int[glyphs];
+            for (int g = 0; g < glyphs; g++) {
+                int c = charset.getCIDForGID(g);
+                map[g] = c >= 0 && c <= 0xFFFF ? c : 0;
+            }
+            return map;
+        } catch (IOException | RuntimeException e) {
+            return null;
+        }
     }
 
     private static OS2WindowsMetricsTable safeOs2(TrueTypeFont ttf) {

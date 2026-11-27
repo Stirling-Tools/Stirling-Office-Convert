@@ -452,8 +452,8 @@ and paragraph formatting in its text block, and embedded pictures; masters, mast
 inherited cell by cell, background pages are drawn beneath their pages, and shapes on layers that do not print are
 left out. Only cached cell values are used: no ShapeSheet formula is evaluated and no macro is run. Each Visio page keeps its own PDF page size; oversized pages are scaled to the PDF limits. Visio 2003 to 2010 drawings (`.vsd .vss .vst .vsw`) are drawn from the preview picture of the first page they keep in their summary information, as described below; `.vdx` is refused with a plain reason.
 
-XPS and OpenXPS documents (`.xps .oxps`, found by the fixed document sequence their package names, whatever the
-extension, or by its content type when the package relationships are damaged) are drawn page for page straight into the PDF: every page of every fixed document at its own size, with
+XPS and OpenXPS documents (`.xps .oxps`, found by the fixed document sequence their package names under any accepted
+extension, or by its content type when the package relationships are damaged or missing) are drawn page for page straight into the PDF: every page of every fixed document at its own size, with
 its bleed and content boxes; canvases with their transforms, clips, opacity and opacity masks; paths in the
 abbreviated syntax or as path figures (lines, Beziers, quadratic curves and arcs) with dash arrays and offsets,
 joins and miter limits and separate start and end caps, triangle caps included (a dashed line uses its dash cap

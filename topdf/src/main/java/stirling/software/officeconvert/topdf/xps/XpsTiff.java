@@ -45,6 +45,7 @@ final class XpsTiff {
         long offset = -1;
         long count = -1;
         long rows = Long.MAX_VALUE;
+        boolean bits = false;
         for (int i = 0; i < n; i++) {
             int e = (int) ifd + 2 + i * 12;
             int tag = u16(d, e, le);
@@ -58,6 +59,7 @@ final class XpsTiff {
                     if (!eights(d, e, type, cnt, le)) {
                         return null;
                     }
+                    bits = true;
                 }
                 case 259 -> compression = (int) v;
                 case 262 -> photometric = (int) v;
@@ -90,7 +92,7 @@ final class XpsTiff {
         }
         boolean gray = photometric == 1 && spp == 1;
         boolean rgb = photometric == 2 && spp == 3;
-        if (!gray && !rgb || compression != 1 && compression != 5 || predictor != 1 && predictor != 2) {
+        if (!bits || !gray && !rgb || compression != 1 && compression != 5 || predictor != 1 && predictor != 2) {
             return null;
         }
         if (width <= 0 || height <= 0 || width > 1 << 20 || height > 1 << 20 || rows < height) {

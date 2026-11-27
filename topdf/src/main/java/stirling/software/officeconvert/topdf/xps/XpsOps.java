@@ -210,11 +210,14 @@ final class XpsOps {
     }
 
     void close() throws IOException {
-        while (!saved.isEmpty()) {
-            Q();
+        try {
+            while (!saved.isEmpty()) {
+                Q();
+            }
+            flush();
+        } finally {
+            out.close();
         }
-        flush();
-        out.close();
     }
 
     boolean path(Shape shape, AffineTransform extra) throws IOException {

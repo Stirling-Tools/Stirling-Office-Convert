@@ -59,10 +59,10 @@ final class XpsInput {
                 }
             }
             if (rels == null) {
-                return false;
+                return declaresSequence(z);
             }
             try (InputStream in = z.getInputStream(rels)) {
-                String text = new String(in.readNBytes(64 << 10), StandardCharsets.UTF_8);
+                String text = text(in.readNBytes(64 << 10));
                 return text.contains(XpsToPdf.XPS_REPRESENTATION) || text.contains(XpsToPdf.OXPS_REPRESENTATION);
             } catch (ZipException damaged) {
                 if (declaresSequence(z)) {
@@ -77,13 +77,22 @@ final class XpsInput {
         }
     }
 
+    private static String text(byte[] b) {
+        boolean big = b.length >= 2 && b[0] == (byte) 0xFE && b[1] == (byte) 0xFF;
+        boolean little = b.length >= 2 && b[0] == (byte) 0xFF && b[1] == (byte) 0xFE;
+        if (big || little) {
+            return new String(b, StandardCharsets.UTF_16);
+        }
+        return new String(b, StandardCharsets.UTF_8);
+    }
+
     private static boolean declaresSequence(ZipFile z) {
         ZipEntry types = z.getEntry("[Content_Types].xml");
         if (types == null) {
             return false;
         }
         try (InputStream in = z.getInputStream(types)) {
-            String text = new String(in.readNBytes(64 << 10), StandardCharsets.UTF_8).toLowerCase(Locale.ROOT);
+            String text = text(in.readNBytes(64 << 10)).toLowerCase(Locale.ROOT);
             return text.contains(SEQUENCE_TYPE);
         } catch (IOException | RuntimeException e) {
             return false;

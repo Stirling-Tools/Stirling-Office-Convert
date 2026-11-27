@@ -91,8 +91,8 @@ public final class XpsToPdf {
             }
         }
         if (failed > 0) {
-            warnings.add(failed + (failed == 1 ? " page" : " pages") + " of the XPS document could not be drawn and"
-                    + (failed == 1 ? " is" : " are") + " left blank (" + firstFailure + ")");
+            warnings.add(failed + (failed == 1 ? " page" : " pages") + " of the XPS document could not be drawn in full"
+                    + " and " + (failed == 1 ? "is" : "are") + " blank or partly drawn (" + firstFailure + ")");
         }
         warnings.addAll(renderer.warnings());
         DocumentInfo info;

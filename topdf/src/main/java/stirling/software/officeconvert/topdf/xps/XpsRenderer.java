@@ -131,10 +131,14 @@ final class XpsRenderer {
 
     record Scope(Scope parent, Map<String, Element> map) {
         Element find(String key) {
+            Scope s = owner(key);
+            return s == null ? null : s.map.get(key);
+        }
+
+        Scope owner(String key) {
             for (Scope s = this; s != null; s = s.parent) {
-                Element e = s.map.get(key);
-                if (e != null) {
-                    return e;
+                if (s.map.get(key) != null) {
+                    return s;
                 }
             }
             return null;
@@ -225,7 +229,8 @@ final class XpsRenderer {
         } finally {
             ops.close();
         }
-        destinations(index, p, names);
+        float shift = Math.max(0, page.getMediaBox().getHeight() - (float) (h * POINTS));
+        destinations(index, p, names, shift);
     }
 
     private static final class Budget extends IOException {
@@ -234,18 +239,18 @@ final class XpsRenderer {
         }
     }
 
-    private void destinations(int index, XpsPackage.Page p, Map<String, double[]> names) {
+    private void destinations(int index, XpsPackage.Page p, Map<String, double[]> names, float shift) {
         String doc = pkg.documents().get(p.document()).toLowerCase(Locale.ROOT);
         String pagePart = p.part().toLowerCase(Locale.ROOT);
         for (Map.Entry<String, double[]> e : names.entrySet()) {
             double[] at = e.getValue();
-            output.destination(doc + "#" + e.getKey(), index, (float) (at[0] * POINTS), (float) (at[1] * POINTS));
-            output.destination(pagePart + "#" + e.getKey(), index, (float) (at[0] * POINTS),
-                    (float) (at[1] * POINTS));
+            float y = (float) (at[1] * POINTS) + shift;
+            output.destination(doc + "#" + e.getKey(), index, (float) (at[0] * POINTS), y);
+            output.destination(pagePart + "#" + e.getKey(), index, (float) (at[0] * POINTS), y);
         }
         for (String t : p.targets()) {
-            output.destination(doc + "#" + t, index, 0, 0);
-            output.destination(pagePart + "#" + t, index, 0, 0);
+            output.destination(doc + "#" + t, index, 0, shift);
+            output.destination(pagePart + "#" + t, index, 0, shift);
         }
     }
 
@@ -500,7 +505,9 @@ final class XpsRenderer {
                     return null;
                 }
             }
-            g = scope == null ? null : scope.find(key);
+            Scope where = scope == null ? null : scope.owner(key);
+            g = where == null ? null : where.find(key);
+            scope = where;
         } else {
             g = own;
         }
@@ -529,10 +536,12 @@ final class XpsRenderer {
         if (v != null) {
             String key = XpsXml.staticResource(v);
             if (key == null) {
-                XpsColor c = XpsColor.parse(v, profiles);
+                XpsColor c = XpsColor.parse(v, owner(e), profiles);
                 return c == null ? null : new Brush("SolidColorBrush", c, null, 1, scope);
             }
-            b = scope == null ? null : scope.find(key);
+            Scope where = scope == null ? null : scope.owner(key);
+            b = where == null ? null : where.find(key);
+            scope = where;
         } else {
             b = own;
         }
@@ -542,7 +551,7 @@ final class XpsRenderer {
         double op = opacity(b);
         return switch (b.getLocalName()) {
             case "SolidColorBrush" -> {
-                XpsColor c = XpsColor.parse(XpsXml.attr(b, "Color"), profiles);
+                XpsColor c = XpsColor.parse(XpsXml.attr(b, "Color"), owner(b), profiles);
                 yield c == null ? null : new Brush("SolidColorBrush", c, b, op, scope);
             }
             case "LinearGradientBrush", "RadialGradientBrush", "ImageBrush", "VisualBrush" ->
@@ -577,6 +586,7 @@ final class XpsRenderer {
                 return;
             }
             Brush mask = brush(e, "OpacityMask", local);
+            boolean masked = false;
             if (mask != null) {
                 if (mask.kind().equals("SolidColorBrush")) {
                     opacity *= mask.color().alpha() * mask.opacity();
@@ -585,6 +595,7 @@ final class XpsRenderer {
                     }
                 } else {
                     mask(mask, localBounds(ops), ctx);
+                    masked = true;
                 }
             }
             String uri = XpsXml.attr(e, "FixedPage.NavigateUri");
@@ -595,7 +606,7 @@ final class XpsRenderer {
                 ctx.accumulators.add(acc);
             }
             try {
-                if (opacity < 1) {
+                if (opacity < 1 || masked) {
                     group(opacity, ctx, sub -> children(e, local, sub));
                 } else {
                     children(e, local, ctx);
@@ -644,13 +655,19 @@ final class XpsRenderer {
         XpsOps sub = new XpsOps(XpsOps.flate(form), res, bbox);
         AffineTransform toPage = ctx.toPage == null ? null : ctx.pageTransform();
         Ctx inner = new Ctx(sub, ctx.canvas, toPage, ctx.depth, ctx.part, ctx.accumulators, ctx.names);
+        Budget stopped = null;
         try {
             drawing.draw(inner);
+        } catch (Budget b) {
+            stopped = b;
         } finally {
             sub.close();
         }
         alpha(ctx.ops, opacity, opacity);
         ctx.ops.name(ctx.ops.resource(COSName.XOBJECT, "Fm", form)).op("Do\n");
+        if (stopped != null) {
+            throw stopped;
+        }
     }
 
     private COSStream form(Rectangle2D bbox, boolean groupDict, COSName colorSpace) {
@@ -739,6 +756,7 @@ final class XpsRenderer {
                 return;
             }
             Brush mask = brush(e, "OpacityMask", scope);
+            boolean masked = false;
             if (mask != null) {
                 if (mask.kind().equals("SolidColorBrush")) {
                     opacity *= mask.color().alpha() * mask.opacity();
@@ -746,6 +764,7 @@ final class XpsRenderer {
                         return;
                     }
                 } else {
+                    masked = true;
                     Rectangle2D b = g.fill.getBounds2D();
                     if (stroke != null) {
                         double t = thickness(e) / 2 + 1;
@@ -771,6 +790,11 @@ final class XpsRenderer {
                     ops.op(stroking && filling ? (evenOdd ? "B*\n" : "B\n") : stroking ? "S\n"
                             : evenOdd ? "f*\n" : "f\n");
                 }
+            } else if (fill != null && stroke != null && (opacity < 1 || masked)) {
+                group(opacity, ctx, sub -> {
+                    paint(fill, g.fill, 1, sub, false);
+                    stroke(e, stroke, g.strokePath(), 1, sub);
+                });
             } else {
                 if (fill != null) {
                     paint(fill, g.fill, opacity, ctx, false);
@@ -1185,7 +1209,7 @@ final class XpsRenderer {
         List<Stop> raw = new ArrayList<>();
         if (holder != null) {
             for (Element s : XpsXml.children(holder, "GradientStop")) {
-                XpsColor c = XpsColor.parse(XpsXml.attr(s, "Color"), profiles);
+                XpsColor c = XpsColor.parse(XpsXml.attr(s, "Color"), owner(s), profiles);
                 if (c == null) {
                     continue;
                 }
@@ -1824,6 +1848,10 @@ final class XpsRenderer {
         }
     }
 
+    private String owner(Element e) {
+        return owners.get(e.getOwnerDocument());
+    }
+
     private String base(Element e, Ctx ctx) {
         String owner = owners.get(e.getOwnerDocument());
         return owner != null ? owner : ctx.part;
@@ -1870,13 +1898,13 @@ final class XpsRenderer {
             Placed start = placed.get(i);
             if (sideways) {
                 ops.num(0).num(-em).num(-em).num(-shear * em).num(start.x()).num(start.y()).op("Tm\n<");
-                ops.hex4(start.gid());
+                ops.hex4(font.code(start.gid()));
                 ops.op("> Tj\n");
                 i++;
                 continue;
             }
             ops.num(em).num(0).num(shear * em).num(-em).num(start.x()).num(start.y()).op("Tm\n[<");
-            ops.hex4(start.gid());
+            ops.hex4(font.code(start.gid()));
             double pen = start.x() + rounded(font, start.gid()) * em;
             int j = i + 1;
             while (j < n && Math.abs(placed.get(j).y() - start.y()) < 1e-6) {
@@ -1886,9 +1914,10 @@ final class XpsRenderer {
                     ops.op("> ");
                     ops.num(adjust);
                     ops.op("<");
+                    pen = g.x();
                 }
-                ops.hex4(g.gid());
-                pen = g.x() + rounded(font, g.gid()) * em;
+                ops.hex4(font.code(g.gid()));
+                pen += rounded(font, g.gid()) * em;
                 j++;
             }
             ops.op(">] TJ\n");
