@@ -6,7 +6,7 @@ final class LineMetrics {
 
     private LineMetrics() {}
 
-    static void measure(Line line, ParaItems pi, ParaProps pp, float gridPitch) {
+    static void measure(Line line, ParaItems pi, ParaProps pp, float gridPitch, boolean bodyGrid) {
         float asc = 0;
         float desc = 0;
         float textAsc = 0;
@@ -142,14 +142,10 @@ final class LineMetrics {
         float value = pp.line == null ? 1 : pp.line;
         switch (rule) {
             case EXACT -> h = value;
-            case AT_LEAST -> h = Math.max(natural, value);
+            case AT_LEAST -> h = snap(Math.max(natural, value), bodyGrid ? gridPitch : 0, pp);
             default -> {
                 // A list label's height is not multiplied with the text's
-                h = multiple(natural, textAsc > 0 ? textAsc + textDesc : labelAsc + textDesc, value);
-                if (gridPitch > 0 && !Boolean.FALSE.equals(pp.snapToGrid)) {
-                    float lines = (float) Math.ceil(h / gridPitch - 0.05f);
-                    h = Math.max(1, lines) * gridPitch;
-                }
+                h = snap(multiple(natural, textAsc > 0 ? textAsc + textDesc : labelAsc + textDesc, value), gridPitch, pp);
             }
         }
         boolean runLeading = runLine > h && rule != ParaProps.Rule.EXACT;
@@ -163,7 +159,7 @@ final class LineMetrics {
             line.baseline = h * 0.8f;
         } else if (runLeading) {
             line.baseline = (h - natural) / 2 + lead + asc;
-        } else if (rule == ParaProps.Rule.AUTO && gridPitch > 0 && !Boolean.FALSE.equals(pp.snapToGrid)) {
+        } else if (grid && (rule == ParaProps.Rule.AUTO || bodyGrid)) {
             line.baseline = (h - natural) / 2 + lead + asc;
         } else if (rule == ParaProps.Rule.AUTO && value >= 1) {
             line.baseline = asc + lead;
@@ -172,6 +168,13 @@ final class LineMetrics {
         } else {
             line.baseline = h - desc;
         }
+    }
+
+    private static float snap(float h, float gridPitch, ParaProps pp) {
+        if (gridPitch <= 0 || Boolean.FALSE.equals(pp.snapToGrid)) {
+            return h;
+        }
+        return Math.max(1, (float) Math.ceil(h / gridPitch - 0.05f)) * gridPitch;
     }
 
     private static int lastVisible(Line line) {

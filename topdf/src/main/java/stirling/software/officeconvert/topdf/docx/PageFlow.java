@@ -226,10 +226,17 @@ final class PageFlow extends Region {
 
     static final float MAX_CHAR_GRID = 50;
 
+    private float normalSize() {
+        RunProps r = ctx.pkg.styles.defaultRun.copy();
+        r.mergeFrom(ctx.pkg.styles.paragraphRun(null));
+        return r.fontSize();
+    }
+
     private void startSection(Section s, int index) {
         SectionProps props = s.props();
         ctx.gridPitch = pitch(props);
-        ctx.charGrid = charGrid(props);
+        ctx.charGrid = charGrid(props) == 0 && !"linesAndChars".equals(props.gridType) ? 0
+                : Math.max(1, normalSize() + charGrid(props));
         SectionProps previous = sect;
         int previousIndex = sectionIndex;
         sectionIndex = index;

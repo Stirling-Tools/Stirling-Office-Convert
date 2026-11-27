@@ -33,12 +33,19 @@ final class ParaItems {
 
     private final StringBuilder all = new StringBuilder();
 
+    private final boolean charGrid;
+
     ParaItems(Ctx ctx, Para para, Color background) {
         this(ctx, para, background, false);
     }
 
     ParaItems(Ctx ctx, Para para, Color background, boolean paginated) {
+        this(ctx, para, background, paginated, paginated);
+    }
+
+    ParaItems(Ctx ctx, Para para, Color background, boolean paginated, boolean charGrid) {
         this.ctx = ctx;
+        this.charGrid = charGrid;
         this.para = para;
         this.background = background;
         this.markLook = look(para.mark, primaryFace(para.mark, ""), null, para.mark.fontSize());
@@ -329,6 +336,7 @@ final class ParaItems {
             s = s.toUpperCase(Locale.ROOT);
         }
         boolean small = Boolean.TRUE.equals(rp.smallCaps) && !Boolean.TRUE.equals(rp.caps);
+        boolean gridded = charGrid && ctx.charGrid() > 0;
         ColorEmoji colour = ctx.fonts.colorEmoji();
         int i = 0;
         int n = s.length();
@@ -344,7 +352,7 @@ final class ParaItems {
                     j = emoji;
                     continue;
                 }
-                if (slot(c2, rp) != slot && !(neutral(c2) && slot != Fonts.Slot.COMPLEX)) {
+                if (slot(c2, rp) != slot && !(neutral(c2) && slot != Fonts.Slot.COMPLEX && !gridded)) {
                     break;
                 }
                 if (small && Character.isLowerCase(c2) != lower && !neutral(c2)) {
@@ -362,7 +370,7 @@ final class ParaItems {
             }
             FontFace face = face(rp, slot);
             piece = SymbolChars.remap(piece, face, label, c -> covers(faceFor(face, c), c));
-            addCovered(piece, face, rp, nominal, full, link, slot == Fonts.Slot.COMPLEX, gridSpacing(rp, slot));
+            addCovered(piece, face, rp, nominal, full, link, slot == Fonts.Slot.COMPLEX, gridSpacing(rp, slot, nominal));
             i = j;
         }
     }
@@ -381,12 +389,14 @@ final class ParaItems {
         return cp == ' ' || cp == 0x00A0;
     }
 
-    private float gridSpacing(RunProps rp, Fonts.Slot slot) {
-        float grid = ctx.charGrid();
-        if (grid == 0 || Boolean.FALSE.equals(para.pp.snapToGrid) || Boolean.FALSE.equals(rp.snapToGrid)) {
+    private float gridSpacing(RunProps rp, Fonts.Slot slot, float nominal) {
+        float unit = ctx.charGrid();
+        if (!charGrid || unit <= 0 || slot != Fonts.Slot.EAST_ASIA || Boolean.FALSE.equals(para.pp.snapToGrid)
+                || Boolean.FALSE.equals(rp.snapToGrid)) {
             return 0;
         }
-        return slot == Fonts.Slot.EAST_ASIA ? grid : grid / 2;
+        float cells = Math.max(1, (float) Math.ceil(nominal / unit - 0.02f));
+        return cells * unit - nominal;
     }
 
     private void addCovered(String piece, FontFace face, RunProps rp, float nominal, float full, Inline.Link link,

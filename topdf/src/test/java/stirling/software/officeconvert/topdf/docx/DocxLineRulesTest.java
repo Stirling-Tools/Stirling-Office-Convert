@@ -144,16 +144,38 @@ class DocxLineRulesTest {
     }
 
     @Test
-    void aCharacterGridNarrowsEveryCharacter() throws IOException {
-        String body = DocxDoc.p("AAAAAAAAAA End");
+    void aCharacterGridGivesEachEastAsianCharacterWholeCellsAndLeavesLatinAlone() throws IOException {
         String grid = DocxDoc.LETTER.replace("</w:sectPr>", "<w:docGrid w:type=\"linesAndChars\" w:linePitch=\"240\""
                 + " w:charSpace=\"-8192\"/></w:sectPr>");
-        float plain = render("nogrid", new DocxDoc().styles(STYLES).body(body)).word("End").x();
-        float narrow = render("chargrid", new DocxDoc().styles(STYLES).body(body).section(grid)).word("End").x();
-        assertEquals(plain - 11, narrow, 0.5f);
-        String lines = grid.replace("linesAndChars", "lines");
-        assertEquals(plain, render("linegrid", new DocxDoc().styles(STYLES).body(body).section(lines)).word("End").x(),
+        String latin = DocxDoc.p("AAAAAAAAAA End");
+        float plain = render("nogrid", new DocxDoc().styles(STYLES).body(latin)).word("End").x();
+        assertEquals(plain, render("chargrid", new DocxDoc().styles(STYLES).body(latin).section(grid)).word("End").x(),
                 0.05f);
+        String east = DocxDoc.p("\u6f22\u6f22\u6f22\u6f22 End");
+        float wide = render("eastplain", new DocxDoc().styles(STYLES).body(east)).word("End").x();
+        float cells = render("eastgrid", new DocxDoc().styles(STYLES).body(east).section(grid)).word("End").x();
+        assertEquals(wide + 4 * (2 * 8 - 10), cells, 0.5f, "a 10 pt character takes two 8 pt cells");
+        String even = grid.replace("w:charSpace=\"-8192\"", "w:charSpace=\"0\"");
+        assertEquals(wide, render("eastone", new DocxDoc().styles(STYLES).body(east).section(even)).word("End").x(),
+                0.5f, "at the Normal size each character fills one cell");
+        String lines = grid.replace("linesAndChars", "lines");
+        assertEquals(wide, render("eastlines", new DocxDoc().styles(STYLES).body(east).section(lines)).word("End").x(),
+                0.05f);
+    }
+
+    @Test
+    void atLeastLinesSnapToTheLineGridLikeSingleOnes() throws IOException {
+        String least = "<w:spacing w:line=\"0\" w:lineRule=\"atLeast\"/>";
+        String body = para(least, run("One")) + para(least, run("Two")) + para("<w:spacing w:line=\"200\""
+                + " w:lineRule=\"exact\"/>", run("Three")) + DocxDoc.p("Four");
+        String lines = DocxDoc.LETTER.replace("</w:sectPr>", "<w:docGrid w:type=\"lines\" w:linePitch=\"360\"/>"
+                + "</w:sectPr>");
+        DocxDoc.Rendered g = render("leastgrid", new DocxDoc().styles(STYLES).body(body).section(lines));
+        assertEquals(18, g.word("Two").y() - g.word("One").y(), 0.3f, "an at-least line takes one 18 pt pitch");
+        DocxDoc.Rendered free = render("leastfree", new DocxDoc().styles(STYLES).body(body));
+        assertEquals(11.5f, free.word("Two").y() - free.word("One").y(), 0.1f);
+        float exact = g.word("Four").y() - g.word("Three").y();
+        assertTrue(exact < 15, "an exact line keeps its own height: " + exact);
     }
 
     @Test

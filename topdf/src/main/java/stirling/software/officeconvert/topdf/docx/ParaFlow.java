@@ -178,7 +178,7 @@ final class ParaFlow {
             box = null;
         }
         ParaItems pi = new ParaItems(ctx, p, box != null && box.fill() != null ? box.fill() : r.background,
-                r.paginated());
+                r.paginated(), onCharGrid(r));
         LineBreaker lb = breaker(pi, pp, r.width());
         if (r instanceof StackLayout s && s.inCell()) {
             lb.hangPunctuation(false);
@@ -437,7 +437,7 @@ final class ParaFlow {
                 BidiLine.reorder(more, Boolean.TRUE.equals(pp.bidi));
                 line.append(more);
             }
-            LineMetrics.measure(line, pi, pp, grid);
+            LineMetrics.measure(line, pi, pp, grid, onCharGrid(r));
             line.top = lineTop;
             if (span == null || line.height <= h + 0.01f) {
                 break;
@@ -469,6 +469,10 @@ final class ParaFlow {
             lb.hyphenate(ctx.settings);
         }
         return lb;
+    }
+
+    private static boolean onCharGrid(Region r) {
+        return r.paginated() || r instanceof StackLayout s && s.inCell();
     }
 
     private static float gridPitch(Region r) {
@@ -646,7 +650,7 @@ final class ParaFlow {
         if (hidden(p)) {
             return new float[] {0, 0, 0, 0};
         }
-        ParaItems pi = new ParaItems(ctx, p, null, r.paginated());
+        ParaItems pi = new ParaItems(ctx, p, null, r.paginated(), onCharGrid(r));
         LineBreaker lb = breaker(pi, p.pp, width);
         if (r instanceof StackLayout s && s.inCell()) {
             lb.hangPunctuation(false);
@@ -660,7 +664,7 @@ final class ParaFlow {
         while (true) {
             float left = p.pp.left() + (lb.first() ? p.pp.first() : 0);
             Line line = lb.next(left, Math.max(left + 1, width - p.pp.right()));
-            LineMetrics.measure(line, pi, p.pp, grid);
+            LineMetrics.measure(line, pi, p.pp, grid, onCharGrid(r));
             total += line.height;
             // The last kept line may reach into the bottom margin by the extra space of its line spacing
             if (count == 0) {
