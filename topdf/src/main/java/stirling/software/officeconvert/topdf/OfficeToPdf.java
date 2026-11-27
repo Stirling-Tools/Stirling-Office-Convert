@@ -79,7 +79,8 @@ public final class OfficeToPdf {
                         "sylk", "dif", "dbf", "numbers", "wk1", "wks", "wk3", "wk4", "123" -> XLSX;
                 case "csv" -> CSV;
                 case "tsv", "tab" -> TSV;
-                case "html", "htm", "xhtml", "zip", "htmlz", "mobi", "azw3", "azw", "prc", "pdb", "fb2", "fbz" -> HTML;
+                case "html", "htm", "xhtml", "zip", "htmlz", "mobi", "azw3", "azw", "prc", "pdb", "fb2", "fbz", "eml",
+                        "msg", "mht", "mhtml" -> HTML;
                 case "epub" -> EPUB;
                 case "json" -> JSON;
                 case "ppt", "pps", "pot" -> PPT;
@@ -92,7 +93,7 @@ public final class OfficeToPdf {
                             + " .sxc, .stc, .sxi, .sti, .sxd, .std, .vsdx, .vsdm, .vssx, .vssm, .vstx, .vstm, .xml, .slk,"
                             + " .dif, .dbf, .wk1, .wks, .wk3, .wk4, .123, .pages, .numbers, .key, .pub, .vsd, .vss, .vst, .vsw,"
                             + " .txt,"
-                            + " .text, .log, .asc, .csv, .tsv, .tab, .html, .htm, .xhtml, .zip of HTML, .htmlz, .epub, .mobi, .azw3, .azw, .prc, .pdb, .fb2, .fbz or .json");
+                            + " .text, .log, .asc, .csv, .tsv, .tab, .html, .htm, .xhtml, .zip of HTML, .htmlz, .epub, .mobi, .azw3, .azw, .prc, .pdb, .fb2, .fbz, .eml, .msg, .mht, .mhtml or .json");
                 }
             };
         }
@@ -106,6 +107,7 @@ public final class OfficeToPdf {
                         "stc", "sxi", "sti", "sxd", "std", "vsdx", "vsdm", "vssx", "vssm", "vstx", "vstm" -> true;
                 case "txt", "text", "log", "asc", "csv", "tsv", "tab", "html", "htm", "xhtml", "json" -> true;
                 case "mobi", "azw3", "azw", "prc", "fb2", "fbz", "htmlz" -> true;
+                case "eml", "msg", "mht", "mhtml" -> true;
                 case "slk", "sylk", "dif", "dbf", "pages", "numbers", "key", "wk1", "wks", "wk3", "wk4", "123" -> true;
                 case "pub", "vsd", "vss", "vst", "vsw" -> true;
                 default -> false;
@@ -122,9 +124,29 @@ public final class OfficeToPdf {
 
     /** {@code password} opens a password protected document; it is never written anywhere, nor printed by
      * {@link #toString()}. */
+    public record MailAttachments(long maxEachBytes, long maxTotalBytes) {
+
+        public static final long DEFAULT_MAX_EACH_BYTES = 10L << 20;
+
+        public static final long DEFAULT_MAX_TOTAL_BYTES = 100L << 20;
+
+        public static final long MAX_BYTES = 1L << 30;
+
+        public MailAttachments {
+            if (maxEachBytes <= 0 || maxTotalBytes <= 0 || maxEachBytes > MAX_BYTES || maxTotalBytes > MAX_BYTES) {
+                throw new IllegalArgumentException("Attachment limits must be 1 byte to " + (MAX_BYTES >> 20)
+                        + " MB, were " + maxEachBytes + " and " + maxTotalBytes);
+            }
+        }
+
+        public static MailAttachments defaults() {
+            return new MailAttachments(DEFAULT_MAX_EACH_BYTES, DEFAULT_MAX_TOTAL_BYTES);
+        }
+    }
+
     public record Options(Duration timeout, List<Path> fontDirs, int maxPages, long maxScratchBytes, FontSet fonts,
             String displayName, String password, HtmlAssets htmlAssets, boolean allowPackages, boolean tableOfContents,
-            boolean pageNumbers, float zoom) {
+            boolean pageNumbers, float zoom, MailAttachments mailAttachments) {
 
         public static final float MIN_ZOOM = 0.1f;
 
@@ -159,6 +181,13 @@ public final class OfficeToPdf {
             if (!(zoom >= MIN_ZOOM && zoom <= MAX_ZOOM)) {
                 throw new IllegalArgumentException("The zoom must be " + MIN_ZOOM + " to " + MAX_ZOOM + ", was " + zoom);
             }
+        }
+
+        public Options(Duration timeout, List<Path> fontDirs, int maxPages, long maxScratchBytes, FontSet fonts,
+                String displayName, String password, HtmlAssets htmlAssets, boolean allowPackages,
+                boolean tableOfContents, boolean pageNumbers, float zoom) {
+            this(timeout, fontDirs, maxPages, maxScratchBytes, fonts, displayName, password, htmlAssets, allowPackages,
+                    tableOfContents, pageNumbers, zoom, null);
         }
 
         public Options(Duration timeout, List<Path> fontDirs, int maxPages, long maxScratchBytes, FontSet fonts,
@@ -203,62 +232,67 @@ public final class OfficeToPdf {
 
         public Options timeout(Duration limit) {
             return new Options(limit, fontDirs, maxPages, maxScratchBytes, fonts, displayName, password, htmlAssets,
-                    allowPackages, tableOfContents, pageNumbers, zoom);
+                    allowPackages, tableOfContents, pageNumbers, zoom, mailAttachments);
         }
 
         public Options fontDirs(List<Path> dirs) {
             return new Options(timeout, dirs, maxPages, maxScratchBytes, fonts, displayName, password, htmlAssets,
-                    allowPackages, tableOfContents, pageNumbers, zoom);
+                    allowPackages, tableOfContents, pageNumbers, zoom, mailAttachments);
         }
 
         public Options fonts(FontSet set) {
             return new Options(timeout, fontDirs, maxPages, maxScratchBytes, set, displayName, password, htmlAssets,
-                    allowPackages, tableOfContents, pageNumbers, zoom);
+                    allowPackages, tableOfContents, pageNumbers, zoom, mailAttachments);
         }
 
         public Options maxPages(int pages) {
             return new Options(timeout, fontDirs, pages, maxScratchBytes, fonts, displayName, password, htmlAssets,
-                    allowPackages, tableOfContents, pageNumbers, zoom);
+                    allowPackages, tableOfContents, pageNumbers, zoom, mailAttachments);
         }
 
         public Options maxScratchBytes(long bytes) {
             return new Options(timeout, fontDirs, maxPages, bytes, fonts, displayName, password, htmlAssets,
-                    allowPackages, tableOfContents, pageNumbers, zoom);
+                    allowPackages, tableOfContents, pageNumbers, zoom, mailAttachments);
         }
 
         public Options displayName(String name) {
             return new Options(timeout, fontDirs, maxPages, maxScratchBytes, fonts, name, password, htmlAssets,
-                    allowPackages, tableOfContents, pageNumbers, zoom);
+                    allowPackages, tableOfContents, pageNumbers, zoom, mailAttachments);
         }
 
         public Options password(String secret) {
             return new Options(timeout, fontDirs, maxPages, maxScratchBytes, fonts, displayName, secret, htmlAssets,
-                    allowPackages, tableOfContents, pageNumbers, zoom);
+                    allowPackages, tableOfContents, pageNumbers, zoom, mailAttachments);
         }
 
         public Options htmlAssets(HtmlAssets assets) {
             return new Options(timeout, fontDirs, maxPages, maxScratchBytes, fonts, displayName, password, assets,
-                    allowPackages, tableOfContents, pageNumbers, zoom);
+                    allowPackages, tableOfContents, pageNumbers, zoom, mailAttachments);
         }
 
         public Options allowPackages(boolean allow) {
             return new Options(timeout, fontDirs, maxPages, maxScratchBytes, fonts, displayName, password, htmlAssets,
-                    allow, tableOfContents, pageNumbers, zoom);
+                    allow, tableOfContents, pageNumbers, zoom, mailAttachments);
         }
 
         public Options tableOfContents(boolean add) {
             return new Options(timeout, fontDirs, maxPages, maxScratchBytes, fonts, displayName, password, htmlAssets,
-                    allowPackages, add, pageNumbers, zoom);
+                    allowPackages, add, pageNumbers, zoom, mailAttachments);
         }
 
         public Options pageNumbers(boolean add) {
             return new Options(timeout, fontDirs, maxPages, maxScratchBytes, fonts, displayName, password, htmlAssets,
-                    allowPackages, tableOfContents, add, zoom);
+                    allowPackages, tableOfContents, add, zoom, mailAttachments);
         }
 
         public Options zoom(float scale) {
             return new Options(timeout, fontDirs, maxPages, maxScratchBytes, fonts, displayName, password, htmlAssets,
-                    allowPackages, tableOfContents, pageNumbers, scale);
+                    allowPackages, tableOfContents, pageNumbers, scale, mailAttachments);
+        }
+
+        public Options mailAttachments(MailAttachments limits) {
+            return new Options(timeout, fontDirs, maxPages, maxScratchBytes, fonts, displayName, password, htmlAssets,
+                    allowPackages, tableOfContents, pageNumbers, zoom, limits);
         }
 
         public FontLibrary fontLibrary() {
@@ -271,7 +305,8 @@ public final class OfficeToPdf {
                     + ", maxScratchBytes=" + maxScratchBytes + ", fonts=" + fonts + ", displayName=" + displayName
                     + ", password=" + (password == null ? "none" : "given") + ", htmlAssets="
                     + (htmlAssets == HtmlAssets.NONE ? "none" : "given") + ", allowPackages=" + allowPackages
-                    + ", tableOfContents=" + tableOfContents + ", pageNumbers=" + pageNumbers + ", zoom=" + zoom + "]";
+                    + ", tableOfContents=" + tableOfContents + ", pageNumbers=" + pageNumbers + ", zoom=" + zoom
+                    + ", mailAttachments=" + mailAttachments + "]";
         }
     }
 
@@ -415,6 +450,10 @@ public final class OfficeToPdf {
         }
         if (EncryptedPackage.is(in)) {
             return Footprint.legacy(Files.size(in)) + 2 * Admission.BASE_BYTES;
+        }
+        Long mail = MailInput.estimate(in, format);
+        if (mail != null) {
+            return mail;
         }
         Long drawing = LegacyDrawingInput.estimate(in);
         if (drawing != null) {
@@ -574,6 +613,10 @@ public final class OfficeToPdf {
         Result unlocked = encryptedPackage(source, requested, sink, options, renderer);
         if (unlocked != null) {
             return unlocked;
+        }
+        Result mail = MailInput.render(source, requested, sink, options, renderer);
+        if (mail != null) {
+            return mail;
         }
         Result drawing = LegacyDrawingInput.render(source, sink, options);
         if (drawing != null) {

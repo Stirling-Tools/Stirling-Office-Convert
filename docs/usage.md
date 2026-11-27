@@ -27,12 +27,12 @@ For Word, PowerPoint and Excel input (`.docx .docm .dotx .dotm .pptx .pptm .ppsx
 `.rtf`, Word 2003 XML, XML Spreadsheet 2003 and Flat OPC `.xml`, Visio 2013 and later `.vsdx .vsdm .vssx .vstx`,
 OpenDocument `.odt .ott .fodt .odm .ods .ots .fods .odp .otp .fodp .odg .otg .fodg`, OpenOffice.org 1.x `.sxw .stw .sxc
 .stc .sxi .sti .sxd .std`, SYLK, DIF and dBASE `.slk .dif .dbf`, Lotus 1-2-3 `.wk1 .wks .wk3 .wk4 .123`, Apple iWork `.pages .numbers .key`, Publisher `.pub` and Visio 2003-2010 `.vsd .vss .vst .vsw` (from the preview they hold), plain text `.txt .text .log .asc`, tables
-`.csv .tsv .tab`, HTML `.html .htm .xhtml` or a `.zip` of a page (with `--allow-packages`), eBooks `.epub .mobi .azw3 .azw .prc .pdb .fb2 .fbz` and this library's JSON `.json`), which converts to PDF: `--password p` (a password protected document), `--max-pages n` (default 10000, 0 = all), `--timeout s` (default 300, 0 =
+`.csv .tsv .tab`, HTML `.html .htm .xhtml` or a `.zip` of a page (with `--allow-packages`), e-mail `.eml .msg`, web archives `.mht .mhtml`, eBooks `.epub .mobi .azw3 .azw .prc .pdb .fb2 .fbz` and this library's JSON `.json`), which converts to PDF: `--password p` (a password protected document), `--max-pages n` (default 10000, 0 = all), `--timeout s` (default 300, 0 =
 none), `--fonts dir` (repeatable; an extra folder of fonts), `--font-map Family=Installed` (repeatable; draw a
 family with an installed one, such as `Aptos=Inter`), `--font-width Family=scale` (repeatable; scale a substituted
 family's widths, 0.5 to 2), `--no-system-fonts` (only the given fonts and the bundled Liberation Sans, for
 reproducible output), `--allow-packages` (convert a `.zip` of an HTML page, or an EPUB book not named `.epub`), `--allow-local-files` (let an HTML page
-draw the pictures and style sheets in its own folder, never outside it), `-q`, and `--format pdf` to take only the Office files out
+draw the pictures and style sheets in its own folder, never outside it), `--attach-files` (add an e-mail's attachments to the PDF as embedded files, copied byte for byte and never opened, under a cleaned name and the declared type; `Options.mailAttachments(MailAttachments)`), `--attachment-limit MB[,MB]` (the largest file and the total, default 10 and 100; larger files are listed but left out), `-q`, and `--format pdf` to take only the Office files out
 of a folder. A folder converts its PDFs, its Office files and its eBooks (EPUB, AZW3, MOBI, PRC/PDB, FB2/FBZ), and
 its `.zip` files only with `--allow-packages`; its text, CSV, HTML and JSON files only with `--format pdf`. Inputs that would write the same output name (such
 as `report.docx` and `report.xlsx`) keep their own extension in it (`report.docx.pdf`, `report.xlsx.pdf`), and Office
@@ -495,7 +495,7 @@ extension) are not read in their own format either: the preview picture of the f
 information (an EMF or WMF metafile, drawn as vectors, or a bitmap) becomes a single page, sized to the preview or to
 the paper its shape matches, with a warning. A file without a preview, with a blank one, or with only a bitmap thumbnail
 under 600 pixels on its longer side (what Publisher keeps) is refused with a plain reason. Formats that are not
-converted (WordPerfect, Works, MHTML web archives, Quattro Pro, StarOffice 5, Windows Write and others) fail with a
+converted (WordPerfect, Works, Quattro Pro, StarOffice 5, Windows Write and others) fail with a
 reason naming the format, found by extension or by content.
 
 Plain text (`.txt .text .log .asc`) prints the way LibreOffice Writer prints it: A4 with 2 cm margins, Liberation Mono

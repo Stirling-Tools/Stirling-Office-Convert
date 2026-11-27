@@ -90,6 +90,31 @@ class HtmlLayoutTest {
     }
 
     @Test
+    void stackedPictureFloatsWithoutAWidthSitBesideTheFollowingParagraph() throws IOException {
+        java.awt.image.BufferedImage img = new java.awt.image.BufferedImage(8, 4, java.awt.image.BufferedImage.TYPE_INT_RGB);
+        java.io.ByteArrayOutputStream png = new java.io.ByteArrayOutputStream();
+        javax.imageio.ImageIO.write(img, "png", png);
+        String src = "data:image/png;base64," + java.util.Base64.getEncoder().encodeToString(png.toByteArray());
+        Laid l = lay("""
+                <html><head><style>body{margin:0}
+                figure[typeof~='mw:File/Thumb']{display:table;margin:0 0 8px 12px;clear:right;float:right}
+                </style></head><body>
+                <figure typeof="mw:File/Thumb"><a href="#"><img src="SRC" width="200" height="100"></a>
+                <figcaption>Upper</figcaption></figure><!-- a comment -->
+                <figure typeof="mw:File/Thumb"><img src="SRC" width="200" height="100"><figcaption>Lower</figcaption>
+                </figure>
+                <!-- another --><p>Beside the pictures runs this paragraph.</p></body></html>""".replace("SRC", src));
+        Word beside = l.word("Beside");
+        Word upper = l.word("Upper");
+        Word lower = l.word("Lower");
+        assertTrue(upper.left() > l.word("paragraph.").right(), l.words().toString());
+        assertTrue(beside.top() < upper.top(), l.words().toString());
+        assertEquals(upper.left(), lower.left(), 1f);
+        assertTrue(lower.top() > upper.top() + 60, l.words().toString());
+        assertTrue(upper.left() > l.pageWidth() / 2, l.words().toString());
+    }
+
+    @Test
     void flexRowItemsKeepTheirPlacesOnTheLine() throws IOException {
         Laid l = lay("""
                 <html><head><style>

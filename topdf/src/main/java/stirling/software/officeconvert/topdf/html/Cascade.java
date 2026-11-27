@@ -790,6 +790,7 @@ final class Cascade {
             if (!WORD.matcher(value).matches()) {
                 return null;
             }
+            value = value.replaceAll("[:/.@]", ".");
             m.appendReplacement(out, Matcher.quoteReplacement("[" + m.group(1).strip() + "~=(^|\\s)" + value + "(\\s|$)]"));
         }
         m.appendTail(out);
@@ -797,7 +798,7 @@ final class Cascade {
     }
 
     private static final Pattern WORD_ATTRIBUTE = Pattern.compile("\\[([^\\[\\]~|^$*=]+)~=([^\\[\\]]*)\\]");
-    private static final Pattern WORD = Pattern.compile("[-_A-Za-z0-9]+");
+    private static final Pattern WORD = Pattern.compile("[-_A-Za-z0-9][-_A-Za-z0-9:/.@]*");
 
     private static final Pattern PSEUDO = Pattern.compile("(?<!\\\\):([a-zA-Z-]+)");
     private static final String QUOTED = "\"[^\"]*\"|'[^']*'";

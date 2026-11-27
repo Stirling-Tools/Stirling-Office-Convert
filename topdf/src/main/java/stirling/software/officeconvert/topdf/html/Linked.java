@@ -38,6 +38,9 @@ final class Linked implements HtmlAssets {
     }
 
     String resolve(String base, String reference) {
+        if (reference != null && assets.contentIds() && reference.strip().regionMatches(true, 0, "cid:", 0, 4)) {
+            return reference.strip();
+        }
         if (reference != null && assets.absoluteWeb()) {
             String r = reference.strip();
             if (r.startsWith("//")) {

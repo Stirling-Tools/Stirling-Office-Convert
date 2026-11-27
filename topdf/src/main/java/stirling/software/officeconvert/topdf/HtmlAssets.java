@@ -22,6 +22,10 @@ public interface HtmlAssets {
         return false;
     }
 
+    default boolean contentIds() {
+        return false;
+    }
+
     default HtmlAssets session() {
         return this;
     }

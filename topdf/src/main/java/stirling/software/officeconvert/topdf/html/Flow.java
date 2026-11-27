@@ -1,14 +1,17 @@
 package stirling.software.officeconvert.topdf.html;
 
 import java.io.IOException;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Deque;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
+import org.jsoup.nodes.Comment;
 import org.jsoup.nodes.Element;
 import org.jsoup.nodes.Node;
 import org.jsoup.nodes.TextNode;
@@ -190,21 +193,23 @@ final class Flow {
 
     private void walkChildren(Element parent, Look look, Frame frame, int depth) throws IOException {
         Element skip = null;
+        Set<Element> skipping = Collections.newSetFromMap(new IdentityHashMap<>());
         for (Node child : parent.childNodes()) {
             Admission.checkpoint();
             if (ctx.stopped()) {
                 return;
             }
-            if (child == skip) {
+            if (child == skip || child instanceof Element se && skipping.contains(se)) {
                 continue;
             }
             if (child instanceof TextNode t) {
                 text(t.getWholeText(), look);
             } else if (child instanceof Element e) {
-                Element beside = besideFloat(e, look, frame);
-                if (beside != null) {
-                    floatRow(e, beside, look, frame, depth + 1);
-                    skip = beside;
+                FloatRun run = besideFloat(e, look, frame);
+                if (run != null) {
+                    floatRow(run.floats(), run.beside(), look, frame, depth + 1);
+                    skip = run.beside();
+                    skipping.addAll(run.floats());
                 } else {
                     element(e, look, frame, depth + 1);
                 }
@@ -212,24 +217,28 @@ final class Flow {
         }
     }
 
-    private Element besideFloat(Element e, Look look, Frame frame) {
-        if (inCell || forceInline > 0 || look.rightToLeft) {
+    private record FloatRun(List<Element> floats, Element beside) {}
+
+    static final int MAX_STACKED_FLOATS = 8;
+
+    private FloatRun besideFloat(Element e, Look look, Frame frame) {
+        if (inCell || forceInline > 0 || look.rightToLeft || !floats(e, look, frame, null)) {
             return null;
         }
-        Map<String, String> d = ctx.declared(e, look);
-        String side = d.getOrDefault("float", "none").strip().toLowerCase(Locale.ROOT);
-        String shown = d.getOrDefault("display", BLOCKS.contains(e.normalName()) ? "block" : "inline").strip();
-        if (!side.equals("left") && !side.equals("right") || !shown.equals("block") || e.ownText().isBlank()
-                && e.children().size() == 1 && Set.of("img", "svg").contains(e.child(0).normalName())) {
-            return null;
-        }
-        float width = floatWidth(e, d, look, frame.width());
-        if (width < frame.width() * 0.1f || width > frame.width() * 0.7f) {
-            return null;
-        }
+        String side = ctx.declared(e, look).getOrDefault("float", "none").strip().toLowerCase(Locale.ROOT);
+        List<Element> run = new ArrayList<>();
+        run.add(e);
         Node n = e.nextSibling();
-        while (n instanceof TextNode t && t.isBlank()) {
-            n = n.nextSibling();
+        while (true) {
+            while (n instanceof TextNode t && t.isBlank() || n instanceof Comment) {
+                n = n.nextSibling();
+            }
+            if (n instanceof Element more && run.size() < MAX_STACKED_FLOATS && floats(more, look, frame, side)) {
+                run.add(more);
+                n = more.nextSibling();
+                continue;
+            }
+            break;
         }
         if (!(n instanceof Element next) || SKIPPED.contains(next.normalName()) || !BLOCKS.contains(next.normalName())) {
             return null;
@@ -238,11 +247,37 @@ final class Flow {
         boolean flows = nd.getOrDefault("float", "none").strip().equalsIgnoreCase("none")
                 && nd.getOrDefault("display", "block").strip().equalsIgnoreCase("block")
                 && !nd.getOrDefault("position", "").strip().matches("(?i)absolute|fixed");
-        return flows ? next : null;
+        return flows ? new FloatRun(run, next) : null;
+    }
+
+    private boolean floats(Element e, Look look, Frame frame, String sameSide) {
+        Map<String, String> d = ctx.declared(e, look);
+        String side = d.getOrDefault("float", "none").strip().toLowerCase(Locale.ROOT);
+        String shown = d.getOrDefault("display", BLOCKS.contains(e.normalName()) ? "block" : "inline").strip();
+        boolean block = shown.equals("block") || shown.equals("table") && !e.normalName().equals("table");
+        if (!side.equals("left") && !side.equals("right") || !block || e.ownText().isBlank()
+                && e.children().size() == 1 && Set.of("img", "svg").contains(e.child(0).normalName())) {
+            return false;
+        }
+        if (sameSide != null) {
+            String clear = d.getOrDefault("clear", "none").strip().toLowerCase(Locale.ROOT);
+            if (!side.equals(sameSide) || !clear.equals(side) && !clear.equals("both")) {
+                return false;
+            }
+        }
+        float width = floatWidth(e, d, look, frame.width());
+        return width >= frame.width() * 0.1f && width <= frame.width() * 0.7f;
     }
 
     private float floatWidth(Element e, Map<String, String> d, Look look, float room) {
         Float w = BoxCss.boxLength(d.get("width"), look, room);
+        if (w == null && pictureSized(e, d)) {
+            w = pictureWidth(e, look, room);
+            if (w != null) {
+                w += Math.max(0, BoxCss.length(d.get("margin-left"), look.size, room))
+                        + Math.max(0, BoxCss.length(d.get("margin-right"), look.size, room));
+            }
+        }
         if (w == null) {
             return 0;
         }
@@ -254,13 +289,82 @@ final class Flow {
         return w;
     }
 
-    private void floatRow(Element side, Element beside, Look look, Frame frame, int depth) throws IOException {
+    private static boolean pictureSized(Element e, Map<String, String> d) {
+        if (e.normalName().equals("figure") || d.getOrDefault("display", "").strip().equalsIgnoreCase("table")) {
+            return true;
+        }
+        Deque<Node> todo = new ArrayDeque<>(e.childNodes().subList(0, Math.min(64, e.childNodeSize())));
+        int seen = 0;
+        while (!todo.isEmpty()) {
+            if (++seen > 256) {
+                return false;
+            }
+            Node n = todo.pollFirst();
+            if (n instanceof TextNode t && !t.isBlank()) {
+                return false;
+            }
+            if (n instanceof Element c && !c.normalName().equals("figcaption") && !c.normalName().equals("caption")) {
+                List<Node> kids = c.childNodes();
+                for (int i = Math.min(64, kids.size()) - 1; i >= 0; i--) {
+                    todo.addFirst(kids.get(i));
+                }
+            }
+        }
+        return true;
+    }
+
+    private Float pictureWidth(Element e, Look look, float room) {
+        Float widest = null;
+        Deque<Element> todo = new ArrayDeque<>(e.children().subList(0, Math.min(64, e.childrenSize())));
+        int seen = 0;
+        while (!todo.isEmpty() && seen++ < 64) {
+            Element c = todo.pollFirst();
+            if (c.normalName().equals("img")) {
+                Float w = BoxCss.boxLength(ctx.declared(c, look).get("width"), look, room);
+                String attr = c.attr("width").strip();
+                if (w == null && !attr.isEmpty() && attr.chars().allMatch(Character::isDigit) && attr.length() < 6) {
+                    w = BoxCss.boxLength(attr + "px", look, room);
+                }
+                if (w != null && (widest == null || w > widest)) {
+                    widest = w;
+                }
+            } else if (!c.normalName().equals("table")) {
+                List<Element> kids = c.children();
+                for (int i = Math.min(64, kids.size()) - 1; i >= 0; i--) {
+                    todo.addFirst(kids.get(i));
+                }
+            }
+        }
+        return widest;
+    }
+
+    private void floatRow(List<Element> sides, Element beside, Look look, Frame frame, int depth) throws IOException {
         flush();
+        Element side = sides.getFirst();
         Map<String, String> d = ctx.declared(side, look);
         boolean left = d.get("float").strip().equalsIgnoreCase("left");
-        float width = floatWidth(side, d, look, frame.width());
+        float width = 0;
+        for (Element s : sides) {
+            width = Math.max(width, floatWidth(s, ctx.declared(s, look), look, frame.width()));
+        }
         float rest = frame.width() - width;
-        Table.Cell floated = cell(side, look, frame, width, 0, depth, 0, 0);
+        Table.Cell floated;
+        if (sides.size() == 1) {
+            floated = cell(side, look, frame, width, 0, depth, 0, 0);
+        } else {
+            floated = cell(null, look, frame, width, 0, depth);
+            Table stack = new Table();
+            stack.cellMarginLeft = 0;
+            stack.cellMarginRight = 0;
+            stack.columnWidths.add(width);
+            for (Element s : sides) {
+                Table.Row r = new Table.Row();
+                r.splits = true;
+                r.cells.add(cell(s, look, frame, width, 0, depth, 0, 0));
+                stack.rows.add(r);
+            }
+            floated.add(stack);
+        }
         Table.Cell flowing = cell(beside, look, frame, rest, 0, depth, left ? width : 0, left ? 0 : width);
         Table t = new Table();
         t.indent = frame.left();
