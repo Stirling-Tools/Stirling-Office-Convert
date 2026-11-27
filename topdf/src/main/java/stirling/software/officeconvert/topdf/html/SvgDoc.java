@@ -54,6 +54,7 @@ final class SvgDoc {
             doc = Jsoup.parse(in, null, "", Parser.xmlParser());
         }
         bounded(doc);
+        namespaces(doc);
         Element root = null;
         for (Element e : doc.children()) {
             if (local(e).equals("svg")) {
@@ -96,6 +97,57 @@ final class SvgDoc {
             for (Element c : e.children()) {
                 stack.push(c);
                 depths.push(depth + 1);
+            }
+        }
+    }
+
+    static final String SVG_NS = "http://www.w3.org/2000/svg";
+
+    private static final java.util.Set<String> KNOWN = java.util.Set.of("a", "circle", "clippath", "defs", "desc",
+            "ellipse", "filter", "font", "foreignobject", "g", "glyph", "image", "line", "lineargradient", "marker",
+            "mask", "metadata", "path", "pattern", "polygon", "polyline", "radialgradient", "rect", "script", "stop",
+            "style", "svg", "switch", "symbol", "text", "textpath", "title", "tref", "tspan", "use", "view", "set",
+            "animate", "animatemotion", "animatetransform", "mpath", "cursor", "hatch", "solidcolor");
+
+    static boolean known(Element e) {
+        String tag = local(e);
+        return KNOWN.contains(tag) || tag.startsWith("fe");
+    }
+
+    private static void namespaces(Document doc) {
+        java.util.ArrayDeque<Element> stack = new java.util.ArrayDeque<>();
+        java.util.ArrayDeque<Map<String, String>> scopes = new java.util.ArrayDeque<>();
+        for (Element c : doc.children()) {
+            stack.push(c);
+            scopes.push(Map.of());
+        }
+        while (!stack.isEmpty()) {
+            Element e = stack.pop();
+            Map<String, String> scope = scopes.pop();
+            Map<String, String> own = null;
+            for (org.jsoup.nodes.Attribute a : e.attributes()) {
+                String k = a.getKey();
+                if (k.equals("xmlns") || k.startsWith("xmlns:")) {
+                    if (own == null) {
+                        own = new HashMap<>(scope);
+                    }
+                    own.put(k.equals("xmlns") ? "" : k.substring(6), a.getValue().strip());
+                }
+            }
+            if (own != null) {
+                scope = own;
+            }
+            String tag = e.tagName();
+            int colon = tag.indexOf(':');
+            String prefix = colon >= 0 ? tag.substring(0, colon) : "";
+            String ns = scope.get(prefix);
+            boolean svg = ns == null ? prefix.isEmpty() : ns.equals(SVG_NS);
+            if (!svg) {
+                e.tagName("foreign-" + tag.replace(':', '-'));
+            }
+            for (Element c : e.children()) {
+                stack.push(c);
+                scopes.push(scope);
             }
         }
     }

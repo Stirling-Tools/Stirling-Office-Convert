@@ -557,6 +557,9 @@ final class SvgDraw {
             mask = null;
             return;
         }
+        if (mask != null && active.contains(mask)) {
+            mask = null;
+        }
         int filterState = filterRef.equalsIgnoreCase("none") || filterRef.isBlank() ? 0
                 : SvgFilter.state(this, filterRef);
         if (filterState < 0) {
@@ -1354,7 +1357,8 @@ final class SvgDraw {
                             dashedLength = dashes(s) == null ? 0 : pathLength(p);
                             dashScale = dashScale(e, s, dashedLength);
                             try {
-                                stroke(p, stroke, alpha * Css.opacity(s.get("stroke-opacity")), bbox, s, w);
+                                stroke(SvgDoc.lower(s.get("stroke-linecap")).equals("butt") ? p : dots(p), stroke,
+                                        alpha * Css.opacity(s.get("stroke-opacity")), bbox, s, w);
                             } finally {
                                 dashScale = savedScale;
                                 dashedLength = savedLength;
@@ -1371,6 +1375,100 @@ final class SvgDraw {
         }
     }
 
+    static Path2D dots(Path2D p) {
+        if (!hasDot(p)) {
+            return p;
+        }
+        Path2D.Double out = new Path2D.Double(p.getWindingRule());
+        List<double[]> sub = new ArrayList<>();
+        List<Integer> kinds = new ArrayList<>();
+        double[] c = new double[6];
+        int n = 0;
+        for (PathIterator it = p.getPathIterator(null); !it.isDone() && n++ < 2_000_000; it.next()) {
+            int k = it.currentSegment(c);
+            if (k == PathIterator.SEG_MOVETO && !sub.isEmpty()) {
+                flushDot(out, sub, kinds);
+            }
+            sub.add(c.clone());
+            kinds.add(k);
+        }
+        flushDot(out, sub, kinds);
+        return out;
+    }
+
+    private static int points(int kind) {
+        return switch (kind) {
+            case PathIterator.SEG_CUBICTO -> 3;
+            case PathIterator.SEG_QUADTO -> 2;
+            case PathIterator.SEG_CLOSE -> 0;
+            default -> 1;
+        };
+    }
+
+    private static boolean hasDot(Path2D p) {
+        double[] c = new double[6];
+        double sx = 0;
+        double sy = 0;
+        int segments = 0;
+        boolean same = false;
+        int n = 0;
+        for (PathIterator it = p.getPathIterator(null); !it.isDone() && n++ < 2_000_000; it.next()) {
+            int k = it.currentSegment(c);
+            if (k == PathIterator.SEG_MOVETO) {
+                if (same && segments > 1) {
+                    return true;
+                }
+                sx = c[0];
+                sy = c[1];
+                segments = 0;
+                same = true;
+                continue;
+            }
+            segments++;
+            int pts = points(k);
+            for (int j = 0; j < pts; j++) {
+                if (c[2 * j] != sx || c[2 * j + 1] != sy) {
+                    same = false;
+                }
+            }
+        }
+        return same && segments > 1;
+    }
+
+    private static void flushDot(Path2D.Double out, List<double[]> sub, List<Integer> kinds) {
+        if (sub.isEmpty()) {
+            return;
+        }
+        double[] first = sub.get(0);
+        boolean degenerate = sub.size() > 2 && kinds.get(0) == PathIterator.SEG_MOVETO;
+        for (int i = 1; i < sub.size() && degenerate; i++) {
+            double[] q = sub.get(i);
+            int pts = points(kinds.get(i));
+            for (int j = 0; j < pts; j++) {
+                if (q[2 * j] != first[0] || q[2 * j + 1] != first[1]) {
+                    degenerate = false;
+                }
+            }
+        }
+        if (degenerate) {
+            out.moveTo(first[0], first[1]);
+            out.lineTo(first[0], first[1]);
+        } else {
+            for (int i = 0; i < sub.size(); i++) {
+                double[] q = sub.get(i);
+                switch (kinds.get(i)) {
+                    case PathIterator.SEG_MOVETO -> out.moveTo(q[0], q[1]);
+                    case PathIterator.SEG_LINETO -> out.lineTo(q[0], q[1]);
+                    case PathIterator.SEG_QUADTO -> out.quadTo(q[0], q[1], q[2], q[3]);
+                    case PathIterator.SEG_CUBICTO -> out.curveTo(q[0], q[1], q[2], q[3], q[4], q[5]);
+                    default -> out.closePath();
+                }
+            }
+        }
+        sub.clear();
+        kinds.clear();
+    }
+
     static List<String> paintOrder(String v) {
         String l = v == null ? "" : v.strip().toLowerCase(Locale.ROOT);
         if (l.isEmpty() || l.equals("normal")) {
@@ -1378,11 +1476,10 @@ final class SvgDraw {
         }
         List<String> out = new ArrayList<>();
         for (String t : l.split("\\s+")) {
-            if ((t.equals("fill") || t.equals("stroke") || t.equals("markers")) && !out.contains(t)) {
-                out.add(t);
-            } else if (!t.equals("fill") && !t.equals("stroke") && !t.equals("markers")) {
+            if (!t.equals("fill") && !t.equals("stroke") && !t.equals("markers") || out.contains(t)) {
                 return List.of("fill", "stroke", "markers");
             }
+            out.add(t);
         }
         for (String t : List.of("fill", "stroke", "markers")) {
             if (!out.contains(t)) {
@@ -1426,14 +1523,44 @@ final class SvgDraw {
             }
             return paint(fallback, s);
         }
-        Integer c = Css.color(l);
+        String colour = percentAlpha(l);
+        Integer c = Css.color(colour);
         if (c == null) {
             return Paint.NONE;
         }
         if (c < 0) {
             return Paint.NONE;
         }
-        return new Paint(c, Css.alpha(l), null, false);
+        return new Paint(c, Css.alpha(colour), null, false);
+    }
+
+    static String percentAlpha(String v) {
+        int open = v.indexOf('(');
+        int close = v.lastIndexOf(')');
+        if (open < 0 || close < open || v.length() > 200) {
+            return v;
+        }
+        String fn = v.substring(0, open).strip().toLowerCase(Locale.ROOT);
+        if (!fn.equals("rgb") && !fn.equals("rgba") && !fn.equals("hsl") && !fn.equals("hsla")) {
+            return v;
+        }
+        String inner = v.substring(open + 1, close).strip();
+        int cut = Math.max(Math.max(inner.lastIndexOf(','), inner.lastIndexOf('/')), inner.lastIndexOf(' '));
+        if (cut < 0 || !inner.endsWith("%")) {
+            return v;
+        }
+        String last = inner.substring(cut + 1).strip();
+        long commas = inner.chars().filter(ch -> ch == ',').count();
+        boolean alphaArg = inner.charAt(cut) == '/' || commas == 3;
+        if (!alphaArg) {
+            return v;
+        }
+        float a = number(last.substring(0, last.length() - 1), Float.NaN);
+        if (!Float.isFinite(a)) {
+            return v;
+        }
+        return v.substring(0, open + 1) + inner.substring(0, cut + 1) + (inner.charAt(cut) == ' ' ? "" : " ")
+                + Math.max(0, Math.min(1, a / 100)) + ")";
     }
 
     void fill(Path2D p, Paint paint, float alpha, Rectangle2D bbox, SvgStyle s) throws IOException {
@@ -1550,6 +1677,9 @@ final class SvgDraw {
             return 1;
         }
         float want = number(SvgDoc.attr(e, "pathLength"), Float.NaN);
+        if (want == 0) {
+            return Float.POSITIVE_INFINITY;
+        }
         if (!(want > 0)) {
             return 1;
         }
@@ -1609,7 +1739,7 @@ final class SvgDraw {
                 period += dash[i];
             }
             offset *= dashScale;
-            if (!(dashedLength > 0) || dashedLength / period <= MAX_DASHES) {
+            if (Float.isFinite(dashScale) && (!(dashedLength > 0) || dashedLength / period <= MAX_DASHES)) {
                 cs.setLineDashPattern(dash, offset);
             }
         }
@@ -1770,7 +1900,7 @@ final class SvgDraw {
                 float off = o.endsWith("%") ? number(o.substring(0, o.length() - 1), 0) / 100 : number(o, 0);
                 off = Math.max(last, Math.max(0, Math.min(1, off)));
                 last = off;
-                String colour = st.own("stop-color", "black");
+                String colour = percentAlpha(st.own("stop-color", "black"));
                 int rgb;
                 float alpha;
                 if (colour.equalsIgnoreCase("currentcolor")) {
@@ -2672,7 +2802,10 @@ final class SvgDraw {
                     canvas.scale(strokeWidth, strokeWidth);
                 }
                 canvas.translate((float) -ref.getX(), (float) -ref.getY());
-                String overflow = SvgDoc.lower(ms.own("overflow", "hidden"));
+                String raw = ms.own.get("overflow");
+                String overflow = raw != null && raw.strip().equalsIgnoreCase("inherit") && ms.parent != null
+                        ? SvgDoc.lower(ms.parent.own("overflow", "visible"))
+                        : SvgDoc.lower(ms.own("overflow", "hidden"));
                 if (!overflow.equals("visible") && !overflow.equals("auto")) {
                     canvas.clip(new Rectangle2D.Float(0, 0, mw, mh));
                 }

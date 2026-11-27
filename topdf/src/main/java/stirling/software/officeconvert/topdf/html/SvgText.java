@@ -208,7 +208,7 @@ final class SvgText {
                     }
                     case "tref" -> {
                         Element ref = draw.doc.target(c);
-                        if (ref != null && l.chars.size() < MAX_CHARS && !draw.spent()) {
+                        if (ref != null && SvgDoc.known(ref) && l.chars.size() < MAX_CHARS && !draw.spent()) {
                             String s = ref.text();
                             draw.charge(s.length());
                             if (s.length() > MAX_CHARS) {

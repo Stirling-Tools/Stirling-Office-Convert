@@ -216,28 +216,61 @@ final class SvgLighting {
         }
         int w = in.w;
         int h = in.h;
+        int pw = w + 2;
+        float[] a = new float[pw * (h + 2)];
+        for (int y = -1; y <= h; y++) {
+            int cy = Math.max(0, Math.min(h - 1, y));
+            for (int x = -1; x <= w; x++) {
+                int cx = Math.max(0, Math.min(w - 1, x));
+                a[(y + 1) * pw + x + 1] = in.p[(cy * w + cx) * 4 + 3];
+            }
+        }
+        double s4 = -surface / 4.0;
         for (int y = 0; y < h; y++) {
+            int up = y * pw + 1;
+            int mid = up + pw;
+            int down = mid + pw;
             for (int x = 0; x < w; x++) {
-                double nx = -surface / 4.0 * ((alpha(in, x + 1, y - 1) + 2 * alpha(in, x + 1, y) + alpha(in, x + 1, y + 1))
-                        - (alpha(in, x - 1, y - 1) + 2 * alpha(in, x - 1, y) + alpha(in, x - 1, y + 1)));
-                double ny = -surface / 4.0 * ((alpha(in, x - 1, y + 1) + 2 * alpha(in, x, y + 1) + alpha(in, x + 1, y + 1))
-                        - (alpha(in, x - 1, y - 1) + 2 * alpha(in, x, y - 1) + alpha(in, x + 1, y - 1)));
+                double tl = a[up + x - 1];
+                double tc = a[up + x];
+                double tr = a[up + x + 1];
+                double ml = a[mid + x - 1];
+                double mc = a[mid + x];
+                double mr = a[mid + x + 1];
+                double bl = a[down + x - 1];
+                double bc = a[down + x];
+                double br = a[down + x + 1];
+                double nx = s4 * ((tr + 2 * mr + br) - (tl + 2 * ml + bl));
+                double ny = s4 * ((bl + 2 * bc + br) - (tl + 2 * tc + tr));
                 double nn = Math.sqrt(nx * nx + ny * ny + 1);
-                double[] n = {nx / nn, ny / nn, 1 / nn};
-                double[] l;
+                double n0 = nx / nn;
+                double n1 = ny / nn;
+                double n2 = 1 / nn;
+                double l0;
+                double l1;
+                double l2;
                 if (distant) {
-                    l = light;
+                    l0 = light[0];
+                    l1 = light[1];
+                    l2 = light[2];
                 } else {
-                    double z = surface * alpha(in, x, y);
                     double lx = light[0] - x;
                     double ly = light[1] - y;
-                    double lz = light[2] - z;
+                    double lz = light[2] - surface * mc;
                     double ln = Math.sqrt(lx * lx + ly * ly + lz * lz);
-                    l = ln > 0 ? new double[] {lx / ln, ly / ln, lz / ln} : new double[] {0, 0, 1};
+                    if (ln > 0) {
+                        l0 = lx / ln;
+                        l1 = ly / ln;
+                        l2 = lz / ln;
+                    } else {
+                        l0 = 0;
+                        l1 = 0;
+                        l2 = 1;
+                    }
                 }
                 double k = 1;
                 if (spot != null) {
-                    double minus = -(l[0] * spot[0] + l[1] * spot[1] + l[2] * spot[2]);
+                    double minus = -(l0 * spot[0] + l1 * spot[1] + l2 * spot[2]);
                     if (minus <= 0 || cone >= 0 && minus < cone) {
                         k = 0;
                     } else {
@@ -246,14 +279,12 @@ final class SvgLighting {
                 }
                 double f;
                 if (specular) {
-                    double hx = l[0];
-                    double hy = l[1];
-                    double hz = l[2] + 1;
-                    double hn = Math.sqrt(hx * hx + hy * hy + hz * hz);
-                    double nh = hn > 0 ? (n[0] * hx + n[1] * hy + n[2] * hz) / hn : 0;
+                    double hz = l2 + 1;
+                    double hn = Math.sqrt(l0 * l0 + l1 * l1 + hz * hz);
+                    double nh = hn > 0 ? (n0 * l0 + n1 * l1 + n2 * hz) / hn : 0;
                     f = constant * Math.pow(Math.max(0, nh), exponent);
                 } else {
-                    f = constant * Math.max(0, n[0] * l[0] + n[1] * l[1] + n[2] * l[2]);
+                    f = constant * Math.max(0, n0 * l0 + n1 * l1 + n2 * l2);
                 }
                 int o = (y * w + x) * 4;
                 float r = clamp((float) (f * k * lc[0]));
@@ -281,12 +312,6 @@ final class SvgLighting {
         }
         Point2D pt = toPixel.transform(new Point2D.Double(x, y), null);
         return new double[] {pt.getX(), pt.getY(), z * zScale};
-    }
-
-    private static double alpha(SvgFilter.Img in, int x, int y) {
-        int cx = Math.max(0, Math.min(in.w - 1, x));
-        int cy = Math.max(0, Math.min(in.h - 1, y));
-        return in.p[(cy * in.w + cx) * 4 + 3];
     }
 
     private static float clamp(float v) {

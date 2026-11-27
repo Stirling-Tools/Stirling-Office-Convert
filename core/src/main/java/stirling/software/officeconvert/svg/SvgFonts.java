@@ -8,6 +8,7 @@ import java.util.Base64;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
@@ -19,6 +20,7 @@ import org.apache.fontbox.ttf.TTFSubsetter;
 import org.apache.fontbox.ttf.TrueTypeFont;
 import org.apache.pdfbox.io.RandomAccessReadBuffer;
 import org.apache.pdfbox.pdmodel.font.PDFont;
+import org.apache.pdfbox.pdmodel.font.PDFontDescriptor;
 import org.apache.pdfbox.pdmodel.font.PDType3Font;
 import org.apache.pdfbox.pdmodel.font.PDVectorFont;
 
@@ -49,6 +51,8 @@ final class SvgFonts {
     final class Face {
         final String family;
         final String fallback;
+        final boolean bold;
+        final boolean italic;
         final boolean embedded;
         final PDFont font;
         private final TrueTypeFont web;
@@ -67,6 +71,11 @@ final class SvgFonts {
             this.scale = scale;
             this.embedded = font.isEmbedded();
             this.fallback = FixedHtml.family(name(font)).replace("\"", "");
+            String raw = name(font).toLowerCase(Locale.ROOT);
+            PDFontDescriptor fd = font.getFontDescriptor();
+            this.bold = raw.contains("bold") || raw.contains("black") || raw.contains("heavy");
+            this.italic = raw.contains("italic") || raw.contains("oblique")
+                    || fd != null && (fd.isItalic() || fd.getItalicAngle() < -1);
         }
 
         boolean web() {

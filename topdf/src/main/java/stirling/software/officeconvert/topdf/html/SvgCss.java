@@ -29,7 +29,7 @@ final class SvgCss {
             "mask", "opacity", "overflow", "shape-rendering", "stop-color", "stop-opacity", "stroke", "stroke-dasharray",
             "stroke-dashoffset", "stroke-linecap", "stroke-linejoin", "stroke-miterlimit", "stroke-opacity",
             "stroke-width", "text-anchor", "text-decoration", "text-rendering", "unicode-bidi", "visibility",
-            "word-spacing", "writing-mode", "mix-blend-mode", "isolation", "paint-order", "mask-type",
+            "word-spacing", "writing-mode", "paint-order", "mask-type",
             "transform-origin", "white-space", "glyph-orientation-vertical", "font-variant-caps",
             "text-orientation", "vector-effect");
 

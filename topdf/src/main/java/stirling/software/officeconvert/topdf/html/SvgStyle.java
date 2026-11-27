@@ -166,7 +166,27 @@ final class SvgStyle {
             String rest = v.substring(close + 1).strip();
             return rest.isEmpty() || !rest.startsWith("url(") && validPaint(rest);
         }
-        return Css.color(v) != null;
+        return !mixedChannels(v) && Css.color(SvgDraw.percentAlpha(v)) != null;
+    }
+
+    private static boolean mixedChannels(String v) {
+        if (!v.startsWith("rgb") || v.indexOf(',') < 0 || v.length() > 200) {
+            return false;
+        }
+        int open = v.indexOf('(');
+        int close = v.lastIndexOf(')');
+        if (open < 0 || close < open) {
+            return false;
+        }
+        String[] parts = v.substring(open + 1, close).split(",");
+        int percent = 0;
+        int channels = Math.min(3, parts.length);
+        for (int i = 0; i < channels; i++) {
+            if (parts[i].strip().endsWith("%")) {
+                percent++;
+            }
+        }
+        return percent > 0 && percent < channels;
     }
 
     String get(String name) {

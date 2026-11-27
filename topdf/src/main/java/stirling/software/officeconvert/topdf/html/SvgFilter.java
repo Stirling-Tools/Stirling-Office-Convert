@@ -71,6 +71,15 @@ final class SvgFilter {
         return steps.isEmpty() ? 0 : 1;
     }
 
+    private static boolean angleWithUnit(String a) {
+        for (String unit : new String[] {"deg", "grad", "rad", "turn"}) {
+            if (a.endsWith(unit)) {
+                return Float.isFinite(SvgDraw.number(a.substring(0, a.length() - unit.length()), Float.NaN));
+            }
+        }
+        return SvgDraw.number(a, Float.NaN) == 0;
+    }
+
     private static boolean validArgs(String name, List<String> args, String raw) {
         if (raw.contains(",")) {
             return false;
@@ -97,8 +106,12 @@ final class SvgFilter {
                 }
                 return lengths >= 2 && lengths <= 3;
             }
-            case "hue-rotate":
-                return args.size() <= 1;
+            case "hue-rotate": {
+                if (args.isEmpty()) {
+                    return true;
+                }
+                return args.size() == 1 && angleWithUnit(args.get(0).strip().toLowerCase(Locale.ROOT));
+            }
             default: {
                 if (args.size() > 1) {
                     return false;
@@ -116,6 +129,7 @@ final class SvgFilter {
 
     private static List<Step> parse(SvgDraw d, String value) {
         List<Step> out = new ArrayList<>();
+        boolean missing = false;
         String s = value.strip();
         int i = 0;
         while (i < s.length()) {
@@ -135,9 +149,10 @@ final class SvgFilter {
             if (name.equals("url")) {
                 Element f = d.doc.byUrl("url(" + arg + ")");
                 if (f == null || !SvgDoc.local(f).equals("filter")) {
-                    return null;
+                    missing = true;
+                } else {
+                    out.add(new Step("url", List.of(), f));
                 }
-                out.add(new Step("url", List.of(), f));
             } else {
                 List<String> parts = new ArrayList<>();
                 for (String p : Css.splitTopLevel(arg, ' ')) {
@@ -160,7 +175,7 @@ final class SvgFilter {
             }
             i = close + 1;
         }
-        return out;
+        return missing && out.isEmpty() ? null : out;
     }
 
     static void apply(SvgDraw d, String value, Element e, SvgStyle s, Rectangle2D bbox, SvgDraw.Content content)
@@ -1096,19 +1111,28 @@ final class SvgFilter {
 
     static Img composite(Img a, Img b, String op, float k1, float k2, float k3, float k4) {
         Img out = new Img(a.w, a.h);
+        int mode = switch (op) {
+            case "in" -> 1;
+            case "out" -> 2;
+            case "atop" -> 3;
+            case "xor" -> 4;
+            case "arithmetic" -> 5;
+            case "lighter" -> 6;
+            default -> 0;
+        };
         for (int i = 0; i < out.p.length; i += 4) {
             float aa = a.p[i + 3];
             float ba = b.p[i + 3];
             for (int c = 0; c < 4; c++) {
                 float x = a.p[i + c];
                 float y = b.p[i + c];
-                float v = switch (op) {
-                    case "in" -> x * ba;
-                    case "out" -> x * (1 - ba);
-                    case "atop" -> x * ba + y * (1 - aa);
-                    case "xor" -> x * (1 - ba) + y * (1 - aa);
-                    case "arithmetic" -> k1 * x * y + k2 * x + k3 * y + k4;
-                    case "lighter" -> x + y;
+                float v = switch (mode) {
+                    case 1 -> x * ba;
+                    case 2 -> x * (1 - ba);
+                    case 3 -> x * ba + y * (1 - aa);
+                    case 4 -> x * (1 - ba) + y * (1 - aa);
+                    case 5 -> k1 * x * y + k2 * x + k3 * y + k4;
+                    case 6 -> x + y;
                     default -> x + y * (1 - aa);
                 };
                 out.p[i + c] = v;

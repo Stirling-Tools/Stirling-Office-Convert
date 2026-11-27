@@ -84,6 +84,19 @@ class SvgToPdfTest {
     }
 
     @Test
+    void foreignNamespacesAreSkippedAndAMissingFilterInAListIsDropped() throws IOException {
+        Drawn d = draw("<svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:s=\"http://www.w3.org/2000/svg\""
+                + " width=\"200\" height=\"100\"><s:g xmlns=\"http://example.org/other\">"
+                + "<text x=\"10\" y=\"40\">Foreign</text><s:rect width=\"50\" height=\"50\" fill=\"#008000\"/></s:g>"
+                + "<text x=\"10\" y=\"90\">Native</text>"
+                + "<rect x=\"100\" width=\"50\" height=\"50\" fill=\"#0000ff\" filter=\"url(#missing) opacity(1)\"/></svg>");
+        assertFalse(d.text().contains("Foreign"), d.text());
+        assertTrue(d.text().contains("Native"));
+        assertTrue(near(rgb(d, 25, 25), 0x008000), "a prefixed SVG element inside foreign content still draws");
+        assertTrue(near(rgb(d, 125, 25), 0x0000FF), Integer.toHexString(rgb(d, 125, 25)));
+    }
+
+    @Test
     void shapesGradientsAndTextAreVectorsAndText() throws IOException {
         Drawn d = draw("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"300\" height=\"150\">"
                 + "<linearGradient id=\"g\"><stop offset=\"0\" stop-color=\"#f00\"/><stop offset=\"1\" stop-color=\"#00f\"/>"

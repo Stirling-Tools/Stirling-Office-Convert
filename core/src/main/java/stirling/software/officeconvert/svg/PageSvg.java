@@ -502,7 +502,7 @@ final class PageSvg extends PDFGraphicsStreamEngine {
                 getGraphicsState().getCurrentClippingPaths().size(), saved.decimals);
         depth++;
         try {
-            processSoftMask(group);
+            nested(() -> processSoftMask(group));
             flushText();
             closeAll(out);
         } finally {
@@ -679,10 +679,11 @@ final class PageSvg extends PDFGraphicsStreamEngine {
         Out saved = out;
         Rectangle2D area = new Rectangle2D.Double(bbox.getLowerLeftX(), bbox.getLowerLeftY(), bbox.getWidth(),
                 bbox.getHeight());
-        out = new Out(new StringBuilder(), new AffineTransform(), null, 1, 4);
+        out = new Out(new StringBuilder(), new AffineTransform(), area, 1, 4);
         depth++;
         try {
-            processTilingPattern(tp, uncoloured ? color : null, uncoloured ? underlying : null, new Matrix());
+            nested(() -> processTilingPattern(tp, uncoloured ? color : null, uncoloured ? underlying : null,
+                    new Matrix()));
             flushText();
             closeAll(out);
         } finally {
@@ -764,6 +765,25 @@ final class PageSvg extends PDFGraphicsStreamEngine {
     @Override
     public void endPath() {
         finishPath();
+    }
+
+    private interface Nested {
+        void run() throws IOException;
+    }
+
+    private void nested(Nested content) throws IOException {
+        GeneralPath saved = new GeneralPath(path);
+        int savedRule = clipRule;
+        path.reset();
+        clipRule = -1;
+        try {
+            content.run();
+        } finally {
+            path.reset();
+            path.append(saved, false);
+            path.setWindingRule(saved.getWindingRule());
+            clipRule = savedRule;
+        }
     }
 
     private void finishPath() {
@@ -1320,11 +1340,10 @@ final class PageSvg extends PDFGraphicsStreamEngine {
             }
             sb.append(r.face.fallback.replace('"', '\'')).append('"');
             if (!r.face.web()) {
-                String lower = r.face.fallback.toLowerCase(java.util.Locale.ROOT);
-                if (lower.contains("bold") || lower.contains("black") || lower.contains("heavy")) {
+                if (r.face.bold) {
                     sb.append(" font-weight=\"bold\"");
                 }
-                if (lower.contains("italic") || lower.contains("oblique")) {
+                if (r.face.italic) {
                     sb.append(" font-style=\"italic\"");
                 }
             }
