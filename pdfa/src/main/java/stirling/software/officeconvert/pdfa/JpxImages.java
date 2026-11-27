@@ -23,6 +23,7 @@ import org.apache.pdfbox.pdmodel.graphics.image.JPEGFactory;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 
 import stirling.software.officeconvert.jpx.JpxDecoder;
+import stirling.software.officeconvert.jpx.JpxEncoder;
 import stirling.software.officeconvert.jpx.JpxImage;
 
 final class JpxImages {
@@ -98,16 +99,30 @@ final class JpxImages {
         BufferedImage decoded = composed(jpx);
         COSStream from;
         PDImageXObject mask;
+        JpxEncoder.Planes maskPlanes = null;
         RawJpx raw = colourSpace == null ? null : RawJpx.of(jpx, colourSpace, smaskInData, decoded);
         if (raw != null) {
             from = raw.colours(doc);
+            JpxEncoder.Planes planes = level.part() > 1 ? raw.planes() : null;
+            if (planes != null) {
+                from = JpxRecode.smaller(doc, planes, from, from.getDictionaryObject(COSName.COLORSPACE));
+            }
             mask = raw.alpha(doc);
+            maskPlanes = level.part() > 1 ? raw.alphaPlanes() : null;
         } else {
             BufferedImage alpha = alpha(decoded);
             BufferedImage opaque = alpha != null ? colours(decoded)
                     : new PDImageXObject(new PDStream(s), null).getOpaqueImage();
             from = encode(opaque).getCOSObject();
             mask = alpha == null ? null : GreyImages.lossless(doc, alpha);
+            boolean small = alpha != null && (long) alpha.getWidth() * alpha.getHeight() <= JpxRecode.MAX_SAMPLES;
+            maskPlanes = small && level.part() > 1 ? JpxEncoder.planes(alpha) : null;
+        }
+        if (mask != null && maskPlanes != null && maskPlanes.depths().length == 1) {
+            COSStream smaller = JpxRecode.smaller(doc, maskPlanes, mask.getCOSObject(), COSName.DEVICEGRAY);
+            if (smaller != mask.getCOSObject()) {
+                mask = new PDImageXObject(new PDStream(smaller), null);
+            }
         }
         if (mask != null && smaskInData == 2) {
             COSBase matte = s.getDictionaryObject(COSName.getPDFName("Matte"));
@@ -145,8 +160,9 @@ final class JpxImages {
             rgb.createGraphics().drawImage(img, 0, 0, null);
             img = rgb;
         }
-        return Transparency.photographic(img) ? JPEGFactory.createFromImage(doc, img, 0.92f)
-                : GreyImages.lossless(doc, img);
+        boolean photographic = Transparency.photographic(img);
+        PDImageXObject x = photographic ? JPEGFactory.createFromImage(doc, img, 0.92f) : GreyImages.lossless(doc, img);
+        return level.part() > 1 ? JpxRecode.smaller(doc, img, x, photographic) : x;
     }
 
     private static JpxImage jpx(byte[] encoded) throws IOException {

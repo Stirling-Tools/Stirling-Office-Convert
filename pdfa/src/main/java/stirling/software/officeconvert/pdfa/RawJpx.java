@@ -12,6 +12,7 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.common.PDStream;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 
+import stirling.software.officeconvert.jpx.JpxEncoder;
 import stirling.software.officeconvert.jpx.JpxImage;
 import stirling.software.officeconvert.jpx.JpxRaster;
 
@@ -105,6 +106,49 @@ final class RawJpx {
         s.setInt(COSName.BITS_PER_COMPONENT, 8);
         s.setItem(COSName.COLORSPACE, colourSpace);
         return s;
+    }
+
+    JpxEncoder.Planes planes() {
+        int w = raster.width();
+        int h = raster.height();
+        if (indices || colours.length != 1 && colours.length != 3 && colours.length != 4
+                || (long) w * h * colours.length > JpxRecode.MAX_SAMPLES) {
+            return null;
+        }
+        int[][] s = new int[colours.length][w * h];
+        int[] depths = new int[colours.length];
+        for (int i = 0; i < colours.length; i++) {
+            int c = colours[i];
+            int depth = raster.depth(c);
+            depths[i] = 8;
+            for (int y = 0; y < h; y++) {
+                for (int x = 0; x < w; x++) {
+                    s[i][y * w + x] = scale(raster.imageSample(c, x, y), depth);
+                }
+            }
+        }
+        JpxEncoder.Colour colour = switch (colours.length) {
+            case 1 -> JpxEncoder.Colour.GREY;
+            case 3 -> JpxEncoder.Colour.SRGB;
+            default -> JpxEncoder.Colour.CMYK;
+        };
+        return new JpxEncoder.Planes(w, h, s, depths, null, colour, -1);
+    }
+
+    JpxEncoder.Planes alphaPlanes() {
+        int w = raster.width();
+        int h = raster.height();
+        if (alpha < 0 || (long) w * h > JpxRecode.MAX_SAMPLES) {
+            return null;
+        }
+        int depth = raster.depth(alpha);
+        int[] s = new int[w * h];
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                s[y * w + x] = scale(raster.imageSample(alpha, x, y), depth);
+            }
+        }
+        return new JpxEncoder.Planes(w, h, new int[][] {s}, new int[] {8}, null, JpxEncoder.Colour.GREY, -1);
     }
 
     PDImageXObject alpha(PDDocument doc) throws IOException {

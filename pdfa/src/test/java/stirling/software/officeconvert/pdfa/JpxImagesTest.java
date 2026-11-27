@@ -34,10 +34,15 @@ import org.apache.pdfbox.cos.COSString;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.common.PDStream;
+import org.apache.pdfbox.pdmodel.graphics.image.JPEGFactory;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.apache.pdfbox.rendering.PDFRenderer;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+
+import stirling.software.officeconvert.jpx.JpxDecoder;
+import stirling.software.officeconvert.jpx.JpxEncoder;
+import stirling.software.officeconvert.jpx.JpxRaster;
 
 class JpxImagesTest {
 
@@ -432,6 +437,124 @@ class JpxImagesTest {
             assertPixel(page.getRGB(100 + 50 * 4 + 2, 842 - 640 + 5 * 4 + 2), new int[] {202, 177, 180}, "half");
         }
         VeraPdf.assertCompliant(out, PdfALevel.A2B);
+    }
+
+    private static JpxEncoder.Planes photoWithAlpha(int w, int h, boolean colour) {
+        java.util.Random rnd = new java.util.Random(5);
+        int n = colour ? 4 : 2;
+        int[][] s = new int[n][w * h];
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                int i = y * w + x;
+                for (int c = 0; c < n - 1; c++) {
+                    double v = 128 + 90 * Math.sin(x * (0.02 + 0.01 * c) + y * 0.015) * Math.cos(y * 0.025 - c);
+                    s[c][i] = Math.clamp(Math.round(v + rnd.nextGaussian() * 3), 0, 255);
+                }
+                double dx = (x - w / 2.0) / (w / 2.0);
+                double dy = (y - h / 2.0) / (h / 2.0);
+                s[n - 1][i] = Math.clamp(Math.round(255 * (1.3 - dx * dx - dy * dy)), 0, 255);
+            }
+        }
+        int[] depths = new int[n];
+        java.util.Arrays.fill(depths, 8);
+        return new JpxEncoder.Planes(w, h, s, depths, null, colour ? JpxEncoder.Colour.SRGB : JpxEncoder.Colour.GREY,
+                n - 1);
+    }
+
+    private static COSStream largestImage(PDDocument d) {
+        COSStream best = null;
+        for (COSObjectKey key : d.getDocument().getXrefTable().keySet()) {
+            if (d.getDocument().getObjectFromPool(key).getObject() instanceof COSStream s
+                    && COSName.IMAGE.equals(s.getCOSName(COSName.SUBTYPE))
+                    && s.getDictionaryObject(COSName.SMASK) instanceof COSStream
+                    && (best == null || s.getInt(COSName.WIDTH) > best.getInt(COSName.WIDTH))) {
+                best = s;
+            }
+        }
+        return best;
+    }
+
+    @Test
+    void partTwoStoresAPhotoAsJpegTwoThousandWhenThatIsSmallerThanJpeg() throws Exception {
+        JpxEncoder.Planes source = photoWithAlpha(400, 300, true);
+        byte[] encoded = JpxEncoder.encode(source, JpxEncoder.Options.rate(2));
+        Path in = page(encoded, 400, 300, true);
+        Path out = dir.resolve("2b-photo.pdf");
+        PdfToPdfA.convert(in, out, PdfToPdfA.Options.defaults().level(PdfALevel.A2B));
+        VeraPdf.assertCompliant(out, PdfALevel.A2B);
+        JpxRaster decoded = JpxDecoder.decode(encoded).raster();
+        BufferedImage colours = new BufferedImage(400, 300, BufferedImage.TYPE_INT_RGB);
+        for (int y = 0; y < 300; y++) {
+            for (int x = 0; x < 400; x++) {
+                int rgb = decoded.sample(0, x, y) << 16 | decoded.sample(1, x, y) << 8 | decoded.sample(2, x, y);
+                colours.setRGB(x, y, rgb);
+            }
+        }
+        try (PDDocument d = Loader.loadPDF(out.toFile())) {
+            COSStream jpx = largestImage(d);
+            long jpeg = JPEGFactory.createFromImage(d, colours, 0.92f).getCOSObject().getLength();
+            assertEquals(COSName.JPX_DECODE, jpx.getDictionaryObject(COSName.FILTER));
+            assertTrue(jpx.getLength() < jpeg, jpx.getLength() + " >= " + jpeg);
+            assertTrue(JpxHeader.parse(samples(jpx, true)).allowedInPdfA(true));
+            assertEquals(COSName.DEVICERGB, jpx.getDictionaryObject(COSName.COLORSPACE));
+            JpxRaster kept = JpxDecoder.decode(samples(jpx, true)).raster();
+            double se = 0;
+            for (int c = 0; c < 3; c++) {
+                for (int y = 0; y < 300; y++) {
+                    for (int x = 0; x < 400; x++) {
+                        double e = kept.sample(c, x, y) - decoded.sample(c, x, y);
+                        se += e * e;
+                    }
+                }
+            }
+            double psnr = 10 * Math.log10(255.0 * 255.0 * 3 * 400 * 300 / se);
+            assertTrue(psnr > 38, "psnr " + psnr);
+        }
+    }
+
+    @Test
+    void partTwoStoresGreyAndAlphaAsLosslessJpegTwoThousand() throws Exception {
+        JpxEncoder.Planes source = photoWithAlpha(400, 300, false);
+        Path in = page(JpxEncoder.encode(source, JpxEncoder.Options.exact()), 400, 300, true);
+        Path out = dir.resolve("2b-grey-lossless.pdf");
+        PdfToPdfA.convert(in, out, PdfToPdfA.Options.defaults().level(PdfALevel.A2B));
+        VeraPdf.assertCompliant(out, PdfALevel.A2B);
+        try (PDDocument d = Loader.loadPDF(out.toFile())) {
+            COSStream image = largestImage(d);
+            COSStream mask = (COSStream) image.getDictionaryObject(COSName.SMASK);
+            assertEquals(COSName.JPX_DECODE, image.getDictionaryObject(COSName.FILTER));
+            int[] grey = JpxDecoder.decode(samples(image, true)).raster().width() == 400 ? decodedPlane(image) : null;
+            assertNotNull(grey);
+            assertTrue(java.util.Arrays.equals(source.samples()[0], grey), "grey samples");
+            byte[] alpha = mask.getDictionaryObject(COSName.FILTER) == COSName.JPX_DECODE ? null : samples(mask);
+            int[] alphaPlane = alpha == null ? decodedPlane(mask) : toInts(alpha);
+            assertTrue(java.util.Arrays.equals(source.samples()[1], alphaPlane), "alpha samples");
+        }
+    }
+
+    private static int[] decodedPlane(COSStream s) throws Exception {
+        JpxRaster r = JpxDecoder.decode(samples(s, true)).raster();
+        int[] out = new int[r.width() * r.height()];
+        for (int y = 0; y < r.height(); y++) {
+            for (int x = 0; x < r.width(); x++) {
+                out[y * r.width() + x] = r.sample(0, x, y);
+            }
+        }
+        return out;
+    }
+
+    private static int[] toInts(byte[] b) {
+        int[] out = new int[b.length];
+        for (int i = 0; i < b.length; i++) {
+            out[i] = b[i] & 0xFF;
+        }
+        return out;
+    }
+
+    private static byte[] samples(COSStream s, boolean raw) throws Exception {
+        try (java.io.InputStream in = raw ? s.createRawInputStream() : s.createInputStream()) {
+            return in.readAllBytes();
+        }
     }
 
     private static COSArray floats(float... v) {

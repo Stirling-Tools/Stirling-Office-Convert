@@ -62,6 +62,7 @@ import org.apache.pdfbox.util.Matrix;
 import stirling.software.officeconvert.extract.BrotliBudget;
 import stirling.software.officeconvert.extract.ImageBudget;
 import stirling.software.officeconvert.extract.PdfFiles;
+import stirling.software.officeconvert.jpx.JpxEncoder;
 
 final class Downsample {
 
@@ -80,6 +81,8 @@ final class Downsample {
     private static final String JDK_PLUGINS = "com.sun.imageio.plugins.";
 
     private static final double MIN_SAVING = 0.92;
+
+    private static final long MAX_JPX_SAMPLES = 1L << 22;
 
     private static final float GRAY_QUALITY = 0.9f;
 
@@ -350,6 +353,11 @@ final class Downsample {
             }
             options.add(new Encoded(jpeg, COSName.DCT_DECODE, null, 8, width, height,
                     grayOut ? Output.GRAY : Output.RGB, null));
+            byte[] jpx = onlyJpx(stream) ? jpx(resized.image, jpeg, grayOut) : null;
+            if (jpx != null) {
+                options.add(new Encoded(jpx, COSName.JPX_DECODE, null, 8, width, height,
+                        grayOut ? Output.GRAY : Output.RGB, null));
+            }
             if (resample && !manyColours) {
                 lossless(resized.image, grayOut, false, options);
             }
@@ -817,6 +825,23 @@ final class Downsample {
             next.dispose();
         }
         return first;
+    }
+
+    private static byte[] jpx(BufferedImage image, byte[] jpeg, boolean gray) throws IOException {
+        if ((long) image.getWidth() * image.getHeight() * (gray ? 1 : 3) > MAX_JPX_SAMPLES) {
+            return null;
+        }
+        BufferedImage decoded = decodeJpeg(jpeg);
+        JpxEncoder.Planes planes = JpxEncoder.planes(image);
+        if (decoded == null || planes.depths().length != (gray ? 1 : 3)) {
+            return null;
+        }
+        JpxEncoder.Planes reference = JpxEncoder.planes(decoded);
+        if (reference.width() != planes.width() || reference.height() != planes.height()
+                || reference.depths().length != planes.depths().length) {
+            return null;
+        }
+        return JpxEncoder.encodeAsClose(planes, reference, jpeg.length);
     }
 
     private static byte[] jpeg(BufferedImage image, float quality) throws IOException {
