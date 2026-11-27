@@ -214,6 +214,9 @@ final class UofSheets {
         List<String> merges = new ArrayList<>();
         int rowNo = 1;
         for (Element r : Uof.kids(content, "行")) {
+            if (rowNo > MAX_ROWS) {
+                break;
+            }
             double index = Uof.number(Uof.attr(r, "行号"));
             int row = Double.isNaN(index) ? rowNo : (int) Math.clamp(index, rowNo, MAX_ROWS);
             double span = Uof.number(Uof.attr(r, "跨度"));
@@ -244,9 +247,9 @@ final class UofSheets {
                     }
                     if ((cells & 1023) == 0) {
                         OfficeZip.checkNotInterrupted();
-                        if (b.length() > parts.limit()) {
-                            throw new IOException("The UOF spreadsheet is too large to convert");
-                        }
+                    }
+                    if (col > MAX_COLUMNS) {
+                        break;
                     }
                     double ci = Uof.number(Uof.attr(c, "列号"));
                     if (!Double.isNaN(ci)) {
@@ -257,6 +260,9 @@ final class UofSheets {
                     }
                     String cell = cell(c, row, col);
                     b.append(cell);
+                    if (b.length() > parts.limit()) {
+                        throw new IOException("The UOF spreadsheet is too large to convert");
+                    }
                     double across = Uof.number(Uof.attr(c, "合并列数"));
                     double down = Uof.number(Uof.attr(c, "合并行数"));
                     int ac = Double.isNaN(across) ? 0 : (int) Math.clamp(across, 0, MAX_COLUMNS - col);
@@ -315,6 +321,9 @@ final class UofSheets {
             for (Element c : Uof.kids(r, "单元格")) {
                 if (seen++ > 200_000) {
                     return widest;
+                }
+                if (col > MAX_COLUMNS) {
+                    break;
                 }
                 double ci = Uof.number(Uof.attr(c, "列号"));
                 if (!Double.isNaN(ci)) {

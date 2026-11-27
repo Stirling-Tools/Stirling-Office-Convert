@@ -24,7 +24,7 @@ final class UofUnits {
 
     long twips(String value) {
         double v = Uof.number(value);
-        if (Double.isNaN(v) || Math.abs(v) > 1e7) {
+        if (Double.isNaN(v)) {
             return Long.MIN_VALUE;
         }
         String t = value.strip().toLowerCase(Locale.ROOT);
@@ -38,7 +38,8 @@ final class UofUnits {
         } else if (t.endsWith("pt")) {
             k = 20;
         }
-        return Math.round(v * k);
+        double twips = v * k;
+        return Math.abs(twips) > 1e7 ? Long.MIN_VALUE : Math.round(twips);
     }
 
     static boolean known(long twips) {

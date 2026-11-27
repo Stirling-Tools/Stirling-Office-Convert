@@ -78,7 +78,8 @@ final class UofObjects {
         Element d = Uof.kid(e, "数据");
         if (d != null) {
             String b64 = d.getTextContent();
-            if (b64.length() / 4L * 3 <= MAX_PICTURE_BYTES && total + b64.length() / 4L * 3 <= MAX_TOTAL_BYTES) {
+            long size = decodedSize(b64);
+            if (size <= MAX_PICTURE_BYTES && total + size <= MAX_TOTAL_BYTES) {
                 try {
                     out = Base64.getMimeDecoder().decode(b64);
                     total += out.length;
@@ -92,6 +93,18 @@ final class UofObjects {
         }
         decoded.put(id, out);
         return out;
+    }
+
+    static long decodedSize(String b64) {
+        long n = 0;
+        for (int i = 0; i < b64.length(); i++) {
+            char c = b64.charAt(i);
+            if (c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '+' || c == '/') {
+                n++;
+            }
+        }
+        long rest = n % 4;
+        return n / 4 * 3 + (rest == 0 ? 0 : rest - 1);
     }
 
     long[] size(Element anchor, Shape shape) {

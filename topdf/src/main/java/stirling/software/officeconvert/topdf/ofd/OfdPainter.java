@@ -32,6 +32,8 @@ final class OfdPainter {
 
     static final int MAX_TILES = 4_096;
 
+    static final double MAX_TILE_INDEX = 1e9;
+
     private final PdfCanvas canvas;
 
     private final OfdResources res;
@@ -74,7 +76,7 @@ final class OfdPainter {
     }
 
     private void unit(Element e, Element inherited, int depth, boolean pageBlock) throws IOException {
-        if ("false".equalsIgnoreCase(e.getAttribute("Visible"))) {
+        if (!OfdNumbers.bool(e.getAttribute("Visible"), true)) {
             return;
         }
         Element dp = res.drawParam(e.getAttribute("DrawParam"));
@@ -127,7 +129,7 @@ final class OfdPainter {
         if (clips == null) {
             return;
         }
-        boolean inObject = ctm != null && "true".equalsIgnoreCase(clips.getAttribute("TransFlag").trim());
+        boolean inObject = ctm != null && OfdNumbers.bool(clips.getAttribute("TransFlag"), false);
         for (Element clip : Dom.kids(clips, "Clip")) {
             OfficeZip.checkNotInterrupted();
             Shape first = null;
@@ -155,6 +157,9 @@ final class OfdPainter {
 
     private Shape clipArea(Element area) {
         AffineTransform t = OfdNumbers.ctm(area.getAttribute("CTM"));
+        if (t == null && OfdNumbers.list(area.getAttribute("CTM")).length >= 6) {
+            return new Rectangle2D.Double();
+        }
         Shape shape = null;
         Element path = Dom.kid(area, "Path");
         String data = path == null ? null : Dom.text(Dom.kid(path, "AbbreviatedData"));
@@ -218,7 +223,8 @@ final class OfdPainter {
             if (pattern != null) {
                 tile(pattern, shape, param, depth);
             } else {
-                OfdMesh.paint(canvas, mesh, res, defaultSpace, alpha);
+                double own = Math.clamp(OfdNumbers.number(colour.getAttribute("Alpha"), 255), 0, 255) / 255.0;
+                OfdMesh.paint(canvas, mesh, res, defaultSpace, alpha * own);
             }
         } finally {
             canvas.restore();
@@ -247,24 +253,29 @@ final class OfdPainter {
         } catch (NoninvertibleTransformException ex) {
             return;
         }
-        double i0 = Math.floor(b.getMinX() / xs);
-        double i1 = Math.ceil(b.getMaxX() / xs);
-        double j0 = Math.floor(b.getMinY() / ys);
-        double j1 = Math.ceil(b.getMaxY() / ys);
-        if ((i1 - i0 + 1) * (j1 - j0 + 1) > MAX_TILES) {
+        double fi0 = Math.floor(b.getMinX() / xs);
+        double fi1 = Math.ceil(b.getMaxX() / xs);
+        double fj0 = Math.floor(b.getMinY() / ys);
+        double fj1 = Math.ceil(b.getMaxY() / ys);
+        if (!(Math.abs(fi0) < MAX_TILE_INDEX && Math.abs(fi1) < MAX_TILE_INDEX && Math.abs(fj0) < MAX_TILE_INDEX
+                && Math.abs(fj1) < MAX_TILE_INDEX) || (fi1 - fi0 + 1) * (fj1 - fj0 + 1) > MAX_TILES) {
             return;
         }
+        long i0 = (long) fi0;
+        long i1 = (long) fi1;
+        long j0 = (long) fj0;
+        long j1 = (long) fj1;
         boolean mirrorColumns = pattern.getAttribute("ReflectMethod").matches("Column|RowAndColumn");
         boolean mirrorRows = pattern.getAttribute("ReflectMethod").matches("Row|RowAndColumn");
         canvas.transform(pt);
-        for (double j = j0; j <= j1; j++) {
-            for (double i = i0; i <= i1; i++) {
+        for (long j = j0; j <= j1; j++) {
+            for (long i = i0; i <= i1; i++) {
                 OfficeZip.checkNotInterrupted();
                 canvas.save();
                 try {
                     canvas.translate((float) (i * xs), (float) (j * ys));
-                    boolean flipX = mirrorColumns && Math.floorMod((long) i, 2) == 1;
-                    boolean flipY = mirrorRows && Math.floorMod((long) j, 2) == 1;
+                    boolean flipX = mirrorColumns && Math.floorMod(i, 2) == 1;
+                    boolean flipY = mirrorRows && Math.floorMod(j, 2) == 1;
                     if (flipX || flipY) {
                         canvas.translate(flipX ? (float) w : 0, flipY ? (float) h : 0);
                         canvas.scale(flipX ? -1 : 1, flipY ? -1 : 1);
@@ -352,14 +363,19 @@ final class OfdPainter {
     }
 
     private void composite(Element e, Element param, AffineTransform ctm, int depth) throws IOException {
-        Element unit = res.unit(e.getAttribute("ResourceID").trim());
+        Element unit = res.unit(e.getAttribute("ResourceID"));
         if (unit == null || depth >= MAX_DEPTH) {
             return;
         }
         if (ctm != null) {
             canvas.transform(ctm);
         }
-        block(unit, param, depth + 1);
+        double w = OfdNumbers.number(unit.getAttribute("Width"), 0);
+        double h = OfdNumbers.number(unit.getAttribute("Height"), 0);
+        if (w > 0 && h > 0) {
+            canvas.clipRect(0, 0, (float) w, (float) h);
+        }
+        block(Dom.kid(unit, "Content"), param, depth + 1);
     }
 
     private Element colourElement(Element e, Element param, String name) {
@@ -394,7 +410,7 @@ final class OfdPainter {
         if (!e.hasAttribute(name)) {
             return fallback;
         }
-        return "true".equalsIgnoreCase(e.getAttribute(name).trim());
+        return OfdNumbers.bool(e.getAttribute(name), false);
     }
 
     static Color withAlpha(Color c, double alpha) {

@@ -1,12 +1,18 @@
 package stirling.software.officeconvert.topdf.uof;
 
 import java.io.BufferedInputStream;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+
+import javax.xml.stream.XMLStreamConstants;
+import javax.xml.stream.XMLStreamException;
+import javax.xml.stream.XMLStreamReader;
 
 import org.w3c.dom.Element;
 
@@ -23,21 +29,93 @@ public final class UofPackage {
     private UofPackage() {}
 
     public static Kind sniff(Path file) {
-        String head;
+        byte[] head;
         try {
-            head = new String(SourceFile.head(file, 4096), StandardCharsets.UTF_8);
+            head = SourceFile.head(file, 16384);
         } catch (IOException e) {
             return null;
         }
-        int at = head.indexOf("schemas.uof.org/cn/2003/uof\"");
-        if (at < 0 || !head.stripLeading().startsWith("<") && !head.startsWith("\uFEFF<")) {
+        if (!markup(head) || !declares(head)) {
             return null;
         }
-        if (head.contains("vnd.uof.spreadsheet") || head.contains(":电子表格")) {
-            return Kind.SPREADSHEET;
+        try {
+            XMLStreamReader r = SecureXml.reader(new ByteArrayInputStream(head));
+            while (r.hasNext() && r.next() != XMLStreamConstants.START_ELEMENT) {
+                continue;
+            }
+            if (!r.isStartElement() || !Uof.NS.equals(r.getNamespaceURI()) || !"UOF".equals(r.getLocalName())) {
+                return null;
+            }
+            Kind kind = mimetype(r);
+            if (kind != null) {
+                return kind;
+            }
+            return body(r);
+        } catch (IOException | XMLStreamException | RuntimeException e) {
+            return null;
         }
-        if (head.contains("vnd.uof.presentation") || head.contains(":演示文稿")) {
-            return Kind.PRESENTATION;
+    }
+
+    private static boolean declares(byte[] b) {
+        String ns = "schemas.uof.org/cn/2003/uof";
+        for (Charset c : new Charset[] {StandardCharsets.ISO_8859_1,
+                StandardCharsets.UTF_16LE, StandardCharsets.UTF_16BE}) {
+            if (new String(b, c).contains(ns)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean markup(byte[] b) {
+        if (b.length >= 2 && ((b[0] & 0xFF) == 0xFE && (b[1] & 0xFF) == 0xFF || (b[0] & 0xFF) == 0xFF
+                && (b[1] & 0xFF) == 0xFE || b[0] == 0 && b[1] == '<' || b[0] == '<' && b[1] == 0)) {
+            return true;
+        }
+        int i = b.length >= 3 && (b[0] & 0xFF) == 0xEF && (b[1] & 0xFF) == 0xBB && (b[2] & 0xFF) == 0xBF ? 3 : 0;
+        while (i < b.length && (b[i] == ' ' || b[i] == '\t' || b[i] == '\r' || b[i] == '\n')) {
+            i++;
+        }
+        return i < b.length && b[i] == '<';
+    }
+
+    private static Kind mimetype(XMLStreamReader r) {
+        for (int i = 0; i < r.getAttributeCount(); i++) {
+            if (!"mimetype".equals(r.getAttributeLocalName(i))) {
+                continue;
+            }
+            String v = r.getAttributeValue(i);
+            if (v.contains("vnd.uof.spreadsheet")) {
+                return Kind.SPREADSHEET;
+            }
+            if (v.contains("vnd.uof.presentation")) {
+                return Kind.PRESENTATION;
+            }
+        }
+        return null;
+    }
+
+    private static Kind body(XMLStreamReader r) {
+        try {
+            while (r.hasNext()) {
+                if (r.next() != XMLStreamConstants.START_ELEMENT) {
+                    continue;
+                }
+                switch (r.getLocalName()) {
+                    case "电子表格" -> {
+                        return Kind.SPREADSHEET;
+                    }
+                    case "演示文稿" -> {
+                        return Kind.PRESENTATION;
+                    }
+                    case "文字处理" -> {
+                        return Kind.TEXT;
+                    }
+                    default -> {}
+                }
+            }
+        } catch (XMLStreamException | RuntimeException e) {
+            return Kind.TEXT;
         }
         return Kind.TEXT;
     }

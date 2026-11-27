@@ -46,6 +46,18 @@ final class UofText {
 
     private final Set<String> expanding = new HashSet<>();
 
+    private final Map<String, String> styleIds = new HashMap<>();
+
+    private final Set<String> takenIds = new HashSet<>();
+
+    private final List<StringBuilder> open = new ArrayList<>();
+
+    private long written;
+
+    private int noteDepth;
+
+    private boolean evenHeaders;
+
     private UofText(Element root, UofParts parts) {
         this.root = root;
         this.parts = parts;
@@ -53,6 +65,15 @@ final class UofText {
         this.units = UofUnits.of(Uof.text(Uof.kid(settings, "度量单位")));
         this.fonts = fonts(root);
         this.objects = new UofObjects(root, units);
+        Element set = Uof.kid(root, "式样集");
+        for (String kind : new String[] {"段落式样", "句式样"}) {
+            for (Element e : Uof.kids(set, kind)) {
+                String id = Uof.attr(e, "标识符");
+                if (id != null && !id.isBlank()) {
+                    style(id);
+                }
+            }
+        }
     }
 
     static void write(Element root, UofParts parts) throws IOException {
@@ -74,6 +95,9 @@ final class UofText {
     private void write() throws IOException {
         Element body = Uof.path(root, "文字处理", "主体");
         StringBuilder doc = new StringBuilder(1 << 16);
+        open.add(doc);
+        open.add(footnotes);
+        open.add(endnotes);
         doc.append(UofParts.XML).append("<w:document ").append(UofParts.W_NS).append("><w:body>");
         List<Element> items = Uof.kids(body);
         boolean leading = !items.isEmpty() && Uof.name(items.get(0)).equals("分节");
@@ -98,12 +122,14 @@ final class UofText {
             }
         }
         doc.append(sectPr(section)).append("</w:body></w:document>");
-        parts.add("word/document.xml", doc.toString());
+        grow(doc);
+        parts.wordPart("document", doc.toString());
         parts.add("word/styles.xml", styles());
         parts.add("word/numbering.xml", numberingPart());
-        parts.add("word/footnotes.xml", notesPart("footnotes", "footnote", footnotes));
-        parts.add("word/endnotes.xml", notesPart("endnotes", "endnote", endnotes));
+        parts.wordPart("footnotes", notesPart("footnotes", "footnote", footnotes));
+        parts.wordPart("endnotes", notesPart("endnotes", "endnote", endnotes));
         parts.add("word/settings.xml", UofParts.XML + "<w:settings " + UofParts.W_NS + "><w:defaultTabStop w:val=\"420\"/>"
+                + (evenHeaders ? "<w:evenAndOddHeaders/>" : "")
                 + "<w:compat><w:compatSetting w:name=\"compatibilityMode\" w:uri=\"http://schemas.microsoft.com/office/word\""
                 + " w:val=\"15\"/></w:compat></w:settings>");
         parts.wordPackage(headerParts);
@@ -123,6 +149,7 @@ final class UofText {
                     case "偶数页页眉", "偶数页页脚" -> "even";
                     default -> "default";
                 };
+                evenHeaders |= type.equals("even");
                 String rel = headerFooter(kind.equals("页眉") ? "header" : "footer", which);
                 b.append("<w:").append(kind.equals("页眉") ? "headerReference" : "footerReference")
                         .append(" w:type=\"").append(type).append("\" r:id=\"").append(rel).append("\"/>");
@@ -183,8 +210,8 @@ final class UofText {
 
     private String headerFooter(String kind, Element container) throws IOException {
         int n = headerParts.size() + 1;
-        String part = "word/" + kind + n + ".xml";
         StringBuilder b = new StringBuilder();
+        open.add(b);
         b.append(UofParts.XML).append("<w:").append(kind.equals("header") ? "hdr" : "ftr").append(' ')
                 .append(UofParts.W_NS).append('>');
         int before = b.length();
@@ -193,7 +220,10 @@ final class UofText {
             b.append("<w:p/>");
         }
         b.append("</w:").append(kind.equals("header") ? "hdr" : "ftr").append('>');
-        parts.add(part, b.toString());
+        grow(b);
+        open.remove(open.size() - 1);
+        written += b.length();
+        parts.wordPart(kind + n, b.toString());
         headerParts.add(kind + n);
         return "rH" + n;
     }
@@ -216,7 +246,16 @@ final class UofText {
     }
 
     private void grow(StringBuilder b) throws IOException {
-        if (b.length() > parts.limit()) {
+        long total = written;
+        boolean counted = false;
+        for (StringBuilder o : open) {
+            total += o.length();
+            counted |= o == b;
+        }
+        if (!counted) {
+            total += b.length();
+        }
+        if (total > parts.limit()) {
             throw new IOException("The UOF document is too large to convert");
         }
     }
@@ -268,42 +307,72 @@ final class UofText {
                 case "换行符" -> b.append("<w:r>").append(rPr).append("<w:br/></w:r>");
                 case "分页符" -> b.append("<w:r>").append(rPr).append("<w:br w:type=\"page\"/></w:r>");
                 case "分栏符" -> b.append("<w:r>").append(rPr).append("<w:br w:type=\"column\"/></w:r>");
-                case "脚注", "尾注" -> note(b, k, rPr, Uof.name(k).equals("脚注"), depth);
+                case "脚注", "尾注" -> note(b, k, rPr, Uof.name(k).equals("脚注"), after, depth);
                 case "锚点" -> anchor(b, k, after, depth);
                 default -> {}
             }
         }
     }
 
-    private void note(StringBuilder b, Element n, String rPr, boolean foot, int depth) throws IOException {
+    private void note(StringBuilder b, Element n, String rPr, boolean foot, List<String> after, int depth)
+            throws IOException {
+        if (noteDepth > 0) {
+            for (Element e : Uof.kids(n)) {
+                StringBuilder s = new StringBuilder();
+                open.add(s);
+                try {
+                    if (Uof.name(e).equals("段落")) {
+                        paragraph(s, e, null, depth + 1);
+                    } else if (Uof.name(e).equals("文字表")) {
+                        table(s, e, depth + 1);
+                    }
+                } finally {
+                    open.remove(open.size() - 1);
+                }
+                after.add(s.toString());
+            }
+            return;
+        }
         int id = notes++;
         String tag = foot ? "footnote" : "endnote";
         StringBuilder body = new StringBuilder();
-        body.append("<w:").append(tag).append(" w:id=\"").append(id).append("\">");
-        int before = body.length();
-        boolean first = true;
-        for (Element e : Uof.kids(n)) {
-            if (Uof.name(e).equals("段落")) {
-                StringBuilder para = new StringBuilder();
-                paragraph(para, e, null, depth + 1);
-                String s = para.toString();
-                if (first) {
-                    int at = s.indexOf("</w:pPr>");
-                    if (at >= 0) {
-                        s = s.substring(0, at + 8) + "<w:r><w:rPr><w:vertAlign w:val=\"superscript\"/></w:rPr><w:"
-                                + tag + "Ref/></w:r>" + s.substring(at + 8);
+        open.add(body);
+        noteDepth++;
+        try {
+            body.append("<w:").append(tag).append(" w:id=\"").append(id).append("\">");
+            int before = body.length();
+            boolean first = true;
+            for (Element e : Uof.kids(n)) {
+                if (Uof.name(e).equals("段落")) {
+                    StringBuilder para = new StringBuilder();
+                    open.add(para);
+                    try {
+                        paragraph(para, e, null, depth + 1);
+                    } finally {
+                        open.remove(open.size() - 1);
                     }
+                    String s = para.toString();
+                    if (first) {
+                        int at = s.indexOf("</w:pPr>");
+                        if (at >= 0) {
+                            s = s.substring(0, at + 8) + "<w:r><w:rPr><w:vertAlign w:val=\"superscript\"/></w:rPr><w:"
+                                    + tag + "Ref/></w:r>" + s.substring(at + 8);
+                        }
+                    }
+                    body.append(s);
+                    first = false;
+                } else if (Uof.name(e).equals("文字表")) {
+                    table(body, e, depth + 1);
                 }
-                body.append(s);
-                first = false;
-            } else if (Uof.name(e).equals("文字表")) {
-                table(body, e, depth + 1);
             }
+            if (body.length() == before) {
+                body.append("<w:p/>");
+            }
+            body.append("</w:").append(tag).append('>');
+        } finally {
+            noteDepth--;
+            open.remove(open.size() - 1);
         }
-        if (body.length() == before) {
-            body.append("<w:p/>");
-        }
-        body.append("</w:").append(tag).append('>');
         StringBuilder all = foot ? footnotes : endnotes;
         all.append(body);
         grow(all);
@@ -328,8 +397,13 @@ final class UofText {
         if (shape.text() != null && expanding.add(ref)) {
             try {
                 StringBuilder s = new StringBuilder();
-                blocks(s, shape.text(), depth + 1);
-                grow(s);
+                open.add(s);
+                try {
+                    blocks(s, shape.text(), depth + 1);
+                    grow(s);
+                } finally {
+                    open.remove(open.size() - 1);
+                }
                 after.add(s.toString());
             } finally {
                 expanding.remove(ref);
@@ -344,7 +418,7 @@ final class UofText {
         StringBuilder b = new StringBuilder();
         String style = Uof.attr(props, "式样引用");
         if (style != null && !style.isBlank()) {
-            b.append("<w:pStyle w:val=\"").append(Uof.esc(styleId(style))).append("\"/>");
+            b.append("<w:pStyle w:val=\"").append(Uof.esc(style(style))).append("\"/>");
         }
         if (Uof.truth(Uof.kid(props, "与下段同页"))) {
             b.append("<w:keepNext/>");
@@ -517,7 +591,7 @@ final class UofText {
         StringBuilder b = new StringBuilder();
         String style = Uof.attr(props, "式样引用");
         if (style != null && !style.isBlank() && !Uof.name(props.getParentNode()).equals("段落属性")) {
-            b.append("<w:rStyle w:val=\"").append(Uof.esc(styleId(style))).append("\"/>");
+            b.append("<w:rStyle w:val=\"").append(Uof.esc(style(style))).append("\"/>");
         }
         Element font = Uof.kid(props, "字体");
         if (font != null) {
@@ -659,15 +733,7 @@ final class UofText {
             grid.add(UofUnits.known(w) && w > 0 && w < 100_000 ? w : -1L);
         }
         List<Element> rows = Uof.kids(t, "行");
-        int columns = grid.size();
-        for (Element r : rows) {
-            int n = 0;
-            for (Element c : Uof.kids(r, "单元格")) {
-                double span = Uof.number(Uof.attr(Uof.path(c, "单元格属性", "跨列"), "值"));
-                n += Double.isNaN(span) ? 1 : (int) Math.clamp(span, 1, 64);
-            }
-            columns = Math.max(columns, n);
-        }
+        int columns = Math.max(grid.size(), columns(rows));
         columns = Math.clamp(columns, 1, 64);
         long total = 9000;
         long known = 0;
@@ -734,6 +800,7 @@ final class UofText {
                     pending[col]--;
                     b.append("<w:tc><w:tcPr>").append(pendingHead[col]).append("<w:vMerge/>").append(pendingLook[col])
                             .append("</w:tcPr><w:p/></w:tc>");
+                    grow(b);
                     col += spanOf(pendingHead[col]);
                     continue;
                 }
@@ -797,17 +864,52 @@ final class UofText {
                     b.append("<w:p/>");
                 }
                 b.append("</w:tc>");
+                grow(b);
                 col += span;
             }
             if (col == 0) {
                 b.append("<w:tc><w:tcPr><w:tcW w:w=\"").append(widths[0]).append("\" w:type=\"dxa\"/></w:tcPr><w:p/></w:tc>");
             }
             b.append("</w:tr>");
+            grow(b);
         }
         if (rows.isEmpty()) {
             b.append("<w:tr><w:tc><w:p/></w:tc></w:tr>");
         }
         b.append("</w:tbl>");
+    }
+
+    private static int columns(List<Element> rows) {
+        int[] pending = new int[64];
+        int[] spans = new int[64];
+        int columns = 0;
+        for (Element r : rows) {
+            List<Element> cells = Uof.kids(r, "单元格");
+            int col = 0;
+            int ci = 0;
+            while (col < 64 && (ci < cells.size() || pending[col] > 0)) {
+                if (pending[col] > 0) {
+                    pending[col]--;
+                    col += spans[col];
+                    continue;
+                }
+                Element cp = Uof.kid(cells.get(ci++), "单元格属性");
+                double spanV = Uof.number(Uof.attr(Uof.kid(cp, "跨列"), "值"));
+                int span = Double.isNaN(spanV) ? 1 : (int) Math.clamp(spanV, 1, 64 - col);
+                double rowsV = Uof.number(Uof.attr(Uof.kid(cp, "跨行"), "值"));
+                int down = Double.isNaN(rowsV) ? 1 : (int) Math.clamp(rowsV, 1, 10_000);
+                if (down > 1) {
+                    for (int k = col; k < col + span; k++) {
+                        pending[k] = 0;
+                    }
+                    pending[col] = down - 1;
+                    spans[col] = span;
+                }
+                col += span;
+            }
+            columns = Math.max(columns, col);
+        }
+        return columns;
     }
 
     private static int spanOf(String tcPr) {
@@ -822,6 +924,20 @@ final class UofText {
         } catch (NumberFormatException e) {
             return 1;
         }
+    }
+
+    private String style(String id) {
+        String known = styleIds.get(id);
+        if (known != null) {
+            return known;
+        }
+        String base = styleId(id);
+        String out = base;
+        for (int i = 2; !takenIds.add(out); i++) {
+            out = base + "_" + i;
+        }
+        styleIds.put(id, out);
+        return out;
     }
 
     static String styleId(String id) {
@@ -847,14 +963,14 @@ final class UofText {
             if (id == null || id.isBlank()) {
                 continue;
             }
-            b.append("<w:style w:type=\"paragraph\" w:styleId=\"").append(Uof.esc(styleId(id))).append('"');
+            b.append("<w:style w:type=\"paragraph\" w:styleId=\"").append(Uof.esc(style(id))).append('"');
             if (id.equals("Standard") || id.equals("Normal")) {
                 b.append(" w:default=\"1\"");
             }
             b.append("><w:name w:val=\"").append(Uof.esc(name(s, id))).append("\"/>");
             String base = Uof.attr(s, "基式样引用");
             if (base != null && !base.isBlank() && !base.equals(id)) {
-                b.append("<w:basedOn w:val=\"").append(Uof.esc(styleId(base))).append("\"/>");
+                b.append("<w:basedOn w:val=\"").append(Uof.esc(style(base))).append("\"/>");
             }
             b.append("<w:pPr>").append(paragraphProps(s, false)).append("</w:pPr>");
             b.append("<w:rPr>").append(runProps(Uof.kid(s, "句属性"))).append("</w:rPr></w:style>");
@@ -864,11 +980,11 @@ final class UofText {
             if (id == null || id.isBlank()) {
                 continue;
             }
-            b.append("<w:style w:type=\"character\" w:styleId=\"").append(Uof.esc(styleId(id)))
+            b.append("<w:style w:type=\"character\" w:styleId=\"").append(Uof.esc(style(id)))
                     .append("\"><w:name w:val=\"").append(Uof.esc(name(s, id))).append("\"/>");
             String base = Uof.attr(s, "基式样引用");
             if (base != null && !base.isBlank() && !base.equals(id)) {
-                b.append("<w:basedOn w:val=\"").append(Uof.esc(styleId(base))).append("\"/>");
+                b.append("<w:basedOn w:val=\"").append(Uof.esc(style(base))).append("\"/>");
             }
             b.append("<w:rPr>").append(runProps(s)).append("</w:rPr></w:style>");
         }

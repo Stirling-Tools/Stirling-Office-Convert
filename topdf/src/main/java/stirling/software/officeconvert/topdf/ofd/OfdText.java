@@ -81,8 +81,8 @@ final class OfdText {
             canvas.transform(ctm);
         }
         TextStyle base = TextStyle.of(f.system(), (float) size).color(color);
-        double penX = 0;
-        double penY = 0;
+        double originX = 0;
+        double originY = 0;
         int code = 0;
         for (Element tc : Dom.kids(e, "TextCode")) {
             String s = Dom.text(tc);
@@ -90,8 +90,10 @@ final class OfdText {
                 continue;
             }
             int[] cps = s.codePoints().limit(MAX_CODES).toArray();
-            double x = OfdNumbers.number(tc.getAttribute("X"), penX);
-            double y = OfdNumbers.number(tc.getAttribute("Y"), penY);
+            double x = OfdNumbers.number(tc.getAttribute("X"), originX);
+            double y = OfdNumbers.number(tc.getAttribute("Y"), originY);
+            originX = x;
+            originY = y;
             double[] dx = OfdNumbers.deltas(tc.getAttribute("DeltaX"), cps.length - 1);
             double[] dy = OfdNumbers.deltas(tc.getAttribute("DeltaY"), cps.length - 1);
             for (int i = 0; i < cps.length; i++, code++) {
@@ -118,8 +120,6 @@ final class OfdText {
                     default -> x += advance;
                 }
             }
-            penX = x;
-            penY = y;
         }
     }
 

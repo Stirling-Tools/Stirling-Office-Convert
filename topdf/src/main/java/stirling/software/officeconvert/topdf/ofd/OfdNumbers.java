@@ -22,6 +22,17 @@ final class OfdNumbers {
         }
     }
 
+    static boolean bool(String s, boolean fallback) {
+        if (s == null) {
+            return fallback;
+        }
+        return switch (s.strip()) {
+            case "true", "1" -> true;
+            case "false", "0" -> false;
+            default -> fallback;
+        };
+    }
+
     static int integer(String s, int fallback) {
         double v = number(s, Double.NaN);
         return Double.isNaN(v) || Math.abs(v) > Integer.MAX_VALUE ? fallback : (int) v;

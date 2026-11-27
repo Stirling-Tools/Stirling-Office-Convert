@@ -3,12 +3,13 @@ package stirling.software.officeconvert.topdf.uof;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -32,7 +33,9 @@ final class UofParts implements AutoCloseable {
 
     private final Map<byte[], String> media = new IdentityHashMap<>();
 
-    private final List<String[]> mediaRels = new ArrayList<>();
+    private final Map<String, String> mediaRels = new LinkedHashMap<>();
+
+    private final Map<String, Set<String>> used = new LinkedHashMap<>();
 
     private String title;
 
@@ -69,6 +72,24 @@ final class UofParts implements AutoCloseable {
         zip.closeEntry();
     }
 
+    void wordPart(String name, String xml) throws IOException {
+        add("word/" + name + ".xml", xml);
+        Set<String> rels = new LinkedHashSet<>();
+        String key = "r:embed=\"";
+        for (int at = xml.indexOf(key); at >= 0; at = xml.indexOf(key, at + key.length())) {
+            int from = at + key.length();
+            int to = xml.indexOf('"', from);
+            if (to < 0) {
+                break;
+            }
+            String rel = xml.substring(from, to);
+            if (mediaRels.containsKey(rel)) {
+                rels.add(rel);
+            }
+        }
+        used.put(name, rels);
+    }
+
     void override(String part, String type) {
         overrides.put("/" + part, type);
     }
@@ -86,7 +107,7 @@ final class UofParts implements AutoCloseable {
         String rel = "rImg" + n;
         add("word/media/image" + n + "." + ext, data);
         media.put(data, rel);
-        mediaRels.add(new String[] {rel, "media/image" + n + "." + ext});
+        mediaRels.put(rel, "media/image" + n + "." + ext);
         return rel;
     }
 
@@ -158,14 +179,13 @@ final class UofParts implements AutoCloseable {
             rels.append("<Relationship Id=\"rH").append(i + 1).append("\" Type=\"").append(REL)
                     .append(header ? "header" : "footer").append("\" Target=\"").append(h).append(".xml\"/>");
         }
-        for (String[] m : mediaRels) {
-            rels.append("<Relationship Id=\"").append(m[0]).append("\" Type=\"").append(REL)
-                    .append("image\" Target=\"").append(m[1]).append("\"/>");
-        }
-        rels.append("</Relationships>");
-        String mediaRelsXml = mediaRelsOnly();
-        for (String h : headers) {
-            add("word/_rels/" + h + ".xml.rels", mediaRelsXml);
+        rels.append(images("document")).append("</Relationships>");
+        for (Map.Entry<String, Set<String>> u : used.entrySet()) {
+            if (!u.getKey().equals("document") && !u.getValue().isEmpty()) {
+                add("word/_rels/" + u.getKey() + ".xml.rels", XML + "<Relationships"
+                        + " xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">" + images(u.getKey())
+                        + "</Relationships>");
+            }
         }
         add("word/_rels/document.xml.rels", rels.toString());
         core();
@@ -181,14 +201,13 @@ final class UofParts implements AutoCloseable {
                 + "core-properties\" Target=\"docProps/core.xml\"/></Relationships>");
     }
 
-    private String mediaRelsOnly() {
-        StringBuilder rels = new StringBuilder(XML);
-        rels.append("<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">");
-        for (String[] m : mediaRels) {
-            rels.append("<Relationship Id=\"").append(m[0]).append("\" Type=\"").append(REL)
-                    .append("image\" Target=\"").append(m[1]).append("\"/>");
+    private String images(String part) {
+        StringBuilder rels = new StringBuilder();
+        for (String rel : used.getOrDefault(part, Set.of())) {
+            rels.append("<Relationship Id=\"").append(rel).append("\" Type=\"").append(REL)
+                    .append("image\" Target=\"").append(mediaRels.get(rel)).append("\"/>");
         }
-        return rels.append("</Relationships>").toString();
+        return rels.toString();
     }
 
     private void core() throws IOException {
@@ -207,6 +226,6 @@ final class UofParts implements AutoCloseable {
 
     @Override
     public void close() throws IOException {
-        zip.finish();
+        zip.close();
     }
 }

@@ -1,6 +1,7 @@
 package stirling.software.officeconvert.topdf.uof;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -14,6 +15,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Base64;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 
 import javax.imageio.ImageIO;
 
@@ -198,6 +201,57 @@ class UofPackageTest {
                     .flatMap(java.util.List::stream).map(XWPFParagraph::getText).reduce("", String::concat);
             assertTrue(notes.contains("Outer note") && notes.contains("Inner note"), notes);
         }
+        String part = entry(rewrite("notes2.uot", xml, UofPackage.Kind.TEXT), "word/footnotes.xml");
+        assertFalse(part.contains("footnoteReference") || part.contains("endnoteReference"), part);
+        assertTrue(part.contains("Outer note") && part.contains("Inner note"), part);
+    }
+
+    @Test
+    void picturesInNotesGetTheirOwnRelationships() throws IOException {
+        String picture = Base64.getMimeEncoder().encodeToString(png());
+        String xml = HEAD + "vnd.uof.text\"><uof:对象集><uof:其他对象 uof:标识符=\"img1\" uof:公共类型=\"png\">"
+                + "<uof:数据>" + picture + "</uof:数据></uof:其他对象><图:图形 图:标识符=\"g1\" 图:其他对象=\"img1\"/>"
+                + "</uof:对象集><uof:文字处理><字:主体><字:段落><字:句><字:文本串>Body</字:文本串><字:脚注><字:段落><字:句>"
+                + "<字:锚点><字:图形 字:图形引用=\"g1\"/></字:锚点></字:句></字:段落></字:脚注></字:句></字:段落></字:主体>"
+                + "</uof:文字处理></uof:UOF>";
+        byte[] docx = rewrite("pic.uot", xml, UofPackage.Kind.TEXT);
+        assertTrue(entry(docx, "word/footnotes.xml").contains("r:embed=\"rImg1\""));
+        assertTrue(entry(docx, "word/_rels/footnotes.xml.rels").contains("Id=\"rImg1\""));
+        assertFalse(entry(docx, "word/_rels/document.xml.rels").contains("rImg1"));
+    }
+
+    @Test
+    void cellsBesideAVerticalMergeAreKept() throws IOException {
+        String xml = HEAD + "vnd.uof.text\"><uof:文字处理><字:主体><字:文字表><字:行><字:单元格><字:单元格属性><字:跨行"
+                + " 字:值=\"2\"/></字:单元格属性><字:段落>" + run("Tall", "") + "</字:段落></字:单元格></字:行><字:行>"
+                + "<字:单元格><字:段落>" + run("Beside", "") + "</字:段落></字:单元格></字:行></字:文字表></字:主体>"
+                + "</uof:文字处理></uof:UOF>";
+        String doc = entry(rewrite("merge.uot", xml, UofPackage.Kind.TEXT), "word/document.xml");
+        assertTrue(doc.contains("Tall") && doc.contains("Beside"), doc);
+    }
+
+    @Test
+    void stylesWhoseNamesSanitiseAlikeKeepApartIds() throws IOException {
+        String xml = HEAD + "vnd.uof.text\"><uof:式样集><uof:段落式样 字:标识符=\"Heading.A\"/><uof:段落式样"
+                + " 字:标识符=\"Heading_A\" 字:基式样引用=\"Heading.A\"/></uof:式样集><uof:文字处理><字:主体><字:段落>"
+                + "<字:段落属性 字:式样引用=\"Heading_A\"/>" + run("Styled", "") + "</字:段落></字:主体></uof:文字处理>"
+                + "</uof:UOF>";
+        byte[] docx = rewrite("styles.uot", xml, UofPackage.Kind.TEXT);
+        String styles = entry(docx, "word/styles.xml");
+        assertTrue(styles.contains("w:styleId=\"Heading_A\"") && styles.contains("w:styleId=\"Heading_A_2\""), styles);
+        assertTrue(styles.contains("<w:basedOn w:val=\"Heading_A\"/>"), styles);
+        assertTrue(entry(docx, "word/document.xml").contains("<w:pStyle w:val=\"Heading_A_2\"/>"));
+    }
+
+    private static String entry(byte[] zip, String name) throws IOException {
+        try (ZipInputStream in = new ZipInputStream(new ByteArrayInputStream(zip))) {
+            for (ZipEntry e = in.getNextEntry(); e != null; e = in.getNextEntry()) {
+                if (e.getName().equals(name)) {
+                    return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+                }
+            }
+        }
+        throw new IOException("No " + name);
     }
 
     @Test
@@ -227,6 +281,34 @@ class UofPackageTest {
             assertEquals(1, p.getNumIlvl().intValue());
             assertEquals("◆", p.getNumLevelText());
         }
+    }
+
+    @Test
+    void wordXmlThatDeclaresTheUofNamespaceIsLeftToWordXml() throws IOException {
+        String xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><w:wordDocument"
+                + " xmlns:w=\"http://schemas.microsoft.com/office/word/2003/wordml\""
+                + " xmlns:uof=\"http://schemas.uof.org/cn/2003/uof\"><w:body><w:p><w:r><w:t>Plain Word words</w:t>"
+                + "</w:r></w:p></w:body></w:wordDocument>";
+        Path in = Files.writeString(dir.resolve("word.xml"), xml, StandardCharsets.UTF_8);
+        assertNull(UofPackage.sniff(in));
+        Path out = dir.resolve("word.pdf");
+        OfficeToPdf.convert(in, out);
+        assertTrue(text(out).contains("Plain Word words"));
+    }
+
+    @Test
+    void uofRootsAreFoundWhateverTheQuotesOrEncoding() throws IOException {
+        String single = "<?xml version='1.0' encoding='UTF-8'?><uof:UOF xmlns:uof='http://schemas.uof.org/cn/2003/uof'"
+                + " uof:mimetype='vnd.uof.spreadsheet'><uof:电子表格/></uof:UOF>";
+        assertEquals(UofPackage.Kind.SPREADSHEET, UofPackage.sniff(Files.writeString(dir.resolve("s.uos"), single)));
+        String text = HEAD + "vnd.uof.text\"><uof:文字处理><字:主体/></uof:文字处理></uof:UOF>";
+        assertEquals(UofPackage.Kind.TEXT, UofPackage.sniff(Files.writeString(dir.resolve("t.uot"), text,
+                StandardCharsets.UTF_8)));
+        String wide = text.replace("encoding=\"UTF-8\"", "encoding=\"UTF-16\"");
+        assertEquals(UofPackage.Kind.TEXT, UofPackage.sniff(Files.writeString(dir.resolve("w.uot"), wide,
+                StandardCharsets.UTF_16)));
+        String deck = "<uof:UOF xmlns:uof=\"http://schemas.uof.org/cn/2003/uof\"><uof:演示文稿/></uof:UOF>";
+        assertEquals(UofPackage.Kind.PRESENTATION, UofPackage.sniff(Files.writeString(dir.resolve("p.uop"), deck)));
     }
 
     @Test

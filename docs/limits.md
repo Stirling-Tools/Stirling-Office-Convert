@@ -165,10 +165,10 @@ misses a drawn form. Images are charged wherever they are listed.
 | Spreadsheet cells / merged ranges | 4 M / 100,000 | truncated |
 | Spreadsheet data read before admission | 256 MB | the rest is charged conservatively |
 | OFD pages / objects per page / block nesting | 100,000 / 1,000,000 / 32 | later pages and objects are left out; deeper blocks are skipped |
-| OFD XML part / picture or font file | 64 MB / 64 MB (fonts 32 MB) | the part is left out with a note; the page is blank |
+| OFD XML part / picture or font file | 64 MB / 64 MB (fonts 32 MB) | an oversized `OFD.xml` or `Document.xml` fails the conversion; an oversized page is drawn blank with a note; an oversized picture, font or resource part is left out with a note |
 | OFD path commands / clip path text | 200,000 / 200,000 characters | the path is cut short; the clip area is ignored |
 | OFD characters per text object / glyph mappings | 100,000 / 100,000 | the rest is skipped |
-| OFD seal: DER depth / nodes / nested seal documents | 24 / 100,000 / 200 per document | the seal appearance is left out with a note |
+| OFD seal: DER depth / nodes / nested seal document placements | 24 / 100,000 / 200 per document | the DER scan stops at the limit and uses a picture found before it, or leaves the appearance out with a note; placements of nested seal documents after the 200th are skipped |
 | OFD JBIG2 picture | 100 M pixels, 10,000 segments | the picture is left out with a note |
 | OFD pattern tiles per filled path | 4,096 | the pattern fill is left out |
 | OFD Gouraud mesh points / drawn pieces | 10,000 / 60,000 | later points are ignored; the mesh is drawn coarser |

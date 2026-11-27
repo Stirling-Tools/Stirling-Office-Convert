@@ -152,15 +152,17 @@ class DocxLineRulesTest {
         assertEquals(plain, render("chargrid", new DocxDoc().styles(STYLES).body(latin).section(grid)).word("End").x(),
                 0.05f);
         String east = DocxDoc.p("\u6f22\u6f22\u6f22\u6f22 End");
-        float wide = render("eastplain", new DocxDoc().styles(STYLES).body(east)).word("End").x();
+        String loose = para("<w:snapToGrid w:val=\"0\"/>", run("\u6f22\u6f22\u6f22\u6f22 End"));
+        float wide = render("eastplain", new DocxDoc().styles(STYLES).body(loose).section(grid)).word("End").x();
         float cells = render("eastgrid", new DocxDoc().styles(STYLES).body(east).section(grid)).word("End").x();
         assertEquals(wide + 4 * (2 * 8 - 10), cells, 0.5f, "a 10 pt character takes two 8 pt cells");
         String even = grid.replace("w:charSpace=\"-8192\"", "w:charSpace=\"0\"");
         assertEquals(wide, render("eastone", new DocxDoc().styles(STYLES).body(east).section(even)).word("End").x(),
                 0.5f, "at the Normal size each character fills one cell");
         String lines = grid.replace("linesAndChars", "lines");
-        assertEquals(wide, render("eastlines", new DocxDoc().styles(STYLES).body(east).section(lines)).word("End").x(),
-                0.05f);
+        float plainEast = render("eastnogrid", new DocxDoc().styles(STYLES).body(east)).word("End").x();
+        assertEquals(plainEast, render("eastlines", new DocxDoc().styles(STYLES).body(east).section(lines)).word("End")
+                .x(), 0.05f);
     }
 
     @Test
@@ -176,6 +178,10 @@ class DocxLineRulesTest {
         assertEquals(11.5f, free.word("Two").y() - free.word("One").y(), 0.1f);
         float exact = g.word("Four").y() - g.word("Three").y();
         assertTrue(exact < 15, "an exact line keeps its own height: " + exact);
+        String tall = "<w:spacing w:line=\"370\" w:lineRule=\"atLeast\"/>";
+        DocxDoc.Rendered over = render("leastover", new DocxDoc().styles(STYLES).body(para(tall, run("One"))
+                + para(tall, run("Two"))).section(lines));
+        assertEquals(36, over.word("Two").y() - over.word("One").y(), 0.3f, "an 18.5 pt minimum needs two pitches");
     }
 
     @Test

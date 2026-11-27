@@ -4,7 +4,6 @@ import java.io.ByteArrayInputStream;
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.Deque;
@@ -13,6 +12,10 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
+
+import javax.xml.stream.XMLStreamConstants;
+import javax.xml.stream.XMLStreamException;
+import javax.xml.stream.XMLStreamReader;
 
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
@@ -56,7 +59,7 @@ final class OfdPackage implements Closeable {
         long largest = 0;
         try (BoundedZip z = BoundedZip.open(file)) {
             for (ZipEntry e : z.entries()) {
-                if (!e.isDirectory() && BoundedZip.normalised(e.getName()).toLowerCase(Locale.ROOT).endsWith(".xml")) {
+                if (!e.isDirectory() && !media(BoundedZip.normalised(e.getName()))) {
                     long size = e.getSize() < 0 ? MAX_XML_BYTES : Math.min(e.getSize(), MAX_XML_BYTES);
                     largest = Math.max(largest, size);
                 }
@@ -65,6 +68,14 @@ final class OfdPackage implements Closeable {
             return 0;
         }
         return largest;
+    }
+
+    private static final Pattern MEDIA = Pattern.compile(
+            "(?i).*\\.(png|jpe?g|gif|bmp|tiff?|jb2|jbig2|gbig2|webp|ttf|otf|ttc|woff2?|pfb|cff|pdf|ofd|esl|der|p7s|sig"
+                    + "|mp3|mp4|wav|avi|zip)");
+
+    private static boolean media(String name) {
+        return MEDIA.matcher(name).matches();
     }
 
     static boolean is(Path file) {
@@ -89,12 +100,20 @@ final class OfdPackage implements Closeable {
             if (root == null || root.isDirectory()) {
                 return false;
             }
-            String head;
             try (InputStream in = z.open(root, MAX_XML_BYTES)) {
-                head = new String(in.readNBytes(4096), StandardCharsets.UTF_8);
+                XMLStreamReader r = SecureXml.reader(in);
+                try {
+                    while (r.hasNext()) {
+                        if (r.next() == XMLStreamConstants.START_ELEMENT) {
+                            return "OFD".equals(r.getLocalName());
+                        }
+                    }
+                    return false;
+                } finally {
+                    r.close();
+                }
             }
-            return head.contains("OFD") && (head.contains("ofdspec") || head.contains("DocBody"));
-        } catch (IOException | RuntimeException e) {
+        } catch (IOException | XMLStreamException | RuntimeException e) {
             return false;
         }
     }

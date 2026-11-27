@@ -63,6 +63,9 @@ final class OfdAttachments {
                 notes.add("The OFD document has more than " + MAX_ATTACHMENTS + " attachments; the rest were left out");
                 return;
             }
+            if (!OfdNumbers.bool(a.getAttribute("Visible"), true)) {
+                continue;
+            }
             String loc = OfdPackage.resolve(part, Dom.text(Dom.kid(a, "FileLoc")));
             if (loc == null || !pkg.exists(loc)) {
                 continue;

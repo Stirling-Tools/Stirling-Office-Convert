@@ -44,7 +44,10 @@ final class OfdJbig2 {
             at = 9 + ((flags & 2) == 0 ? 4 : 0);
         }
         List<Segment> segments = new ArrayList<>();
-        while (at < b.length && segments.size() < MAX_SEGMENTS) {
+        while (at < b.length) {
+            if (segments.size() >= MAX_SEGMENTS) {
+                throw new IOException("A JBIG2 picture has too many segments");
+            }
             int start = at;
             if (at + 6 > b.length) {
                 break;
@@ -118,7 +121,7 @@ final class OfdJbig2 {
                 break;
             }
         }
-        if (width <= 0 || height <= 0 || height == 0xFFFFFFFFL || width * height > MAX_PIXELS) {
+        if (width <= 0 || height <= 0 || height == 0xFFFFFFFFL || width > MAX_PIXELS / height) {
             throw new IOException("The JBIG2 picture has no usable page size");
         }
         ByteArrayOutputStream globals = new ByteArrayOutputStream();

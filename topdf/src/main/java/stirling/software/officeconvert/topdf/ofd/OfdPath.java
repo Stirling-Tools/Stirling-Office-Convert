@@ -196,6 +196,7 @@ final class OfdPath {
         int segments = Math.max(1, (int) Math.ceil(Math.abs(delta) / (Math.PI / 2) - 1e-9));
         double step = delta / segments;
         double k = 4.0 / 3 * Math.tan(step / 4);
+        double[] points = new double[segments * 6];
         for (int s = 0; s < segments; s++) {
             double t1 = start + s * step;
             double t2 = t1 + step;
@@ -203,10 +204,22 @@ final class OfdPath {
             double c1y = Math.sin(t1) + k * Math.cos(t1);
             double c2x = Math.cos(t2) + k * Math.sin(t2);
             double c2y = Math.sin(t2) - k * Math.cos(t2);
-            path.curveTo(cx + rx * c1x * cos - ry * c1y * sin, cy + rx * c1x * sin + ry * c1y * cos,
-                    cx + rx * c2x * cos - ry * c2y * sin, cy + rx * c2x * sin + ry * c2y * cos,
-                    cx + rx * Math.cos(t2) * cos - ry * Math.sin(t2) * sin,
-                    cy + rx * Math.cos(t2) * sin + ry * Math.sin(t2) * cos);
+            int o = s * 6;
+            points[o] = cx + rx * c1x * cos - ry * c1y * sin;
+            points[o + 1] = cy + rx * c1x * sin + ry * c1y * cos;
+            points[o + 2] = cx + rx * c2x * cos - ry * c2y * sin;
+            points[o + 3] = cy + rx * c2x * sin + ry * c2y * cos;
+            points[o + 4] = cx + rx * Math.cos(t2) * cos - ry * Math.sin(t2) * sin;
+            points[o + 5] = cy + rx * Math.cos(t2) * sin + ry * Math.sin(t2) * cos;
+        }
+        for (double v : points) {
+            if (!Double.isFinite(v)) {
+                path.lineTo(x2, y2);
+                return;
+            }
+        }
+        for (int o = 0; o < points.length; o += 6) {
+            path.curveTo(points[o], points[o + 1], points[o + 2], points[o + 3], points[o + 4], points[o + 5]);
         }
     }
 }

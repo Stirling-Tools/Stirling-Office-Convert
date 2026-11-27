@@ -472,7 +472,7 @@ final class ParaFlow {
     }
 
     private static boolean onCharGrid(Region r) {
-        return r.paginated() || r instanceof StackLayout s && s.inCell();
+        return r.paginated() || r instanceof StackLayout s && (s.inCell() || s.bodyTrial());
     }
 
     private static float gridPitch(Region r) {

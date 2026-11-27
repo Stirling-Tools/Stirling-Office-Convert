@@ -51,7 +51,17 @@ final class OfdImages {
         if (known != null) {
             return known.orElse(null);
         }
-        DecodedPicture made = decode(pkg.read(m.file(), OfdPackage.MAX_MEDIA_BYTES), m.format());
+        byte[] data;
+        try {
+            data = pkg.read(m.file(), OfdPackage.MAX_MEDIA_BYTES);
+        } catch (InterruptedIOException e) {
+            throw e;
+        } catch (IOException | RuntimeException e) {
+            notes.add("A picture in the OFD document is too large or unreadable and was left out");
+            cache.put(m.file(), Optional.empty());
+            return null;
+        }
+        DecodedPicture made = decode(data, m.format());
         cache.put(m.file(), Optional.ofNullable(made));
         return made;
     }

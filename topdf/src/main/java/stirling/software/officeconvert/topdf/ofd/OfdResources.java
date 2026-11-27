@@ -51,18 +51,33 @@ final class OfdResources {
         return loaded.contains(part) || parent != null && parent.known(part);
     }
 
+    static String key(String id) {
+        if (id == null) {
+            return "";
+        }
+        String t = id.strip();
+        if (t.isEmpty() || t.length() > 20 || !t.chars().allMatch(c -> c >= '0' && c <= '9')) {
+            return t;
+        }
+        int i = 0;
+        while (i < t.length() - 1 && t.charAt(i) == '0') {
+            i++;
+        }
+        return t.substring(i);
+    }
+
     Font font(String id) {
-        Font f = fonts.get(id);
+        Font f = fonts.get(key(id));
         return f != null || parent == null ? f : parent.font(id);
     }
 
     Media media(String id) {
-        Media m = media.get(id);
+        Media m = media.get(key(id));
         return m != null || parent == null ? m : parent.media(id);
     }
 
     Element unit(String id) {
-        Element u = units.get(id);
+        Element u = units.get(key(id));
         return u != null || parent == null ? u : parent.unit(id);
     }
 
@@ -73,13 +88,13 @@ final class OfdResources {
         loaded.add(part);
         Element res = pkg.xml(part);
         String base = OfdPackage.resolve(part, attr(res, "BaseLoc", ""));
-        String dir = base == null || base.isEmpty() ? OfdPackage.dir(part) : base + "/";
+        String dir = base == null ? OfdPackage.dir(part) : base.isEmpty() ? "" : base + "/";
         for (Element group : Dom.kids(res)) {
             for (Element e : Dom.kids(group)) {
                 if (++count > MAX_RESOURCES) {
                     return;
                 }
-                String id = e.getAttribute("ID").trim();
+                String id = key(e.getAttribute("ID"));
                 if (id.isEmpty()) {
                     continue;
                 }
@@ -105,9 +120,8 @@ final class OfdResources {
                         media.put(id, new Media(attr(e, "Format", ""), loc));
                     }
                     case "CompositeGraphicUnit" -> {
-                        Element content = Dom.kid(e, "Content");
-                        if (content != null) {
-                            units.put(id, content);
+                        if (Dom.kid(e, "Content") != null) {
+                            units.put(id, e);
                         }
                     }
                     default -> {}
@@ -120,7 +134,7 @@ final class OfdResources {
         if (id == null) {
             return null;
         }
-        Element d = drawParams.get(id.trim());
+        Element d = drawParams.get(key(id));
         return d != null || parent == null ? d : parent.drawParam(id);
     }
 
@@ -128,7 +142,7 @@ final class OfdResources {
         if (id == null) {
             return null;
         }
-        ColorSpace c = colorSpaces.get(id.trim());
+        ColorSpace c = colorSpaces.get(key(id));
         return c != null || parent == null ? c : parent.colorSpace(id);
     }
 
@@ -140,6 +154,6 @@ final class OfdResources {
     }
 
     static boolean bool(Element e, String name) {
-        return "true".equalsIgnoreCase(attr(e, name, "false"));
+        return OfdNumbers.bool(attr(e, name, "false"), false);
     }
 }

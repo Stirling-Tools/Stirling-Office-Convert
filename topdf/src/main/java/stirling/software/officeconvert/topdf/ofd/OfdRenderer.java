@@ -34,6 +34,8 @@ public final class OfdRenderer {
 
     static final int MAX_PAGES = 100_000;
 
+    static final int MAX_ANNOTATION_PARTS = 64;
+
     static final int MAX_OUTLINES = 10_000;
 
     static final int MAX_SEAL_DOCUMENTS = 200;
@@ -84,7 +86,7 @@ public final class OfdRenderer {
     }
 
     private record Doc(String part, Element root, OfdResources res, OfdResources.ColorSpace space,
-            Element pageArea, Map<String, String> templates, List<String[]> pages) {}
+            Element pageArea, Map<String, String> templates, List<String[]> pages, int eligible) {}
 
     private int[] documents(int maxPages, OfdAttachments attachments) throws IOException {
         Element ofd = pkg.xml(rootPart());
@@ -100,7 +102,7 @@ public final class OfdRenderer {
             }
             Doc doc = load(rootLoc);
             attachments.collect(output.document(), doc.part(), doc.root());
-            Map<String, List<Element>> annots = annotations(doc);
+            Map<String, List<String>> annots = annotations(doc);
             Map<String, List<Stamp>> stamps = stamps(body);
             Map<String, Integer> index = new HashMap<>();
             int first = output.pageCount();
@@ -114,6 +116,7 @@ public final class OfdRenderer {
                 page(doc, p[0], p[1], annots.getOrDefault(p[0], List.of()), stamps.getOrDefault(p[0], List.of()));
                 drawn++;
             }
+            total += doc.eligible() - doc.pages().size();
             outlines(doc, index, first);
         }
         if (total == 0) {
@@ -167,16 +170,18 @@ public final class OfdRenderer {
             }
         }
         List<String[]> pages = new ArrayList<>();
+        int eligible = 0;
         for (Element p : Dom.kids(Dom.kid(root, "Pages"), "Page")) {
-            if (pages.size() >= MAX_PAGES) {
-                break;
-            }
             String loc = OfdPackage.resolve(part, p.getAttribute("BaseLoc"));
-            if (loc != null) {
+            if (loc == null) {
+                continue;
+            }
+            eligible++;
+            if (pages.size() < MAX_PAGES) {
                 pages.add(new String[] {p.getAttribute("ID").trim(), loc});
             }
         }
-        return new Doc(part, root, res, space, Dom.kid(common, "PageArea"), templates, pages);
+        return new Doc(part, root, res, space, Dom.kid(common, "PageArea"), templates, pages, eligible);
     }
 
     private void loadRes(OfdResources res, String from, String loc) throws InterruptedIOException {
@@ -190,16 +195,20 @@ public final class OfdRenderer {
         }
     }
 
-    private void page(Doc doc, String id, String part, List<Element> annots, List<Stamp> stamps) throws IOException {
+    private void page(Doc doc, String id, String part, List<String> annots, List<Stamp> stamps) throws IOException {
         Element page = null;
         try {
-            page = pkg.exists(part) ? pkg.xml(part) : null;
+            if (pkg.exists(part)) {
+                page = pkg.xml(part);
+            } else {
+                notes.add("Page " + (output.pageCount() + 1) + " of the OFD document is missing and is blank");
+            }
         } catch (InterruptedIOException e) {
             throw e;
         } catch (IOException | RuntimeException e) {
             notes.add("Page " + (output.pageCount() + 1) + " of the OFD document could not be read and is blank");
         }
-        Rectangle2D.Double box = box(page, doc.pageArea());
+        Rectangle2D.Double box = box(page, templateArea(doc, page), doc.pageArea());
         PdfCanvas canvas = output.newPage((float) (box.width * POINTS_PER_MM), (float) (box.height * POINTS_PER_MM));
         canvas.scale(POINTS_PER_MM, POINTS_PER_MM);
         canvas.clipRect(0, 0, (float) box.width, (float) box.height);
@@ -208,8 +217,10 @@ public final class OfdRenderer {
             content(canvas, doc, page, part);
         }
         OfdPainter painter = painter(canvas, doc, doc.res());
-        for (Element a : annots) {
-            annotation(canvas, painter, a);
+        for (String file : annots) {
+            for (Element a : pageAnnotations(file)) {
+                annotation(canvas, painter, a);
+            }
         }
         for (Stamp s : stamps) {
             stamp(canvas, s);
@@ -279,9 +290,41 @@ public final class OfdRenderer {
         }
     }
 
+    private Element templateArea(Doc doc, Element page) throws InterruptedIOException {
+        if (page == null || usable(Dom.kid(page, "Area"))) {
+            return null;
+        }
+        for (Element t : Dom.kids(page, "Template")) {
+            String ref = doc.templates().get(t.getAttribute("TemplateID").trim());
+            if (ref == null) {
+                continue;
+            }
+            try {
+                Element area = Dom.kid(pkg.xml(ref.substring(0, ref.indexOf('\u0000'))), "Area");
+                if (usable(area)) {
+                    return area;
+                }
+            } catch (InterruptedIOException e) {
+                throw e;
+            } catch (IOException | RuntimeException e) {
+                continue;
+            }
+        }
+        return null;
+    }
+
+    private static boolean usable(Element area) {
+        Rectangle2D.Double b = area == null ? null : OfdNumbers.box(Dom.text(Dom.kid(area, "PhysicalBox")));
+        return b != null && b.width > 1 && b.height > 1 && b.width < 20_000 && b.height < 20_000;
+    }
+
     private static Rectangle2D.Double box(Element page, Element pageArea) {
+        return box(page, null, pageArea);
+    }
+
+    private static Rectangle2D.Double box(Element page, Element templateArea, Element pageArea) {
         Element area = page == null ? null : Dom.kid(page, "Area");
-        for (Element a : new Element[] {area, pageArea}) {
+        for (Element a : new Element[] {area, templateArea, pageArea}) {
             Rectangle2D.Double b = a == null ? null : OfdNumbers.box(Dom.text(Dom.kid(a, "PhysicalBox")));
             if (b != null && b.width > 1 && b.height > 1 && b.width < 20_000 && b.height < 20_000) {
                 return b;
@@ -290,8 +333,8 @@ public final class OfdRenderer {
         return new Rectangle2D.Double(0, 0, 210, 297);
     }
 
-    private Map<String, List<Element>> annotations(Doc doc) throws IOException {
-        Map<String, List<Element>> out = new HashMap<>();
+    private Map<String, List<String>> annotations(Doc doc) throws IOException {
+        Map<String, List<String>> out = new HashMap<>();
         Element loc = Dom.kid(doc.root(), "Annotations");
         String part = loc == null ? null : OfdPackage.resolve(doc.part(), Dom.text(loc));
         if (part == null || !pkg.exists(part)) {
@@ -304,12 +347,25 @@ public final class OfdRenderer {
                 if (file == null || !pkg.exists(file)) {
                     continue;
                 }
-                List<Element> mine = out.computeIfAbsent(p.getAttribute("PageID").trim(), k -> new ArrayList<>());
-                for (Element a : Dom.kids(pkg.xml(file), "Annot")) {
-                    if (!"false".equalsIgnoreCase(a.getAttribute("Visible").trim())
-                            && !"true".equalsIgnoreCase(a.getAttribute("NoView").trim())) {
-                        mine.add(a);
-                    }
+                List<String> mine = out.computeIfAbsent(p.getAttribute("PageID").trim(), k -> new ArrayList<>());
+                if (mine.size() < MAX_ANNOTATION_PARTS && !mine.contains(file)) {
+                    mine.add(file);
+                }
+            }
+        } catch (InterruptedIOException e) {
+            throw e;
+        } catch (IOException | RuntimeException e) {
+            notes.add("The annotations of the OFD document could not be read and were left out");
+        }
+        return out;
+    }
+
+    private List<Element> pageAnnotations(String file) throws InterruptedIOException {
+        List<Element> out = new ArrayList<>();
+        try {
+            for (Element a : Dom.kids(pkg.xml(file), "Annot")) {
+                if (OfdNumbers.bool(a.getAttribute("Visible"), true) && !OfdNumbers.bool(a.getAttribute("NoView"), false)) {
+                    out.add(a);
                 }
             }
         } catch (InterruptedIOException e) {
@@ -387,7 +443,14 @@ public final class OfdRenderer {
         }
         for (String p : parts) {
             if (p != null && pkg.exists(p)) {
-                byte[] found = OfdSeals.picture(pkg.read(p, OfdPackage.MAX_MEDIA_BYTES));
+                byte[] found;
+                try {
+                    found = OfdSeals.picture(pkg.read(p, OfdPackage.MAX_MEDIA_BYTES));
+                } catch (InterruptedIOException e) {
+                    throw e;
+                } catch (IOException | RuntimeException e) {
+                    continue;
+                }
                 if (found != null) {
                     return found;
                 }
@@ -480,6 +543,12 @@ public final class OfdRenderer {
             }
         }
         Integer page = dest == null ? null : index.get(dest.getAttribute("PageID").trim());
+        if (dest != null && page == null) {
+            for (Element k : Dom.kids(e, "OutlineElem")) {
+                outline(k, level, index, first, budget);
+            }
+            return;
+        }
         if (!title.isEmpty()) {
             int target = page != null ? page : first;
             if (target < output.pageCount()) {

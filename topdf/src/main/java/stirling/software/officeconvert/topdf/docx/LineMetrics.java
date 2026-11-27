@@ -142,7 +142,10 @@ final class LineMetrics {
         float value = pp.line == null ? 1 : pp.line;
         switch (rule) {
             case EXACT -> h = value;
-            case AT_LEAST -> h = snap(Math.max(natural, value), bodyGrid ? gridPitch : 0, pp);
+            case AT_LEAST -> {
+                float pitch = bodyGrid ? gridPitch : 0;
+                h = Math.max(snap(natural, pitch, pp, 0.05f), snap(value, pitch, pp, 1e-4f));
+            }
             default -> {
                 // A list label's height is not multiplied with the text's
                 h = snap(multiple(natural, textAsc > 0 ? textAsc + textDesc : labelAsc + textDesc, value), gridPitch, pp);
@@ -171,10 +174,14 @@ final class LineMetrics {
     }
 
     private static float snap(float h, float gridPitch, ParaProps pp) {
+        return snap(h, gridPitch, pp, 0.05f);
+    }
+
+    private static float snap(float h, float gridPitch, ParaProps pp, float tolerance) {
         if (gridPitch <= 0 || Boolean.FALSE.equals(pp.snapToGrid)) {
             return h;
         }
-        return Math.max(1, (float) Math.ceil(h / gridPitch - 0.05f)) * gridPitch;
+        return Math.max(1, (float) Math.ceil(h / gridPitch - tolerance)) * gridPitch;
     }
 
     private static int lastVisible(Line line) {
