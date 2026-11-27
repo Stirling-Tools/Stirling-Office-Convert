@@ -68,6 +68,19 @@ final class SvgStyle {
         this.color = color;
     }
 
+    private static int relativeWeight(String parent, boolean bolder) {
+        String p = parent.strip().toLowerCase(Locale.ROOT);
+        float w = switch (p) {
+            case "bold" -> 700;
+            case "normal", "" -> 400;
+            default -> SvgDraw.number(p, 400);
+        };
+        if (bolder) {
+            return w < 350 ? 400 : w < 550 ? 700 : 900;
+        }
+        return w < 550 ? 100 : w < 750 ? 400 : 700;
+    }
+
     static SvgStyle root() {
         return new SvgStyle(null, Map.copyOf(INITIAL), Map.of(), 16, 0);
     }
@@ -84,10 +97,15 @@ final class SvgStyle {
             if (lower.equals("inherit") || lower.equals("unset")) {
                 continue;
             }
+            if (k.equals("dominant-baseline") && (lower.strip().equals("no-change") || lower.strip().equals("reset-size"))) {
+                continue;
+            }
             if (lower.equals("initial")) {
                 v = INITIAL.getOrDefault(k, "");
             } else if ((k.equals("fill") || k.equals("stroke")) && !validPaint(lower)) {
                 continue;
+            } else if (k.equals("font-weight") && (lower.strip().equals("bolder") || lower.strip().equals("lighter"))) {
+                v = Integer.toString(relativeWeight(inherited.getOrDefault(k, "400"), lower.strip().equals("bolder")));
             }
             if (next == null) {
                 next = new HashMap<>(inherited);

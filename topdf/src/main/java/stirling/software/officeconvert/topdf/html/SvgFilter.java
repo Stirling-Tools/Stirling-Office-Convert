@@ -893,9 +893,23 @@ final class SvgFilter {
         return TO_LINEAR[Math.round(clamp(c) * 255)];
     }
 
+    private static final int SRGB_STEPS = 4096;
+
+    private static final float[] TO_SRGB = new float[SRGB_STEPS + 2];
+
+    static {
+        for (int i = 0; i <= SRGB_STEPS; i++) {
+            double v = i / (double) SRGB_STEPS;
+            TO_SRGB[i] = (float) (v <= 0.0031308 ? v * 12.92 : 1.055 * Math.pow(v, 1 / 2.4) - 0.055);
+        }
+        TO_SRGB[SRGB_STEPS + 1] = 1;
+    }
+
     static float srgb(float c) {
-        double v = clamp(c);
-        return (float) (v <= 0.0031308 ? v * 12.92 : 1.055 * Math.pow(v, 1 / 2.4) - 0.055);
+        float v = clamp(c) * SRGB_STEPS;
+        int i = (int) v;
+        float f = v - i;
+        return TO_SRGB[i] + (TO_SRGB[i + 1] - TO_SRGB[i]) * f;
     }
 
     static Img toLinear(Img in) {
@@ -1262,24 +1276,28 @@ final class SvgFilter {
     }
 
     private static Img transfer(Img in, Element p) {
-        Element[] funcs = new Element[4];
+        Func[] funcs = new Func[4];
         for (Element c : p.children()) {
             String t = SvgDoc.local(c).toLowerCase(Locale.ROOT);
             switch (t) {
-                case "fefuncr" -> funcs[0] = c;
-                case "fefuncg" -> funcs[1] = c;
-                case "fefuncb" -> funcs[2] = c;
-                case "fefunca" -> funcs[3] = c;
+                case "fefuncr" -> funcs[0] = Func.of(c);
+                case "fefuncg" -> funcs[1] = Func.of(c);
+                case "fefuncb" -> funcs[2] = Func.of(c);
+                case "fefunca" -> funcs[3] = Func.of(c);
                 default -> { }
             }
         }
         Img out = new Img(in.w, in.h);
+        float[] c = new float[4];
         for (int i = 0; i < in.p.length; i += 4) {
             float a = in.p[i + 3];
-            float[] c = {a > 0 ? in.p[i] / a : 0, a > 0 ? in.p[i + 1] / a : 0, a > 0 ? in.p[i + 2] / a : 0, a};
+            c[0] = a > 0 ? in.p[i] / a : 0;
+            c[1] = a > 0 ? in.p[i + 1] / a : 0;
+            c[2] = a > 0 ? in.p[i + 2] / a : 0;
+            c[3] = a;
             for (int k = 0; k < 4; k++) {
                 if (funcs[k] != null) {
-                    c[k] = clamp(func(funcs[k], c[k]));
+                    c[k] = clamp(funcs[k].apply(c[k]));
                 }
             }
             out.p[i] = c[0] * c[3];
@@ -1290,34 +1308,40 @@ final class SvgFilter {
         return out;
     }
 
-    private static float func(Element f, float c) {
-        String type = SvgDoc.lower(SvgDoc.attr(f, "type"));
-        float[] t = SvgDraw.numbers(SvgDoc.attr(f, "tableValues"));
-        switch (type) {
-            case "table": {
-                int n = t.length - 1;
-                if (n < 1) {
-                    return n == 0 ? t[0] : c;
+    private record Func(String type, float[] t, float slope, float intercept, float amplitude, float exponent,
+            float offset) {
+        static Func of(Element f) {
+            return new Func(SvgDoc.lower(SvgDoc.attr(f, "type")), SvgDraw.numbers(SvgDoc.attr(f, "tableValues")),
+                    SvgDraw.number(SvgDoc.attr(f, "slope"), 1), SvgDraw.number(SvgDoc.attr(f, "intercept"), 0),
+                    SvgDraw.number(SvgDoc.attr(f, "amplitude"), 1), SvgDraw.number(SvgDoc.attr(f, "exponent"), 1),
+                    SvgDraw.number(SvgDoc.attr(f, "offset"), 0));
+        }
+
+        float apply(float c) {
+            switch (type) {
+                case "table": {
+                    int n = t.length - 1;
+                    if (n < 1) {
+                        return n == 0 ? t[0] : c;
+                    }
+                    int k = (int) Math.min(n - 1, Math.floor(c * n));
+                    return t[k] + (c - (float) k / n) * n * (t[k + 1] - t[k]);
                 }
-                int k = (int) Math.min(n - 1, Math.floor(c * n));
-                return t[k] + (c - (float) k / n) * n * (t[k + 1] - t[k]);
-            }
-            case "discrete": {
-                int n = t.length;
-                if (n == 0) {
+                case "discrete": {
+                    int n = t.length;
+                    if (n == 0) {
+                        return c;
+                    }
+                    int k = (int) Math.min(n - 1, Math.floor(c * n));
+                    return t[k];
+                }
+                case "linear":
+                    return slope * c + intercept;
+                case "gamma":
+                    return amplitude * (float) Math.pow(c, exponent) + offset;
+                default:
                     return c;
-                }
-                int k = (int) Math.min(n - 1, Math.floor(c * n));
-                return t[k];
             }
-            case "linear":
-                return SvgDraw.number(SvgDoc.attr(f, "slope"), 1) * c + SvgDraw.number(SvgDoc.attr(f, "intercept"), 0);
-            case "gamma":
-                return SvgDraw.number(SvgDoc.attr(f, "amplitude"), 1)
-                        * (float) Math.pow(c, SvgDraw.number(SvgDoc.attr(f, "exponent"), 1))
-                        + SvgDraw.number(SvgDoc.attr(f, "offset"), 0);
-            default:
-                return c;
         }
     }
 

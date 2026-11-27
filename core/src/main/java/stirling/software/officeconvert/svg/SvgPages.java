@@ -1,5 +1,6 @@
 package stirling.software.officeconvert.svg;
 
+import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
@@ -40,18 +41,16 @@ public final class SvgPages {
         hidden.reset();
         fonts.clearUsed();
         PageSvg svg = new PageSvg(doc, page, fonts, hidden, w, h, PageSvg.toSvg(box, rotation));
-        String text;
+        Writer w2 = new BufferedWriter(new OutputStreamWriter(out, StandardCharsets.UTF_8), 1 << 16);
         try (Admission.Ticket _ = Admission.jvm().enter(96L << 20)) {
-            text = svg.write(page);
+            svg.write(page, w2);
         } catch (StackOverflowError e) {
             throw new IOException("Page " + (index + 1) + " is nested too deeply to convert", e);
         } catch (OutOfMemoryError e) {
             throw Admission.NeedsMemory.causedBy(e);
         }
-        PdfFiles.stopIfInterrupted();
-        Writer w2 = new OutputStreamWriter(out, StandardCharsets.UTF_8);
-        w2.write(text);
         w2.flush();
+        PdfFiles.stopIfInterrupted();
         PageSvg.Stats s = svg.stats();
         return new Page(s.textGlyphs(), s.pathGlyphs(), s.invisibleGlyphs());
     }

@@ -13,6 +13,7 @@ import java.awt.geom.Point2D;
 import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
+import java.io.Writer;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -29,6 +30,7 @@ import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSNumber;
+import org.apache.pdfbox.pdmodel.common.function.PDFunction;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.font.PDFont;
@@ -169,31 +171,48 @@ final class PageSvg extends PDFGraphicsStreamEngine {
         return new Stats(textGlyphs, pathGlyphs, invisibleGlyphs, images, rasterShadings);
     }
 
-    String write(PDPage page) throws IOException {
+    void write(PDPage page, Writer w) throws IOException {
         processPage(page);
         annotations(page);
         flushText();
         closeAll(out);
-        StringBuilder sb = new StringBuilder(out.sb.length() + defs.length() + 1024);
-        sb.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
+        StringBuilder head = new StringBuilder(1024);
+        head.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
                 .append("<svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" version=\"1.1\"")
                 .append(" width=\"").append(Num.of(width)).append("pt\" height=\"").append(Num.of(height))
                 .append("pt\" viewBox=\"0 0 ").append(Num.of(width)).append(' ').append(Num.of(height))
                 .append("\" xml:space=\"preserve\">\n");
         String css = SvgFonts.css(new ArrayList<>(facesUsed));
         if (!css.isEmpty() || !defs.isEmpty()) {
-            sb.append("<defs>\n");
+            head.append("<defs>\n");
             if (!css.isEmpty()) {
-                sb.append("<style type=\"text/css\">\n").append(css).append("</style>\n");
+                head.append("<style type=\"text/css\">\n");
+                chunked(w, head);
+                head.setLength(0);
+                w.write(css);
+                head.append("</style>\n");
             }
-            sb.append(defs).append("</defs>\n");
+            chunked(w, head);
+            head.setLength(0);
+            chunked(w, defs);
+            head.append("</defs>\n");
         }
-        sb.append("<rect width=\"").append(Num.of(width)).append("\" height=\"").append(Num.of(height))
+        head.append("<rect width=\"").append(Num.of(width)).append("\" height=\"").append(Num.of(height))
                 .append("\" fill=\"#fff\"/>\n");
-        sb.append(out.sb);
-        sb.append(links);
-        sb.append("</svg>\n");
-        return sb.toString();
+        chunked(w, head);
+        chunked(w, out.sb);
+        chunked(w, links);
+        w.write("</svg>\n");
+    }
+
+    private static void chunked(Writer w, CharSequence sb) throws IOException {
+        char[] buf = new char[8192];
+        StringBuilder b = sb instanceof StringBuilder x ? x : new StringBuilder(sb);
+        for (int i = 0; i < b.length(); i += buf.length) {
+            int n = Math.min(buf.length, b.length() - i);
+            b.getChars(i, i + n, buf, 0);
+            w.write(buf, 0, n);
+        }
     }
 
     private String id(String prefix) {
@@ -491,6 +510,7 @@ final class PageSvg extends PDFGraphicsStreamEngine {
         }
         StringBuilder content = out.sb;
         out = saved;
+        String transfer = transferTable(mask);
         String id = id("m");
         StringBuilder sb = new StringBuilder(content.length() + 256);
         sb.append("<mask id=\"").append(id).append("\" maskUnits=\"userSpaceOnUse\" x=\"");
@@ -502,10 +522,28 @@ final class PageSvg extends PDFGraphicsStreamEngine {
         sb.append("\" height=\"");
         Num.append(sb, area.getHeight() + 2, 2);
         sb.append('"');
-        if (!luminosity) {
+        if (!luminosity || transfer != null) {
             sb.append(" mask-type=\"alpha\" style=\"mask-type:alpha\"");
         }
         sb.append(">\n");
+        if (transfer != null) {
+            String fid = id("t");
+            defs.append("<filter id=\"").append(fid).append("\" filterUnits=\"userSpaceOnUse\" x=\"");
+            Num.append(defs, area.getX() - 1, 2);
+            defs.append("\" y=\"");
+            Num.append(defs, area.getY() - 1, 2);
+            defs.append("\" width=\"");
+            Num.append(defs, area.getWidth() + 2, 2);
+            defs.append("\" height=\"");
+            Num.append(defs, area.getHeight() + 2, 2);
+            defs.append("\" color-interpolation-filters=\"sRGB\">");
+            if (luminosity) {
+                defs.append("<feColorMatrix type=\"luminanceToAlpha\"/>");
+            }
+            defs.append("<feComponentTransfer><feFuncA type=\"table\" tableValues=\"").append(transfer)
+                    .append("\"/></feComponentTransfer></filter>\n");
+            sb.append("<g filter=\"url(#").append(fid).append(")\">\n");
+        }
         if (luminosity && backdrop != 0) {
             sb.append("<rect x=\"");
             Num.append(sb, area.getX() - 1, 2);
@@ -519,9 +557,45 @@ final class PageSvg extends PDFGraphicsStreamEngine {
             Num.hex(sb, backdrop);
             sb.append("\"/>\n");
         }
-        sb.append(content).append("</mask>");
+        sb.append(content);
+        if (transfer != null) {
+            sb.append("</g>\n");
+        }
+        sb.append("</mask>");
         defs.append(sb).append('\n');
         return id;
+    }
+
+    private static String transferTable(PDSoftMask mask) {
+        COSBase tr = mask.getCOSObject().getDictionaryObject(COSName.TR);
+        if (tr == null || COSName.IDENTITY.equals(tr)) {
+            return null;
+        }
+        PDFunction f;
+        try {
+            f = PDFunction.create(tr);
+        } catch (IOException | RuntimeException e) {
+            return null;
+        }
+        StringBuilder sb = new StringBuilder();
+        boolean identity = true;
+        int n = 33;
+        for (int i = 0; i < n; i++) {
+            float x = i / (float) (n - 1);
+            float y;
+            try {
+                float[] r = f.eval(new float[] {x});
+                y = r.length == 0 || !Float.isFinite(r[0]) ? x : Math.max(0, Math.min(1, r[0]));
+            } catch (IOException | RuntimeException e) {
+                return null;
+            }
+            identity &= Math.abs(y - x) < 1e-4;
+            if (i > 0) {
+                sb.append(' ');
+            }
+            Num.append(sb, y, 4);
+        }
+        return identity ? null : sb.toString();
     }
 
     private boolean emit(CharSequence element) {
@@ -937,7 +1011,9 @@ final class PageSvg extends PDFGraphicsStreamEngine {
                 Num.append(sb, opacity, 3);
                 sb.append('"');
             }
-            sb.append(" xlink:href=\"").append(enc.uri()).append("\"/>");
+            sb.append(" xlink:href=\"");
+            enc.appendUri(sb);
+            sb.append("\"/>");
             return sb.toString();
         } catch (IOException e) {
             return null;
@@ -1053,7 +1129,7 @@ final class PageSvg extends PDFGraphicsStreamEngine {
         }
         imagePixels += px;
         String id = id("i");
-        StringBuilder sb = new StringBuilder();
+        StringBuilder sb = defs;
         String smaskId = null;
         Pictures.Encoded enc = null;
         if (!stencil && image instanceof PDImageXObject x && x.getMask() == null) {
@@ -1065,8 +1141,9 @@ final class PageSvg extends PDFGraphicsStreamEngine {
                 smaskId = id("m");
                 sb.append("<mask id=\"").append(smaskId).append("\" maskUnits=\"userSpaceOnUse\" x=\"0\" y=\"0\" width=\"")
                         .append(w).append("\" height=\"").append(h).append("\"><image width=\"").append(w)
-                        .append("\" height=\"").append(h).append("\" preserveAspectRatio=\"none\" xlink:href=\"")
-                        .append(menc.uri()).append("\"/></mask>\n");
+                        .append("\" height=\"").append(h).append("\" preserveAspectRatio=\"none\" xlink:href=\"");
+                menc.appendUri(sb);
+                sb.append("\"/></mask>\n");
             }
         }
         if (enc == null) {
@@ -1089,8 +1166,9 @@ final class PageSvg extends PDFGraphicsStreamEngine {
         if (smaskId != null) {
             sb.append(" mask=\"url(#").append(smaskId).append(")\"");
         }
-        sb.append(" xlink:href=\"").append(enc.uri()).append("\"/>");
-        defs.append(sb).append('\n');
+        sb.append(" xlink:href=\"");
+        enc.appendUri(sb);
+        sb.append("\"/>\n");
         imageIds.put(key, id);
         return id;
     }

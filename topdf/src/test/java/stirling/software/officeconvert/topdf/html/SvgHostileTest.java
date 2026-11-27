@@ -17,6 +17,7 @@ import java.nio.file.Path;
 import java.util.Base64;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.regex.Pattern;
 import java.util.zip.CRC32;
 import java.util.zip.GZIPOutputStream;
 
@@ -198,6 +199,19 @@ class SvgHostileTest {
                 + "<rect width=\"100\" height=\"100\" filter=\"url(#d)\"/>"
                 + "<rect width=\"100\" height=\"100\" filter=\"url(#l)\"/></svg>");
         assertTrue(text.contains("bounded"));
+    }
+
+    @Test
+    @Timeout(value = 60, unit = TimeUnit.SECONDS)
+    void aHugePathLengthNeverMakesMicroscopicDashes() throws IOException {
+        String text = convert("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"2000\" height=\"2000\">"
+                + "<text x=\"10\" y=\"40\">dashed</text><path d=\"M0 100H2000V2000H0Z\" stroke=\"black\""
+                + " stroke-dasharray=\"1 1\" pathLength=\"1e30\" fill=\"none\"/></svg>");
+        assertTrue(text.contains("dashed"));
+        try (PDDocument doc = Loader.loadPDF(dir.resolve("in").resolve("in.svg.pdf").toFile())) {
+            String content = new String(doc.getPage(0).getContents().readAllBytes(), StandardCharsets.ISO_8859_1);
+            assertFalse(Pattern.compile("\\]\\s*\\S+\\s+d\\b").matcher(content).find(), "no dash pattern");
+        }
     }
 
     private static byte[] png(int w, int h) throws IOException {

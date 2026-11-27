@@ -88,13 +88,27 @@ final class SvgDraw {
     private AffineTransform rootView;
     int feImages;
 
-    record Paint(int rgb, float alpha, Element server, boolean none, String fallback) {
+    record Paint(int rgb, float alpha, Element server, boolean none, String fallback, AffineTransform space,
+            Rectangle2D box) {
         static final Paint NONE = new Paint(0, 0, null, true, null);
 
         Paint(int rgb, float alpha, Element server, boolean none) {
             this(rgb, alpha, server, none, null);
         }
+
+        Paint(int rgb, float alpha, Element server, boolean none, String fallback) {
+            this(rgb, alpha, server, none, fallback, null, null);
+        }
+
+        Paint inContext(AffineTransform at, Rectangle2D bounds) {
+            if (server == null || space != null) {
+                return this;
+            }
+            return new Paint(rgb, alpha, server, none, fallback, at, bounds);
+        }
     }
+
+    private AffineTransform rawOverride;
 
     private SvgDraw(SvgDoc doc, PdfOutput output, FontLibrary fonts, List<String> warnings) {
         this.doc = doc;
@@ -179,7 +193,7 @@ final class SvgDraw {
 
     private void root(Element svg, float width, float height) throws IOException {
         SvgStyle style = SvgStyle.root().child(doc.specified(svg));
-        if (style.own("display", "inline").equalsIgnoreCase("none")) {
+        if (style.own("display", "inline").equalsIgnoreCase("none") || !conditionsPass(svg)) {
             return;
         }
         String background = style.own("background-color", "");
@@ -200,6 +214,8 @@ final class SvgDraw {
         canvas.save();
         try {
             rootView = t;
+            rootElement = svg;
+            rootSize = new float[] {width, height};
             render(svg, style, "svg", 0, 0);
         } finally {
             canvas.restore();
@@ -297,7 +313,7 @@ final class SvgDraw {
     }
 
 
-    static AffineTransform transform(SvgStyle s, Element e) {
+    AffineTransform transform(SvgStyle s, Element e) {
         String v = s.own.get("transform");
         if (v == null || v.isBlank() || v.equalsIgnoreCase("none")) {
             return null;
@@ -306,30 +322,60 @@ final class SvgDraw {
         if (t == null) {
             return null;
         }
-        String origin = s.own.get("transform-origin");
-        if (origin != null && !origin.isBlank()) {
-            float[] o = originOf(origin, s);
-            if (o[0] != 0 || o[1] != 0) {
-                AffineTransform withOrigin = AffineTransform.getTranslateInstance(o[0], o[1]);
-                withOrigin.concatenate(t);
-                withOrigin.translate(-o[0], -o[1]);
-                return withOrigin;
+        if (e == rootElement && rootSize != null) {
+            String origin = s.own.get("transform-origin");
+            viewports.push(rootSize);
+            try {
+                return withOrigin(t, origin == null || origin.isBlank() ? "center" : origin, s.fontSize);
+            } finally {
+                viewports.pop();
             }
         }
-        return t;
+        return withOrigin(t, s.own.get("transform-origin"), s.fontSize);
     }
 
-    private static float[] originOf(String v, SvgStyle s) {
-        String[] parts = v.strip().toLowerCase(Locale.ROOT).split("\\s+");
-        float[] out = new float[2];
-        for (int i = 0; i < Math.min(2, parts.length); i++) {
-            String p = parts[i];
-            out[i] = switch (p) {
-                case "left", "top", "center" -> 0;
-                default -> length(p, s.fontSize, 0, 0);
-            };
+    private Element rootElement;
+    private float[] rootSize;
+
+    AffineTransform withOrigin(AffineTransform t, String origin, float fontSize) {
+        if (origin == null || origin.isBlank()) {
+            return t;
         }
+        float[] o = originOf(origin, fontSize);
+        if (o[0] == 0 && o[1] == 0) {
+            return t;
+        }
+        AffineTransform out = AffineTransform.getTranslateInstance(o[0], o[1]);
+        out.concatenate(t);
+        out.translate(-o[0], -o[1]);
         return out;
+    }
+
+    private float[] originOf(String v, float fontSize) {
+        String[] parts = v.strip().toLowerCase(Locale.ROOT).split("[\\s,]+");
+        String x = parts[0];
+        String y = parts.length > 1 ? parts[1] : null;
+        boolean swap = y == null
+                ? x.equals("top") || x.equals("bottom")
+                : x.equals("top") || x.equals("bottom") || y.equals("left") || y.equals("right");
+        if (swap) {
+            String t = x;
+            x = y;
+            y = t;
+        }
+        return new float[] {originPart(x, fontSize, vw()), originPart(y, fontSize, vh())};
+    }
+
+    private static float originPart(String p, float fontSize, float size) {
+        if (p == null) {
+            return size / 2;
+        }
+        return switch (p) {
+            case "left", "top" -> 0;
+            case "center" -> size / 2;
+            case "right", "bottom" -> size;
+            default -> length(p, fontSize, size, 0);
+        };
     }
 
     static AffineTransform parseTransform(String v) {
@@ -630,13 +676,16 @@ final class SvgDraw {
         void draw() throws IOException;
     }
 
+    private static final Set<String> SWITCHABLE = Set.of("path", "rect", "circle", "ellipse", "line", "polyline",
+            "polygon", "text", "g", "svg", "use", "image", "switch", "a", "foreignobject");
+
     private void content(Element e, SvgStyle s, String tag, int depth, int useDepth, float alpha) throws IOException {
         switch (tag) {
             case "g", "a" -> group(e, s, depth, useDepth, null);
             case "switch" -> {
                 for (Element c : e.children()) {
                     String t = SvgDoc.local(c);
-                    if (conditionsPass(c) && !t.equals("title") && !t.equals("desc") && !t.equals("metadata")) {
+                    if (conditionsPass(c) && SWITCHABLE.contains(t)) {
                         element(c, s, depth + 1, useDepth);
                         break;
                     }
@@ -755,6 +804,9 @@ final class SvgDraw {
     }
 
     AffineTransform raw() {
+        if (rawOverride != null) {
+            return new AffineTransform(rawOverride);
+        }
         AffineTransform raw = new AffineTransform(1, 0, 0, -1, 0, canvas.height());
         raw.concatenate(canvas.transform());
         return raw;
@@ -1010,16 +1062,34 @@ final class SvgDraw {
                         t.concatenate(tt);
                     }
                 }
-                if (!s.own("clip-path", "none").equalsIgnoreCase("none")) {
+                String childRef = s.own("clip-path", "none");
+                Element childClip = childRef.equalsIgnoreCase("none") ? null : doc.byUrl(childRef);
+                if (!childRef.equalsIgnoreCase("none")
+                        && (childClip == null || !SvgDoc.local(childClip).equals("clippath"))) {
                     return null;
                 }
                 Shape g = tag.equals("text") ? text.outline(target, s) : geometry(target, s, tag);
                 if (g == null) {
                     continue;
                 }
-                Path2D p = new Path2D.Double(g, t);
-                p.setWindingRule(SvgDoc.lower(s.get("clip-rule")).equals("evenodd") ? Path2D.WIND_EVEN_ODD
-                        : Path2D.WIND_NON_ZERO);
+                Shape shape = g;
+                if (childClip != null && !active.contains(childClip)) {
+                    Shape cut = clipShape(childClip, g.getBounds2D(), depth + 1);
+                    if (cut == null) {
+                        return null;
+                    }
+                    Path2D.Double own2 = new Path2D.Double(g);
+                    own2.setWindingRule(SvgDoc.lower(s.get("clip-rule")).equals("evenodd") ? Path2D.WIND_EVEN_ODD
+                            : Path2D.WIND_NON_ZERO);
+                    Area a = new Area(own2);
+                    a.intersect(new Area(cut));
+                    shape = a;
+                }
+                Path2D p = new Path2D.Double(shape, t);
+                if (shape == g) {
+                    p.setWindingRule(SvgDoc.lower(s.get("clip-rule")).equals("evenodd") ? Path2D.WIND_EVEN_ODD
+                            : Path2D.WIND_NON_ZERO);
+                }
                 count++;
                 if (count == 1) {
                     single = p;
@@ -1033,7 +1103,7 @@ final class SvgDraw {
             Shape result = count == 0 ? new Rectangle2D.Double() : union != null ? union : single;
             String outer = cs.own("clip-path", "none");
             Element o = outer.equalsIgnoreCase("none") ? null : doc.byUrl(outer);
-            if (o != null && SvgDoc.local(o).equals("clippath")) {
+            if (o != null && SvgDoc.local(o).equals("clippath") && !active.contains(o)) {
                 Shape os = clipShape(o, bbox, depth + 1);
                 if (os == null) {
                     return null;
@@ -1172,6 +1242,12 @@ final class SvgDraw {
             case "ellipse": {
                 float rx = x(e, "rx", s, Float.NaN);
                 float ry = y(e, "ry", s, Float.NaN);
+                if (rx < 0) {
+                    rx = Float.NaN;
+                }
+                if (ry < 0) {
+                    ry = Float.NaN;
+                }
                 if (Float.isNaN(rx)) {
                     rx = ry;
                 }
@@ -1250,7 +1326,7 @@ final class SvgDraw {
         Path2D p = new Path2D.Double(g);
         p.setWindingRule(SvgDoc.lower(s.get("fill-rule")).equals("evenodd") ? Path2D.WIND_EVEN_ODD
                 : Path2D.WIND_NON_ZERO);
-        boolean markable = tag.equals("path") || tag.equals("line") || tag.equals("polyline") || tag.equals("polygon");
+        boolean markable = isShape(tag) && !tag.equals("image");
         paintShape(p, e, s, alpha, markable);
     }
 
@@ -1273,7 +1349,16 @@ final class SvgDraw {
                         Paint stroke = paint(s.get("stroke"), s);
                         float w = strokeWidth(s);
                         if (!stroke.none() && w > 0) {
-                            stroke(p, stroke, alpha * Css.opacity(s.get("stroke-opacity")), bbox, s, w);
+                            float savedScale = dashScale;
+                            double savedLength = dashedLength;
+                            dashedLength = dashes(s) == null ? 0 : pathLength(p);
+                            dashScale = dashScale(e, s, dashedLength);
+                            try {
+                                stroke(p, stroke, alpha * Css.opacity(s.get("stroke-opacity")), bbox, s, w);
+                            } finally {
+                                dashScale = savedScale;
+                                dashedLength = savedLength;
+                            }
                         }
                     }
                 }
@@ -1366,7 +1451,19 @@ final class SvgDraw {
             return;
         }
         PDPageContentStream cs = canvas.stream();
-        Server server = paint.server() == null ? null : server(paint.server(), bbox, s);
+        Server server = null;
+        if (paint.server() != null) {
+            AffineTransform savedRaw = rawOverride;
+            if (paint.space() != null) {
+                rawOverride = paint.space();
+                bbox = paint.box();
+            }
+            try {
+                server = server(paint.server(), bbox, s);
+            } finally {
+                rawOverride = savedRaw;
+            }
+        }
         if (paint.server() != null && server == null) {
             if (paint.fallback() == null || stops(paint.server()).size() > 0
                     && !SvgDoc.local(paint.server()).equals("pattern")) {
@@ -1442,6 +1539,56 @@ final class SvgDraw {
         }
     }
 
+    private float dashScale = 1;
+
+    private double dashedLength;
+
+    private static final double MAX_DASHES = 100_000;
+
+    private float dashScale(Element e, SvgStyle s, double total) {
+        if (e == null || !(total > 0) || !SvgDoc.has(e, "pathLength") || !isShape(SvgDoc.local(e))) {
+            return 1;
+        }
+        float want = number(SvgDoc.attr(e, "pathLength"), Float.NaN);
+        if (!(want > 0)) {
+            return 1;
+        }
+        float k = (float) (total / want);
+        return Float.isFinite(k) && k > 0 ? k : 1;
+    }
+
+    private double pathLength(Path2D p) {
+        double total = 0;
+        double[] c = new double[6];
+        double x = 0;
+        double y = 0;
+        double sx = 0;
+        double sy = 0;
+        int steps = 0;
+        for (PathIterator it = p.getPathIterator(null, 0.01); !it.isDone() && steps++ < 1_000_000; it.next()) {
+            switch (it.currentSegment(c)) {
+                case PathIterator.SEG_MOVETO -> {
+                    x = sx = c[0];
+                    y = sy = c[1];
+                }
+                case PathIterator.SEG_LINETO -> {
+                    total += Math.hypot(c[0] - x, c[1] - y);
+                    x = c[0];
+                    y = c[1];
+                }
+                case PathIterator.SEG_CLOSE -> {
+                    total += Math.hypot(sx - x, sy - y);
+                    x = sx;
+                    y = sy;
+                }
+                default -> {
+                }
+            }
+        }
+        charge(steps);
+        return total;
+    }
+
     void strokeStyle(PDPageContentStream cs, SvgStyle s, float width) throws IOException {
         cs.setLineWidth(width);
         cs.setLineCapStyle(switch (SvgDoc.lower(s.get("stroke-linecap"))) {
@@ -1456,7 +1603,15 @@ final class SvgDraw {
         float[] dash = dashes(s);
         if (dash != null) {
             float offset = length(s.get("stroke-dashoffset"), s.fontSize, diagonal(), 0);
-            cs.setLineDashPattern(dash, offset);
+            double period = 0;
+            for (int i = 0; i < dash.length; i++) {
+                dash[i] *= dashScale;
+                period += dash[i];
+            }
+            offset *= dashScale;
+            if (!(dashedLength > 0) || dashedLength / period <= MAX_DASHES) {
+                cs.setLineDashPattern(dash, offset);
+            }
         }
     }
 
@@ -1555,6 +1710,8 @@ final class SvgDraw {
             if (SvgDoc.has(cur, attr)) {
                 AffineTransform t = parseTransform(SvgDoc.attr(cur, attr));
                 if (t != null) {
+                    SvgStyle cs = domStyle(cur);
+                    t = withOrigin(t, cs.own("transform-origin", SvgDoc.attr(cur, "transform-origin")), cs.fontSize);
                     return Math.abs(t.getDeterminant()) < 1e-12 ? null : t;
                 }
             }
@@ -1655,6 +1812,18 @@ final class SvgDraw {
             Stop st = stops.get(0);
             return new Server(null, null, new Color((st.rgb() >> 16) & 0xFF, (st.rgb() >> 8) & 0xFF, st.rgb() & 0xFF,
                     Math.round(st.alpha() * 255)));
+        }
+        if (stops.get(0).offset() <= 0 && stops.get(1).offset() <= 0) {
+            List<Stop> kept = new ArrayList<>(stops);
+            int last = 1;
+            while (last + 1 < kept.size() && kept.get(last + 1).offset() <= 0) {
+                last++;
+            }
+            Stop edge = kept.get(last);
+            float next = last + 1 < kept.size() ? kept.get(last + 1).offset() : 1;
+            kept.subList(1, last + 1).clear();
+            kept.add(1, new Stop(Math.min(1e-4f, next / 2), edge.rgb(), edge.alpha()));
+            stops = kept;
         }
         boolean box = !SvgDoc.lower(chainedAttr(e, "gradientUnits", "objectBoundingBox")).equals("userspaceonuse");
         if (box && (bbox == null || bbox.getWidth() <= 0 || bbox.getHeight() <= 0)) {
@@ -2093,11 +2262,26 @@ final class SvgDraw {
             }
             return;
         }
+        Paint savedFill = contextFill;
+        Paint savedStroke = contextStroke;
         try {
             for (Element p = e; p != null; p = p.parent()) {
                 if (p == target) {
                     return;
                 }
+            }
+            Paint fill = paint(s.get("fill"), s);
+            Paint stroke = paint(s.get("stroke"), s);
+            if (fill.server() != null || stroke.server() != null) {
+                AffineTransform here = raw();
+                active.remove(target);
+                Rectangle2D box = bbox(e, s, "use", 0);
+                active.add(target);
+                contextFill = fill.inContext(here, box);
+                contextStroke = stroke.inContext(here, box);
+            } else {
+                contextFill = fill;
+                contextStroke = stroke;
             }
             canvas.translate(x(e, "x", s, 0), y(e, "y", s, 0));
             String tag = SvgDoc.local(target);
@@ -2137,7 +2321,16 @@ final class SvgDraw {
                     viewports.push(new float[] {w, h});
                 }
                 try {
-                    group(target, ts, depth, useDepth + 1, null);
+                    float opacity = Css.opacity(ts.own("opacity", "1"));
+                    if (opacity <= 0) {
+                        return;
+                    }
+                    if (opacity < 1 && groups < MAX_GROUP_DEPTH) {
+                        composite(() -> group(target, ts, depth, useDepth + 1, null), opacity, "normal", null, null,
+                                target, ts, null);
+                    } else {
+                        group(target, ts, depth, useDepth + 1, null);
+                    }
                 } finally {
                     viewports.pop();
                 }
@@ -2153,6 +2346,8 @@ final class SvgDraw {
             }
             element(target, s, depth + 1, useDepth + 1);
         } finally {
+            contextFill = savedFill;
+            contextStroke = savedStroke;
             active.remove(target);
         }
     }
@@ -2414,8 +2609,10 @@ final class SvgDraw {
         Paint stroke = paint(s.get("stroke"), s);
         Paint savedFill = contextFill;
         Paint savedStroke = contextStroke;
-        contextFill = fill;
-        contextStroke = stroke;
+        AffineTransform here = raw();
+        Rectangle2D box = p.getBounds2D();
+        contextFill = fill.inContext(here, box);
+        contextStroke = stroke.inContext(here, box);
         try {
             for (int i = 0; i < v.size(); i++) {
                 Element m = i == 0 ? start : i == v.size() - 1 ? end : mid;
@@ -2505,12 +2702,12 @@ final class SvgDraw {
         float k = 1;
         if (t.endsWith("deg")) {
             t = t.substring(0, t.length() - 3);
-        } else if (t.endsWith("rad")) {
-            t = t.substring(0, t.length() - 3);
-            k = (float) (180 / Math.PI);
         } else if (t.endsWith("grad")) {
             t = t.substring(0, t.length() - 4);
             k = 0.9f;
+        } else if (t.endsWith("rad")) {
+            t = t.substring(0, t.length() - 3);
+            k = (float) (180 / Math.PI);
         } else if (t.endsWith("turn")) {
             t = t.substring(0, t.length() - 4);
             k = 360;

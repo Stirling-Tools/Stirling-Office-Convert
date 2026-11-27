@@ -11,9 +11,11 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.graphics.state.PDExtendedGraphicsState;
@@ -90,6 +92,9 @@ final class SvgText {
             }
             Element e = sp.element();
             SvgStyle s = sp.style();
+            if (SvgDoc.local(e).equals("textpath")) {
+                continue;
+            }
             assign(xs, lengths(SvgDoc.attr(e, "x"), s, draw.vw()), l, start, sp.end(), false);
             assign(ys, lengths(SvgDoc.attr(e, "y"), s, draw.vh()), l, start, sp.end(), false);
             assign(dxs, lengths(SvgDoc.attr(e, "dx"), s, draw.vw()), l, start, sp.end(), false);
@@ -238,7 +243,7 @@ final class SvgText {
                 if (c.cp == '\n' || c.cp == '\r' || c.cp == '\t') {
                     c.cp = ' ';
                 }
-                lastSpace = false;
+                lastSpace = c.cp == ' ';
                 continue;
             }
             if (c.cp == '\n' || c.cp == '\r') {
@@ -484,7 +489,8 @@ final class SvgText {
             if (Character.isISOControl(c.cp)) {
                 adv = 0;
             }
-            if (prev >= 0 && l.chars.get(prev).face == c.face && !SvgDoc.lower(c.style.get("font-kerning")).equals("none")
+            if (!starts && prev >= 0 && l.chars.get(prev).face == c.face
+                    && !SvgDoc.lower(c.style.get("font-kerning")).equals("none")
                     && !SvgDoc.lower(c.style.get("kerning")).equals("0")) {
                 int k = c.face.pairKerning(l.chars.get(prev).cp, c.cp);
                 if (k != 0) {
@@ -502,7 +508,15 @@ final class SvgText {
         if (chunk >= 0) {
             chunks.add(new int[] {chunk, prev});
         }
-        textLength(l, text, style);
+        boolean spanLength = false;
+        for (Span sp : l.spans) {
+            if (sp.element() != text && SvgDoc.has(sp.element(), "textLength")) {
+                spanLength |= textLength(l, sp.element(), sp.style(), sp.start(), sp.end());
+            }
+        }
+        if (!spanLength) {
+            textLength(l, text, style, 0, l.chars.size());
+        }
         for (int[] ch : chunks) {
             anchor(l, ch[0], ch[1]);
         }
@@ -767,26 +781,26 @@ final class SvgText {
         return pen;
     }
 
-    private static float shiftOf(SvgStyle s) {
+    private float shiftOf(SvgStyle s) {
         String v = SvgDoc.lower(s.own("baseline-shift", "0"));
         float fs = s.fontSize;
         return switch (v) {
-            case "sub" -> 0.2f * fs;
-            case "super" -> -0.4f * fs;
+            case "sub" -> face(s).subscriptOffset() * fs;
+            case "super" -> -face(s).superscriptOffset() * fs;
             case "baseline", "0", "" -> 0;
             default -> -SvgDraw.length(v, fs, fs, 0);
         };
     }
 
-    private void textLength(Layout l, Element text, SvgStyle style) {
+    private boolean textLength(Layout l, Element text, SvgStyle style, int from, int to) {
         float want = SvgDraw.length(SvgDoc.attr(text, "textLength"), style.fontSize, draw.vw(), Float.NaN);
-        if (!(want > 0)) {
-            return;
+        if (!(want >= 0)) {
+            return false;
         }
         int first = -1;
         int last = -1;
         int count = 0;
-        for (int i = 0; i < l.chars.size(); i++) {
+        for (int i = from; i < to; i++) {
             if (!l.chars.get(i).skipped) {
                 if (first < 0) {
                     first = i;
@@ -796,13 +810,13 @@ final class SvgText {
             }
         }
         if (first < 0) {
-            return;
+            return false;
         }
         Ch a = l.chars.get(first);
         Ch b = l.chars.get(last);
         float have = b.x + b.advance - a.x;
         if (!(have > 0)) {
-            return;
+            return false;
         }
         boolean glyphs = SvgDoc.lower(SvgDoc.attr(text, "lengthAdjust")).equals("spacingandglyphs");
         if (glyphs) {
@@ -825,6 +839,7 @@ final class SvgText {
                 }
             }
         }
+        return true;
     }
 
     private void anchor(Layout l, int from, int to) {
@@ -832,9 +847,6 @@ final class SvgText {
         String a = SvgDoc.lower(first.style.get("text-anchor"));
         if (SvgDoc.lower(first.style.get("direction")).equals("rtl")) {
             a = a.equals("end") ? "start" : a.equals("start") || a.isEmpty() ? "end" : a;
-        }
-        if (!a.equals("middle") && !a.equals("end")) {
-            return;
         }
         float min = Float.MAX_VALUE;
         float max = -Float.MAX_VALUE;
@@ -850,7 +862,7 @@ final class SvgText {
             return;
         }
         float w = max - min;
-        float shift = a.equals("middle") ? -w / 2 : -w;
+        float shift = a.equals("middle") ? -w / 2 : a.equals("end") ? -w : 0;
         float origin = first.x;
         shift += origin - min;
         for (int i = from; i <= to; i++) {
@@ -881,7 +893,7 @@ final class SvgText {
                 String tag = SvgDoc.local(ref);
                 SvgStyle rs = draw.domStyle(ref);
                 shape = draw.geometry(ref, rs, tag);
-                AffineTransform t = SvgDraw.transform(rs, ref);
+                AffineTransform t = draw.transform(rs, ref);
                 if (shape != null && t != null) {
                     shape = t.createTransformedShape(shape);
                 }
@@ -1236,11 +1248,39 @@ final class SvgText {
         return path;
     }
 
+    private static Set<String> decorationLines(String v) {
+        Set<String> out = new HashSet<>();
+        for (String t : SvgDoc.lower(v).strip().split("\\s+")) {
+            switch (t) {
+                case "underline", "overline", "line-through" -> out.add(t);
+                case "none", "", "blink" -> {
+                }
+                default -> {
+                    if (!t.startsWith("#") && !t.startsWith("rgb") && Css.color(t) == null
+                            && !t.equals("solid") && !t.equals("double") && !t.equals("dotted") && !t.equals("dashed")
+                            && !t.equals("wavy")) {
+                        return new HashSet<>();
+                    }
+                }
+            }
+        }
+        return out;
+    }
+
     private void decorations(Layout l, Element text, SvgStyle style, Rectangle2D bbox, float alpha)
             throws IOException {
         for (Span sp : l.spans) {
-            String deco = SvgDoc.lower(sp.style().own("text-decoration", sp.style().own("text-decoration-line", "")));
-            if (deco.isEmpty() || deco.equals("none")) {
+            Set<String> deco = decorationLines(
+                    sp.style().own("text-decoration", sp.style().own("text-decoration-line", "")));
+            if (sp.element() == text) {
+                int hops = 0;
+                for (Element p = text.parent(); p != null && hops++ < 64; p = p.parent()) {
+                    Map<String, String> spec = draw.doc.specified(p);
+                    deco.addAll(decorationLines(spec.getOrDefault("text-decoration",
+                            spec.getOrDefault("text-decoration-line", ""))));
+                }
+            }
+            if (deco.isEmpty()) {
                 continue;
             }
             SvgStyle ds = sp.style();

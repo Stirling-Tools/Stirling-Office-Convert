@@ -9,6 +9,7 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -32,6 +33,7 @@ import org.apache.pdfbox.pdmodel.common.function.PDFunctionType2;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
 import org.apache.pdfbox.pdmodel.graphics.color.PDDeviceRGB;
+import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
 import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory;
 import org.apache.pdfbox.pdmodel.graphics.shading.PDShading;
 import org.apache.pdfbox.pdmodel.graphics.shading.PDShadingType2;
@@ -172,6 +174,61 @@ class PdfToSvgTest {
                 .startsWith("data:image/png;base64,")), "the picture is inline");
         assertEquals(11, r.textGlyphs());
         assertEquals(0, r.pathGlyphs());
+    }
+
+    @Test
+    void aSoftMaskTransferFunctionStaysVector() throws Exception {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try (PDDocument doc = new PDDocument()) {
+            PDPage page = new PDPage(new PDRectangle(200, 100));
+            doc.addPage(page);
+            PDFormXObject group = new PDFormXObject(doc);
+            group.setBBox(new PDRectangle(20, 20, 80, 60));
+            COSDictionary g = new COSDictionary();
+            g.setItem(COSName.TYPE, COSName.GROUP);
+            g.setItem(COSName.S, COSName.TRANSPARENCY);
+            g.setItem(COSName.CS, COSName.DEVICEGRAY);
+            group.getCOSObject().setItem(COSName.GROUP, g);
+            try (OutputStream o = group.getContentStream().createOutputStream()) {
+                o.write("0 g 20 20 40 60 re f".getBytes(StandardCharsets.US_ASCII));
+            }
+            COSDictionary tr = new COSDictionary();
+            tr.setInt(COSName.FUNCTION_TYPE, 2);
+            tr.setItem(COSName.DOMAIN, array(0, 1));
+            tr.setItem(COSName.C0, array(0.25f));
+            tr.setItem(COSName.C1, array(0.75f));
+            tr.setInt(COSName.N, 1);
+            COSDictionary mask = new COSDictionary();
+            mask.setItem(COSName.TYPE, COSName.MASK);
+            mask.setItem(COSName.S, COSName.LUMINOSITY);
+            mask.setItem(COSName.G, group);
+            mask.setItem(COSName.TR, tr);
+            PDExtendedGraphicsState gs = new PDExtendedGraphicsState();
+            gs.getCOSObject().setItem(COSName.SMASK, mask);
+            try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+                cs.setGraphicsStateParameters(gs);
+                cs.setNonStrokingColor(1f, 0f, 0f);
+                cs.addRect(0, 0, 200, 100);
+                cs.fill();
+            }
+            PdfToSvg.writePage(doc, 0, out, PdfToSvg.Options.defaults());
+        }
+        Document d = xml(out.toByteArray());
+        List<Element> funcs = all(d, "feFuncA");
+        assertEquals(1, funcs.size(), "the transfer function is a filter table");
+        String[] table = funcs.get(0).getAttribute("tableValues").split(" ");
+        assertEquals("0.25", table[0]);
+        assertEquals("0.75", table[table.length - 1]);
+        assertEquals("alpha", all(d, "mask").get(0).getAttribute("mask-type"));
+        assertTrue(all(d, "image").isEmpty(), "no picture stands in for the mask");
+    }
+
+    private static COSArray array(float... v) {
+        COSArray a = new COSArray();
+        for (float f : v) {
+            a.add(new COSFloat(f));
+        }
+        return a;
     }
 
     @Test

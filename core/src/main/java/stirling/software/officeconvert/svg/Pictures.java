@@ -4,6 +4,7 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
 
@@ -31,8 +32,16 @@ final class Pictures {
     private Pictures() {}
 
     record Encoded(String mime, byte[] bytes) {
-        String uri() {
-            return "data:" + mime + ";base64," + Base64.getEncoder().encodeToString(bytes);
+        void appendUri(StringBuilder sb) {
+            sb.append("data:").append(mime).append(";base64,");
+            Base64.Encoder e = Base64.getEncoder();
+            int step = 3 * 4096;
+            for (int i = 0; i < bytes.length; i += step) {
+                byte[] part = e.encode(Arrays.copyOfRange(bytes, i, Math.min(bytes.length, i + step)));
+                for (byte b : part) {
+                    sb.append((char) b);
+                }
+            }
         }
     }
 

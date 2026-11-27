@@ -626,6 +626,28 @@ final class FontProgram {
         return p instanceof GposKerning g ? g.kerning(leftGlyph, rightGlyph) : 0;
     }
 
+    private volatile int[] scripts;
+
+    int[] scriptOffsets() {
+        int[] out = scripts;
+        if (out == null) {
+            out = new int[2];
+            if (!entry.postScript()) {
+                try (Opened o = open(entry)) {
+                    OS2WindowsMetricsTable os2 = o.font().getOS2Windows();
+                    if (os2 != null) {
+                        out[0] = os2.getSubscriptYOffset();
+                        out[1] = os2.getSuperscriptYOffset();
+                    }
+                } catch (IOException | RuntimeException e) {
+                    out = new int[2];
+                }
+            }
+            scripts = out;
+        }
+        return out;
+    }
+
     private static GposKerning gpos(TrueTypeFont ttf) {
         try {
             TTFTable t = ttf.getTableMap().get("GPOS");

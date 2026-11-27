@@ -30,7 +30,7 @@ final class SvgCss {
             "stroke-dashoffset", "stroke-linecap", "stroke-linejoin", "stroke-miterlimit", "stroke-opacity",
             "stroke-width", "text-anchor", "text-decoration", "text-rendering", "unicode-bidi", "visibility",
             "word-spacing", "writing-mode", "mix-blend-mode", "isolation", "paint-order", "mask-type",
-            "transform-origin", "white-space", "glyph-orientation-vertical", "font-kerning", "font-variant-caps",
+            "transform-origin", "white-space", "glyph-orientation-vertical", "font-variant-caps",
             "text-orientation", "vector-effect");
 
     record Rule(String selector, Map<String, String> declarations, int specificity, int order) {}
@@ -201,6 +201,14 @@ final class SvgCss {
 
     private static void font(Map<String, String> out, String value) {
         List<String> parts = Css.tokens(value);
+        if (parts.size() < 2) {
+            return;
+        }
+        out.put("font-style", "normal");
+        out.put("font-weight", "normal");
+        out.put("font-variant", "normal");
+        out.put("font-stretch", "normal");
+        out.put("font-kerning", "auto");
         int i = 0;
         while (i < parts.size()) {
             String p = parts.get(i).toLowerCase(Locale.ROOT);

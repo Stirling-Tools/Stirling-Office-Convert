@@ -56,10 +56,18 @@ final class SvgPath {
             } else {
                 return;
             }
+            char upper = Character.toUpperCase(cmd);
+            if (last == ' ' && upper != 'M') {
+                return;
+            }
+            if (!open && (last == 'Z' || last == 'z') && upper != 'M' && upper != 'Z') {
+                path.moveTo(x, y);
+                open = true;
+            }
             boolean rel = Character.isLowerCase(cmd);
             float ox = rel ? x : 0;
             float oy = rel ? y : 0;
-            switch (Character.toUpperCase(cmd)) {
+            switch (upper) {
                 case 'M' -> {
                     x = ox + num();
                     y = oy + num();
