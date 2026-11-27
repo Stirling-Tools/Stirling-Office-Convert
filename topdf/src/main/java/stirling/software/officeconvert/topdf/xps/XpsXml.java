@@ -2,7 +2,9 @@ package stirling.software.officeconvert.topdf.xps;
 
 import java.awt.geom.AffineTransform;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import org.w3c.dom.Element;
@@ -115,6 +117,28 @@ final class XpsXml {
         for (Element e : elements(parent)) {
             if (localName.equals(e.getLocalName())) {
                 out.add(e);
+            }
+        }
+        return out;
+    }
+
+    static Map<String, Element> properties(Element parent) {
+        Map<String, Element> out = new HashMap<>();
+        for (Node n = parent.getFirstChild(); n != null; n = n.getNextSibling()) {
+            if (n instanceof Element e) {
+                if (MC.equals(e.getNamespaceURI())) {
+                    for (Element x : elements(parent)) {
+                        String name = x.getLocalName();
+                        if (name != null && name.indexOf('.') >= 0) {
+                            out.putIfAbsent(name, x);
+                        }
+                    }
+                    return out;
+                }
+                String name = e.getLocalName();
+                if (name != null && name.indexOf('.') >= 0 && ours(e)) {
+                    out.putIfAbsent(name, e);
+                }
             }
         }
         return out;

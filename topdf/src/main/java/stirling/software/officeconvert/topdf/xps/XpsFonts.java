@@ -546,7 +546,7 @@ final class XpsFonts {
 
     private COSStream stream(byte[] data) throws IOException {
         COSStream s = document.getDocument().createCOSStream();
-        try (OutputStream os = s.createOutputStream(COSName.FLATE_DECODE)) {
+        try (OutputStream os = XpsOps.flate(s)) {
             os.write(data);
         }
         return s;

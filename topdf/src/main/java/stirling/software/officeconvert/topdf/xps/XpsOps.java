@@ -10,10 +10,13 @@ import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.IdentityHashMap;
 import java.util.Map;
+import java.util.zip.Deflater;
+import java.util.zip.DeflaterOutputStream;
 
 import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSName;
+import org.apache.pdfbox.cos.COSStream;
 import org.apache.pdfbox.pdmodel.PDResources;
 
 final class XpsOps {
@@ -38,9 +41,30 @@ final class XpsOps {
 
     private float[] fill;
 
+    private COSName fillSpace;
+
+    private COSName strokeSpace;
+
     private float[] strokeColor;
 
     private long bytes;
+
+    static final int LEVEL = 1;
+
+    static OutputStream flate(COSStream stream) throws IOException {
+        stream.setItem(COSName.FILTER, COSName.FLATE_DECODE);
+        Deflater deflater = new Deflater(LEVEL);
+        return new DeflaterOutputStream(stream.createRawOutputStream(), deflater, 1 << 16) {
+            @Override
+            public void close() throws IOException {
+                try {
+                    super.close();
+                } finally {
+                    deflater.end();
+                }
+            }
+        };
+    }
 
     XpsOps(OutputStream out, PDResources resources, Rectangle2D bounds) {
         this.out = out;
@@ -86,45 +110,60 @@ final class XpsOps {
         }
         v = Math.max(-1e9, Math.min(1e9, v));
         long scaled = Math.round(v * 10_000);
+        if (len + 24 > buf.length) {
+            flush();
+        }
+        byte[] b = buf;
+        int at = len;
         if (scaled < 0) {
-            put('-');
+            b[at++] = '-';
             scaled = -scaled;
         }
         long whole = scaled / 10_000;
-        long frac = scaled % 10_000;
-        digits(whole);
+        int frac = (int) (scaled % 10_000);
+        at = digits(b, at, whole);
         if (frac != 0) {
-            put('.');
-            for (long div = 1000; div > 0 && frac != 0; div /= 10) {
-                put((char) ('0' + frac / div));
+            b[at++] = '.';
+            for (int div = 1000; div > 0 && frac != 0; div /= 10) {
+                b[at++] = (byte) ('0' + frac / div);
                 frac %= div;
             }
         }
-        put(' ');
+        b[at++] = ' ';
+        len = at;
         return this;
     }
 
     XpsOps integer(long v) throws IOException {
+        if (len + 24 > buf.length) {
+            flush();
+        }
+        int at = len;
         if (v < 0) {
-            put('-');
+            buf[at++] = '-';
             v = -v;
         }
-        digits(v);
-        put(' ');
+        at = digits(buf, at, v);
+        buf[at++] = ' ';
+        len = at;
         return this;
     }
 
-    private final char[] scratch = new char[20];
-
-    private void digits(long v) throws IOException {
-        int i = scratch.length;
-        do {
-            scratch[--i] = (char) ('0' + v % 10);
-            v /= 10;
-        } while (v > 0);
-        while (i < scratch.length) {
-            put(scratch[i++]);
+    private static int digits(byte[] b, int at, long v) {
+        if (v < 10) {
+            b[at] = (byte) ('0' + v);
+            return at + 1;
         }
+        int n = 0;
+        for (long t = v; t > 0; t /= 10) {
+            n++;
+        }
+        int end = at + n;
+        for (int i = end - 1; i >= at; i--) {
+            b[i] = (byte) ('0' + v % 10);
+            v /= 10;
+        }
+        return end;
     }
 
     XpsOps op(String s) throws IOException {
@@ -223,19 +262,48 @@ final class XpsOps {
     }
 
     void fillColor(float[] rgb) throws IOException {
-        if (fill != null && fill[0] == rgb[0] && fill[1] == rgb[1] && fill[2] == rgb[2]) {
+        if (fill != null && fillSpace == null && fill[0] == rgb[0] && fill[1] == rgb[1] && fill[2] == rgb[2]) {
             return;
         }
         num(rgb[0]).num(rgb[1]).num(rgb[2]).op("rg\n");
         fill = rgb.clone();
+        fillSpace = null;
     }
 
     void strokeColor(float[] rgb) throws IOException {
-        if (strokeColor != null && strokeColor[0] == rgb[0] && strokeColor[1] == rgb[1] && strokeColor[2] == rgb[2]) {
+        if (strokeColor != null && strokeSpace == null && strokeColor[0] == rgb[0] && strokeColor[1] == rgb[1]
+                && strokeColor[2] == rgb[2]) {
             return;
         }
         num(rgb[0]).num(rgb[1]).num(rgb[2]).op("RG\n");
         strokeColor = rgb.clone();
+        strokeSpace = null;
+    }
+
+    void fillColor(COSName space, float[] c) throws IOException {
+        if (fill != null && space.equals(fillSpace) && java.util.Arrays.equals(fill, c)) {
+            return;
+        }
+        name(space).op("cs ");
+        for (float v : c) {
+            num(v);
+        }
+        op("scn\n");
+        fill = c.clone();
+        fillSpace = space;
+    }
+
+    void strokeColor(COSName space, float[] c) throws IOException {
+        if (strokeColor != null && space.equals(strokeSpace) && java.util.Arrays.equals(strokeColor, c)) {
+            return;
+        }
+        name(space).op("CS ");
+        for (float v : c) {
+            num(v);
+        }
+        op("SCN\n");
+        strokeColor = c.clone();
+        strokeSpace = space;
     }
 
     void forgetColors() {

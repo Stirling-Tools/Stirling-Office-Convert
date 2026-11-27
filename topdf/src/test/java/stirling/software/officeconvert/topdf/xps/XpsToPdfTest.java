@@ -283,6 +283,56 @@ class XpsToPdfTest {
     }
 
     @Test
+    void contextColorKeepsItsProfile() throws IOException {
+        Map<String, byte[]> parts = xps(List.of(page(
+                "<Path Data='M 0,0 L 100,0 100,100 0,100 Z' Fill='ContextColor /p.icc 1,0.1,0.8,0.2'/>"
+                + "<Path Data='M 200,0 L 300,0 300,100 200,100 Z' Stroke='ContextColor /p.icc 1,0.9,0.1,0.1'"
+                + " StrokeThickness='20'/>"
+                + "<Path Data='M 400,0 L 500,0 500,100 400,100 Z' Fill='ContextColor /missing.icc 1,0,0,1'/>")));
+        parts.put("p.icc", java.awt.color.ICC_Profile.getInstance(java.awt.color.ColorSpace.CS_sRGB).getData());
+        Path out = dir.resolve("icc.pdf");
+        convert(write("icc.xps", parts), out);
+        try (PDDocument pdf = Loader.loadPDF(out.toFile())) {
+            PDPage p = pdf.getPage(0);
+            int icc = 0;
+            for (COSName n : p.getResources().getColorSpaceNames()) {
+                if (p.getResources().getColorSpace(n)
+                        instanceof org.apache.pdfbox.pdmodel.graphics.color.PDICCBased based) {
+                    icc++;
+                    assertEquals(3, based.getNumberOfComponents());
+                }
+            }
+            assertEquals(1, icc);
+            Color pink = pixel(pdf, 0, 50, 50);
+            assertTrue(pink.getRed() < 60 && pink.getGreen() > 170 && pink.getBlue() < 90, pink.toString());
+            Color red = pixel(pdf, 0, 200, 50);
+            assertTrue(red.getRed() > 200 && red.getGreen() < 60, red.toString());
+            Color blue = pixel(pdf, 0, 450, 50);
+            assertTrue(blue.getBlue() > 200 && blue.getRed() < 60, blue.toString());
+        }
+    }
+
+    @Test
+    void startAndEndCapsAreDrawnSeparately() throws IOException {
+        Path in = write("caps.xps", xps(List.of(page(
+                "<Path Data='M 100,100 L 300,100' Stroke='#FF000000' StrokeThickness='40'"
+                + " StrokeStartLineCap='Flat' StrokeEndLineCap='Triangle'/>"
+                + "<Path Data='M 100,300 L 300,300' Stroke='#FF000000' StrokeThickness='40'"
+                + " StrokeStartLineCap='Round' StrokeEndLineCap='Square'/>"))));
+        Path out = dir.resolve("caps.pdf");
+        convert(in, out);
+        try (PDDocument pdf = Loader.loadPDF(out.toFile())) {
+            assertTrue(pixel(pdf, 0, 95, 100).getRed() > 200);
+            assertTrue(pixel(pdf, 0, 305, 100).getRed() < 60);
+            assertTrue(pixel(pdf, 0, 310, 104).getRed() < 60);
+            assertTrue(pixel(pdf, 0, 310, 116).getRed() > 200);
+            assertTrue(pixel(pdf, 0, 87, 300).getRed() < 60);
+            assertTrue(pixel(pdf, 0, 85, 316).getRed() > 200);
+            assertTrue(pixel(pdf, 0, 316, 316).getRed() < 60);
+        }
+    }
+
+    @Test
     void opacityAndClipsApply() throws IOException {
         Path in = write("opacity.xps", xps(List.of(page(
                 "<Canvas Opacity='0.5'><Path Data='M 0,0 L 100,0 100,100 0,100 Z' Fill='#FF000000'/></Canvas>"

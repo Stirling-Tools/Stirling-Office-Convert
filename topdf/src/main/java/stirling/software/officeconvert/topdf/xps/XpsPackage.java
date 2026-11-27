@@ -186,11 +186,8 @@ final class XpsPackage implements Closeable {
     }
 
     Document xml(String part) throws IOException {
-        if (zip.exists(part)) {
-            return zip.xml(part);
-        }
         try (InputStream in = XmlElements.limit(open(part), OfficeZip.canonical(part), XmlElements.domElements())) {
-            return SecureXml.parse(in);
+            return XpsDom.parse(in);
         } catch (InterruptedIOException | FileNotFoundException e) {
             throw e;
         } catch (IOException e) {
@@ -357,7 +354,7 @@ final class XpsPackage implements Closeable {
             byte[] fixed = XpsRepair.uniqueAttributes(raw);
             if (fixed != null) {
                 try {
-                    Document d = SecureXml.parse(XmlElements.limit(new java.io.ByteArrayInputStream(fixed), part,
+                    Document d = XpsDom.parse(XmlElements.limit(new java.io.ByteArrayInputStream(fixed), part,
                             XmlElements.domElements()));
                     notes.add("A damaged XPS page was repaired before it was converted");
                     return d;
@@ -372,7 +369,7 @@ final class XpsPackage implements Closeable {
                 throw e;
             }
             notes.add("A damaged XPS page was converted only up to the damage");
-            return SecureXml.parse(XmlElements.limit(new java.io.ByteArrayInputStream(kept), part,
+            return XpsDom.parse(XmlElements.limit(new java.io.ByteArrayInputStream(kept), part,
                     XmlElements.domElements()));
         }
     }

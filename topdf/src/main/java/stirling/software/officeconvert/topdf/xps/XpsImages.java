@@ -7,6 +7,7 @@ import java.util.Locale;
 import java.util.Map;
 
 import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 
 import stirling.software.officeconvert.topdf.io.DecodedPicture;
 import stirling.software.officeconvert.topdf.io.PictureDecoder;
@@ -17,7 +18,7 @@ final class XpsImages {
 
     static final int MAX_IMAGES = 20_000;
 
-    record Image(DecodedPicture picture, double width, double height) {}
+    record Image(PDImageXObject image, double width, double height) {}
 
     private final PDDocument document;
 
@@ -83,14 +84,18 @@ final class XpsImages {
             if (PictureDecoder.sniff(data) == PictureDecoder.Kind.JPEG && !jpegIntact(data)) {
                 throw new IOException("the JPEG picture is damaged");
             }
-            DecodedPicture picture = PictureDecoder.decode(document, data);
-            if (picture.vector()) {
-                throw new IOException("the picture is not a raster image");
+            PDImageXObject raster = XpsTiff.decode(document, data);
+            if (raster == null) {
+                DecodedPicture picture = PictureDecoder.decode(document, data);
+                if (picture.vector()) {
+                    throw new IOException("the picture is not a raster image");
+                }
+                raster = picture.image();
             }
             double[] dpi = dpi(data);
-            double w = picture.pixelWidth() * 96.0 / dpi[0];
-            double h = picture.pixelHeight() * 96.0 / dpi[1];
-            Image made = new Image(picture, w, h);
+            double w = raster.getWidth() * 96.0 / dpi[0];
+            double h = raster.getHeight() * 96.0 / dpi[1];
+            Image made = new Image(raster, w, h);
             decoded.put(key, made);
             return made;
         } catch (InterruptedIOException e) {

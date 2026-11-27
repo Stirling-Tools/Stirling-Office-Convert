@@ -4,6 +4,7 @@ import java.awt.Shape;
 import java.awt.geom.AffineTransform;
 import java.awt.geom.NoninvertibleTransformException;
 import java.awt.geom.Path2D;
+import java.awt.geom.PathIterator;
 import java.awt.geom.Rectangle2D;
 import java.io.IOException;
 import java.io.InterruptedIOException;
@@ -112,7 +113,7 @@ final class XpsRenderer {
         this.document = output.document();
         this.fonts = new XpsFonts(document, pkg, library);
         this.images = new XpsImages(document, pkg);
-        this.profiles = new XpsProfiles(pkg);
+        this.profiles = new XpsProfiles(pkg, document);
         this.pageIndex = pkg.pageIndex();
     }
 
@@ -181,6 +182,7 @@ final class XpsRenderer {
         currentDocument = pkg.documents().get(p.document());
         org.w3c.dom.Document dom = pkg.page(p.part());
         owners.clear();
+        props.clear();
         owners.put(dom, p.part());
         pageLinks = 0;
         Element root = dom.getDocumentElement();
@@ -205,7 +207,7 @@ final class XpsRenderer {
         contents.add(stream);
         page.getCOSObject().setItem(COSName.CONTENTS, contents);
         PDResources resources = page.getResources();
-        OutputStream os = stream.createOutputStream(COSName.FLATE_DECODE);
+        OutputStream os = XpsOps.flate(stream);
         XpsOps ops = new XpsOps(os, resources, new Rectangle2D.Double(0, 0, w, h));
         segments = 0;
         elements = 0;
@@ -334,7 +336,7 @@ final class XpsRenderer {
     }
 
     private Scope resources(Element holder, Scope parent, String part) throws IOException {
-        Element prop = XpsXml.child(holder, holder.getLocalName() + ".Resources");
+        Element prop = child(holder, holder.getLocalName() + ".Resources");
         if (prop == null) {
             return parent;
         }
@@ -421,8 +423,36 @@ final class XpsRenderer {
         return Math.max(0, Math.min(1, o));
     }
 
+    private final Map<Element, Map<String, Element>> props = new IdentityHashMap<>();
+
+    private Element child(Element e, String name) {
+        String n = e.getLocalName();
+        if (!"Canvas".equals(n) && !"FixedPage".equals(n)) {
+            return XpsXml.child(e, name);
+        }
+        return props.computeIfAbsent(e, XpsXml::properties).get(name);
+    }
+
+    private void fill(XpsOps ops, XpsColor c) throws IOException {
+        COSArray space = profiles.space(c);
+        if (space == null) {
+            ops.fillColor(c.rgb());
+        } else {
+            ops.fillColor(ops.resource(COSName.COLORSPACE, "Cs", space), c.components());
+        }
+    }
+
+    private void stroke(XpsOps ops, XpsColor c) throws IOException {
+        COSArray space = profiles.space(c);
+        if (space == null) {
+            ops.strokeColor(c.rgb());
+        } else {
+            ops.strokeColor(ops.resource(COSName.COLORSPACE, "Cs", space), c.components());
+        }
+    }
+
     private Element property(Element e, String name) {
-        Element holder = XpsXml.child(e, e.getLocalName() + "." + name);
+        Element holder = child(e, e.getLocalName() + "." + name);
         return holder == null ? null : XpsXml.firstElement(holder);
     }
 
@@ -608,7 +638,7 @@ final class XpsRenderer {
         COSStream form = form(bbox, true, null);
         PDResources res = new PDResources();
         form.setItem(COSName.RESOURCES, res.getCOSObject());
-        XpsOps sub = new XpsOps(form.createOutputStream(COSName.FLATE_DECODE), res, bbox);
+        XpsOps sub = new XpsOps(XpsOps.flate(form), res, bbox);
         AffineTransform toPage = ctx.toPage == null ? null : ctx.pageTransform();
         Ctx inner = new Ctx(sub, ctx.canvas, toPage, ctx.depth, ctx.part, ctx.accumulators, ctx.names);
         try {
@@ -664,7 +694,7 @@ final class XpsRenderer {
         COSStream g = form(bounds, true, null);
         PDResources res = new PDResources();
         g.setItem(COSName.RESOURCES, res.getCOSObject());
-        XpsOps sub = new XpsOps(g.createOutputStream(COSName.FLATE_DECODE), res, bounds);
+        XpsOps sub = new XpsOps(XpsOps.flate(g), res, bounds);
         Ctx inner = new Ctx(sub, null, null, ctx.depth, ctx.part, new ArrayList<>(), new HashMap<>());
         try {
             paint(mask, new Rectangle2D.Double(bounds.getX(), bounds.getY(), bounds.getWidth(), bounds.getHeight()),
@@ -724,15 +754,15 @@ final class XpsRenderer {
             }
             boolean evenOdd = g.fill.getWindingRule() == Path2D.WIND_EVEN_ODD;
             if (fill != null && fill.kind().equals("SolidColorBrush") && stroke != null
-                    && stroke.kind().equals("SolidColorBrush") && !g.strokeDiffers()) {
+                    && stroke.kind().equals("SolidColorBrush") && !g.strokeDiffers() && !ownCaps(e)) {
                 double fa = fill.color().alpha() * fill.opacity() * opacity;
                 double sa = stroke.color().alpha() * stroke.opacity() * opacity;
                 if (fa < 1 || sa < 1) {
                     alpha(ops, fa, sa);
                 }
-                ops.fillColor(fill.color().rgb());
-                ops.strokeColor(stroke.color().rgb());
-                boolean stroking = sa > 0 && strokeStyle(e, ops);
+                fill(ops, fill.color());
+                stroke(ops, stroke.color());
+                boolean stroking = sa > 0 && strokeStyle(e, ops) != null;
                 boolean filling = fa > 0;
                 if ((stroking || filling) && ops.path(g.fill, null)) {
                     ops.op(stroking && filling ? (evenOdd ? "B*\n" : "B\n") : stroking ? "S\n"
@@ -818,51 +848,82 @@ final class XpsRenderer {
         return t >= 0 && t < 1e6 ? t : 1;
     }
 
-    private boolean strokeStyle(Element e, XpsOps ops) throws IOException {
-        double t = thickness(e);
-        if (t <= 0) {
+    record Caps(int start, int end, double thickness) {
+        boolean drawn() {
+            return start != end || start == 3;
+        }
+    }
+
+    private static int cap(String name) {
+        return switch (name) {
+            case "Round" -> 1;
+            case "Square" -> 2;
+            case "Triangle" -> 3;
+            default -> 0;
+        };
+    }
+
+    private static boolean dashed(Element e, double t) {
+        double[] dash = XpsXml.numbers(XpsXml.attr(e, "StrokeDashArray"));
+        if (dash.length == 0 || dash.length > 512) {
             return false;
         }
+        boolean anyPositive = false;
+        double sum = 0;
+        for (double d : dash) {
+            if (d < 0) {
+                return false;
+            }
+            if (d > 0) {
+                anyPositive = true;
+            }
+            sum += d;
+        }
+        return anyPositive && sum * t >= 0.05;
+    }
+
+    private static boolean ownCaps(Element e) {
+        double t = thickness(e);
+        if (t <= 0 || dashed(e, t)) {
+            return false;
+        }
+        int start = cap(e.getAttribute("StrokeStartLineCap").strip());
+        int end = cap(e.getAttribute("StrokeEndLineCap").strip());
+        return start != end || start == 3;
+    }
+
+    private Caps strokeStyle(Element e, XpsOps ops) throws IOException {
+        double t = thickness(e);
+        if (t <= 0) {
+            return null;
+        }
         ops.num(t).op("w\n");
-        double[] dash = XpsXml.numbers(XpsXml.attr(e, "StrokeDashArray"));
-        String startCap = e.getAttribute("StrokeStartLineCap").strip();
-        String dashCap = e.getAttribute("StrokeDashCap").strip();
-        boolean dashed = false;
-        if (dash.length > 0) {
-            boolean anyPositive = false;
-            boolean valid = true;
-            for (double d : dash) {
-                if (d < 0) {
-                    valid = false;
-                }
-                if (d > 0) {
-                    anyPositive = true;
-                }
+        boolean dashed = dashed(e, t);
+        if (dashed) {
+            double[] dash = XpsXml.numbers(XpsXml.attr(e, "StrokeDashArray"));
+            double[] use = dash.length % 2 == 1 ? doubled(dash) : dash;
+            ops.op("[");
+            for (int i = 0; i < use.length && i < 512; i++) {
+                ops.num(use[i] * t);
             }
-            double sum = 0;
-            for (double d : dash) {
-                sum += Math.max(0, d);
-            }
-            if (valid && anyPositive && sum * t >= 0.05 && dash.length <= 512) {
-                dashed = true;
-                double[] use = dash.length % 2 == 1 ? doubled(dash) : dash;
-                ops.op("[");
-                for (int i = 0; i < use.length && i < 512; i++) {
-                    ops.num(use[i] * t);
-                }
-                ops.op("] ");
-                ops.num(XpsXml.number(XpsXml.attr(e, "StrokeDashOffset"), 0) * t).op("d\n");
-            }
+            ops.op("] ");
+            ops.num(XpsXml.number(XpsXml.attr(e, "StrokeDashOffset"), 0) * t).op("d\n");
         }
-        String cap = dashed && !dashCap.isEmpty() ? dashCap : startCap;
-        if (dashed && dashCap.isEmpty()) {
-            cap = "Flat";
+        int start = cap(e.getAttribute("StrokeStartLineCap").strip());
+        int end = cap(e.getAttribute("StrokeEndLineCap").strip());
+        Caps caps = new Caps(start, end, t);
+        int pdfCap;
+        if (dashed) {
+            String dashCap = e.getAttribute("StrokeDashCap").strip();
+            pdfCap = dashCap.isEmpty() ? 0 : cap(dashCap);
+            caps = null;
+        } else if (caps.drawn()) {
+            pdfCap = 0;
+        } else {
+            pdfCap = start;
+            caps = null;
         }
-        ops.integer(switch (cap) {
-            case "Round", "Triangle" -> 1;
-            case "Square" -> 2;
-            default -> 0;
-        }).op("J\n");
+        ops.integer(pdfCap == 3 ? 1 : pdfCap).op("J\n");
         String join = e.getAttribute("StrokeLineJoin").strip();
         ops.integer(switch (join) {
             case "Round" -> 1;
@@ -871,7 +932,114 @@ final class XpsRenderer {
         }).op("j\n");
         double miter = XpsXml.number(XpsXml.attr(e, "StrokeMiterLimit"), 10) / 2;
         ops.num(Math.max(1, Math.min(1000, miter))).op("M\n");
-        return true;
+        return caps == null ? NO_CAPS : caps;
+    }
+
+    private static final Caps NO_CAPS = new Caps(0, 0, 0);
+
+    static Path2D capShapes(Shape shape, Caps caps) {
+        Path2D out = new Path2D.Double(Path2D.WIND_NON_ZERO);
+        double h = caps.thickness() / 2;
+        double[] c = new double[6];
+        double sx = 0;
+        double sy = 0;
+        double px = 0;
+        double py = 0;
+        double[] first = null;
+        double[] last = null;
+        boolean open = false;
+        for (PathIterator it = shape.getPathIterator(null); !it.isDone(); it.next()) {
+            int type = it.currentSegment(c);
+            switch (type) {
+                case PathIterator.SEG_MOVETO -> {
+                    if (open) {
+                        ends(out, sx, sy, first, px, py, last, caps, h);
+                    }
+                    sx = c[0];
+                    sy = c[1];
+                    px = sx;
+                    py = sy;
+                    first = null;
+                    last = null;
+                    open = false;
+                }
+                case PathIterator.SEG_CLOSE -> {
+                    open = false;
+                    px = sx;
+                    py = sy;
+                }
+                default -> {
+                    int n = type == PathIterator.SEG_LINETO ? 1 : type == PathIterator.SEG_QUADTO ? 2 : 3;
+                    double[] pts = {px, py, c[0], c[1], c[2], c[3], c[4], c[5]};
+                    if (first == null) {
+                        for (int i = 1; i <= n && first == null; i++) {
+                            first = unit(pts[2 * i] - px, pts[2 * i + 1] - py);
+                        }
+                    }
+                    double ex = pts[2 * n];
+                    double ey = pts[2 * n + 1];
+                    double[] d = null;
+                    for (int i = n - 1; i >= 0 && d == null; i--) {
+                        d = unit(ex - pts[2 * i], ey - pts[2 * i + 1]);
+                    }
+                    if (d != null) {
+                        last = d;
+                    }
+                    px = ex;
+                    py = ey;
+                    open = true;
+                }
+            }
+        }
+        if (open) {
+            ends(out, sx, sy, first, px, py, last, caps, h);
+        }
+        return out;
+    }
+
+    private static double[] unit(double dx, double dy) {
+        double len = Math.hypot(dx, dy);
+        return len > 1e-12 && Double.isFinite(len) ? new double[] {dx / len, dy / len} : null;
+    }
+
+    private static void ends(Path2D out, double sx, double sy, double[] first, double ex, double ey, double[] last,
+            Caps caps, double h) {
+        if (first == null) {
+            first = new double[] {1, 0};
+            last = first;
+        }
+        capShape(out, sx, sy, -first[0], -first[1], caps.start(), h);
+        capShape(out, ex, ey, last[0], last[1], caps.end(), h);
+    }
+
+    private static void capShape(Path2D out, double x, double y, double dx, double dy, int cap, double h) {
+        double nx = -dy * h;
+        double ny = dx * h;
+        double fx = dx * h;
+        double fy = dy * h;
+        switch (cap) {
+            case 1 -> {
+                double k = 0.5522847498;
+                out.moveTo(x + nx, y + ny);
+                out.curveTo(x + nx + fx * k, y + ny + fy * k, x + fx + nx * k, y + fy + ny * k, x + fx, y + fy);
+                out.curveTo(x + fx - nx * k, y + fy - ny * k, x - nx + fx * k, y - ny + fy * k, x - nx, y - ny);
+                out.closePath();
+            }
+            case 2 -> {
+                out.moveTo(x + nx, y + ny);
+                out.lineTo(x + nx + fx, y + ny + fy);
+                out.lineTo(x - nx + fx, y - ny + fy);
+                out.lineTo(x - nx, y - ny);
+                out.closePath();
+            }
+            case 3 -> {
+                out.moveTo(x + nx, y + ny);
+                out.lineTo(x + fx, y + fy);
+                out.lineTo(x - nx, y - ny);
+                out.closePath();
+            }
+            default -> {}
+        }
     }
 
     private static double[] doubled(double[] d) {
@@ -890,11 +1058,18 @@ final class XpsRenderer {
             }
             ops.q();
             if (a < 1) {
-                alpha(ops, 1, a);
+                alpha(ops, a, a);
             }
-            ops.strokeColor(brush.color().rgb());
-            if (strokeStyle(e, ops) && ops.path(shape, null)) {
+            stroke(ops, brush.color());
+            Caps caps = strokeStyle(e, ops);
+            if (caps != null && ops.path(shape, null)) {
                 ops.op("S\n");
+                if (caps.drawn()) {
+                    fill(ops, brush.color());
+                    if (ops.path(capShapes(shape, caps), null)) {
+                        ops.op("f\n");
+                    }
+                }
             }
             ops.Q();
             return;
@@ -945,10 +1120,18 @@ final class XpsRenderer {
             } else if (a < 1) {
                 alpha(ops, a, a);
             }
-            ops.op("/Pattern CS ").name(ops.resource(COSName.PATTERN, "P", pattern)).op("SCN\n");
+            COSName p = ops.resource(COSName.PATTERN, "P", pattern);
+            ops.op("/Pattern CS ").name(p).op("SCN\n");
             ops.forgetColors();
-            if (strokeStyle(e, ops) && ops.path(shape, null)) {
+            Caps caps = strokeStyle(e, ops);
+            if (caps != null && ops.path(shape, null)) {
                 ops.op("S\n");
+                if (caps.drawn()) {
+                    ops.op("/Pattern cs ").name(p).op("scn\n");
+                    if (ops.path(capShapes(shape, caps), null)) {
+                        ops.op("f\n");
+                    }
+                }
             }
         } finally {
             ops.Q();
@@ -968,7 +1151,7 @@ final class XpsRenderer {
                 if (a < 1) {
                     alpha(ops, a, 1);
                 }
-                ops.fillColor(brush.color().rgb());
+                fill(ops, brush.color());
                 if (ops.path(shape, null)) {
                     ops.op(evenOdd ? "f*\n" : "f\n");
                 }
@@ -1293,7 +1476,7 @@ final class XpsRenderer {
         COSStream g = form(bounds, true, COSName.DEVICEGRAY);
         PDResources res = new PDResources();
         g.setItem(COSName.RESOURCES, res.getCOSObject());
-        XpsOps sub = new XpsOps(g.createOutputStream(COSName.FLATE_DECODE), res, bounds);
+        XpsOps sub = new XpsOps(XpsOps.flate(g), res, bounds);
         sub.q();
         sub.cm(shade.transform());
         sub.name(sub.resource(COSName.SHADING, "Sh", shade.alphaShading())).op("sh\n");
@@ -1366,7 +1549,7 @@ final class XpsRenderer {
             if (img == null) {
                 return null;
             }
-            content = img.picture().image().getCOSObject();
+            content = img.image().getCOSObject();
             contentPlacement = new AffineTransform(img.width(), 0, 0, -img.height(), 0, img.height());
         } else {
             if (ctx.depth >= MAX_VISUAL_DEPTH) {
@@ -1421,7 +1604,7 @@ final class XpsRenderer {
         pattern.setItem(COSName.MATRIX, floats(m));
         PDResources res = new PDResources();
         pattern.setItem(COSName.RESOURCES, res.getCOSObject());
-        XpsOps sub = new XpsOps(pattern.createOutputStream(COSName.FLATE_DECODE), res,
+        XpsOps sub = new XpsOps(XpsOps.flate(pattern), res,
                 new Rectangle2D.Double(0, 0, cw, ch));
         AffineTransform cell = new AffineTransform(sx, 0, 0, sy, -viewbox[0] * sx, -viewbox[1] * sy);
         for (int fy = 0; fy < (flipY ? 2 : 1); fy++) {
@@ -1505,7 +1688,7 @@ final class XpsRenderer {
         COSStream form = form(bbox, false, null);
         PDResources res = new PDResources();
         form.setItem(COSName.RESOURCES, res.getCOSObject());
-        XpsOps sub = new XpsOps(form.createOutputStream(COSName.FLATE_DECODE), res, bbox);
+        XpsOps sub = new XpsOps(XpsOps.flate(form), res, bbox);
         Ctx inner = new Ctx(sub, null, null, ctx.depth + 1, ctx.part, new ArrayList<>(), new HashMap<>());
         drawing.add(visual);
         try {
@@ -1598,9 +1781,9 @@ final class XpsRenderer {
                 if (a < 1) {
                     alpha(ops, a, a);
                 }
-                ops.fillColor(fill.color().rgb());
+                fill(ops, fill.color());
                 if (bold) {
-                    ops.strokeColor(fill.color().rgb());
+                    stroke(ops, fill.color());
                     ops.num(em * BOLD_STROKE).op("w 1 j\n");
                 }
             }
