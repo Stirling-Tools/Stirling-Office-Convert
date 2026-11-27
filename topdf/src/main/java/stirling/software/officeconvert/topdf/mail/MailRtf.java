@@ -14,13 +14,22 @@ public final class MailRtf {
 
     public static byte[] withHeader(byte[] rtf, Mail mail) {
         int at = bodyStart(rtf);
-        StringBuilder h = new StringBuilder("{\\uc1\\pard\\plain\\ltrpar\\ql\\sb0\\sa60\\fs26\\b ");
+        StringBuilder h = new StringBuilder();
+        if (mail.kind != null) {
+            h.append("{\\uc1\\pard\\plain\\ltrpar\\ql\\sb0\\sa20\\fs18 ").append(escape(mail.kind)).append("\\par}");
+        }
+        h.append("{\\uc1\\pard\\plain\\ltrpar\\ql\\sb0\\sa60\\fs26\\b ");
         h.append(escape(mail.subject == null ? "(no subject)" : mail.subject)).append("\\b0\\par}");
-        row(h, "From", mail.from);
+        row(h, mail.organizer ? "Organizer" : "From", mail.from);
+        row(h, "Sender", MailPage.shownSender(mail));
         row(h, "To", mail.to);
         row(h, "Cc", mail.cc);
         row(h, "Bcc", mail.bcc);
+        row(h, "Reply-To", MailPage.shownReplyTo(mail));
         row(h, "Date", mail.date);
+        for (String[] f : mail.fields) {
+            row(h, f[0], f[1]);
+        }
         if (!mail.attachments.isEmpty()) {
             StringBuilder files = new StringBuilder();
             for (Mail.Attachment a : mail.attachments) {

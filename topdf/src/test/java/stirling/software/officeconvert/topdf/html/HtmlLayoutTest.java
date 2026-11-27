@@ -115,6 +115,42 @@ class HtmlLayoutTest {
     }
 
     @Test
+    void paragraphsKeepFlowingBesideATallFloatUntilItEnds() throws IOException {
+        java.awt.image.BufferedImage img = new java.awt.image.BufferedImage(8, 4, java.awt.image.BufferedImage.TYPE_INT_RGB);
+        java.io.ByteArrayOutputStream png = new java.io.ByteArrayOutputStream();
+        javax.imageio.ImageIO.write(img, "png", png);
+        String src = "data:image/png;base64," + java.util.Base64.getEncoder().encodeToString(png.toByteArray());
+        Laid l = lay("""
+                <html><head><style>body{margin:0} .thumb{float:right;margin:0 0 8px 12px}</style></head><body>
+                <figure class="thumb"><img src="SRC" width="200" height="300"><figcaption>Caption</figcaption></figure>
+                <p>First paragraph beside the picture.</p><p>Second paragraph beside it too.</p>
+                <p style="clear:both">Cleared paragraph below.</p></body></html>""".replace("SRC", src));
+        float edge = l.word("Caption").left();
+        assertTrue(l.word("First").top() < l.word("Second").top(), l.words().toString());
+        assertTrue(l.word("Second").top() < l.word("Caption").top(), l.words().toString());
+        assertTrue(l.word("Second").right() < edge, l.words().toString());
+        assertTrue(l.word("too.").right() < edge, l.words().toString());
+        assertTrue(l.word("Cleared").top() > l.word("Caption").top(), l.words().toString());
+    }
+
+    @Test
+    void blocksBesideAFloatDoNotIndentByTheFloatTwice() throws IOException {
+        java.awt.image.BufferedImage img = new java.awt.image.BufferedImage(8, 4, java.awt.image.BufferedImage.TYPE_INT_RGB);
+        java.io.ByteArrayOutputStream png = new java.io.ByteArrayOutputStream();
+        javax.imageio.ImageIO.write(img, "png", png);
+        String src = "data:image/png;base64," + java.util.Base64.getEncoder().encodeToString(png.toByteArray());
+        Laid l = lay("""
+                <html><head><style>body{margin:0} figure{float:left;margin:0}</style></head><body>
+                <figure><img src="SRC" width="200" height="400"><figcaption>Cap</figcaption></figure>
+                <p style="margin-left:210px">Alpha sits beside</p><p style="margin-left:210px">Beta sits beside</p>
+                </body></html>""".replace("SRC", src));
+        assertEquals(l.word("Alpha").left(), l.word("Beta").left(), 1f, l.words().toString());
+        assertTrue(l.word("Beta").left() < 220, l.words().toString());
+        assertTrue(l.word("Beta").top() > l.word("Alpha").top(), l.words().toString());
+        assertTrue(l.word("Beta").top() < l.word("Cap").top(), l.words().toString());
+    }
+
+    @Test
     void flexRowItemsKeepTheirPlacesOnTheLine() throws IOException {
         Laid l = lay("""
                 <html><head><style>

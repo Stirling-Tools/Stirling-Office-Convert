@@ -157,6 +157,7 @@ misses a drawn form. Images are charged wherever they are listed.
 | Picture decode / largest picture | 32 M / 100 M pixels | the picture is downscaled or refused |
 | RTF group nesting | 2,048 | deeper groups are dropped |
 | HTML nesting | 200 | deeper content is kept, flattened to plain text |
+| HTML floats stacked in one column / blocks set beside them | 8 / 32 | further floats and blocks follow below |
 | CSS rules / style sheet characters (inline `<style>` included) | 200,000 / 8 MB | the rest is dropped with a warning |
 | CSS selector match work (weighted by selector complexity) | 10 M | later elements keep default styles, with a warning |
 | CSS `@import` depth / at-rule nesting | 8 / 16 | ignored deeper |
@@ -169,6 +170,7 @@ misses a drawn form. Images are charged wherever they are listed.
 | Outlook compressed RTF body | 64 MB decompressed | the RTF is ignored and the plain text body is used |
 | RTF group nesting when reading HTML or text out of an Outlook RTF body | 512 | deeper groups are skipped |
 | Declarative shadow roots unwrapped in a web archive | 2,000 | further ones stay hidden |
+| Outlook named properties (contact, appointment and task fields) / time-zone rules | 65,536 / 1,024 | further entries are ignored |
 | ODS repeated rows and columns | 8–192 MB of work | truncated with a warning |
 | Spreadsheet cells / merged ranges | 4 M / 100,000 | truncated |
 | Spreadsheet data read before admission | 256 MB | the rest is charged conservatively |

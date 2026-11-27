@@ -17,12 +17,16 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Base64;
+import java.util.Map;
+import java.util.TreeMap;
 
 import javax.imageio.ImageIO;
 
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.PDResources;
+import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.apache.poi.poifs.filesystem.DirectoryEntry;
@@ -44,15 +48,27 @@ class MailToPdfTest {
         try (PDDocument doc = Loader.loadPDF(out.toFile())) {
             int images = 0;
             for (PDPage page : doc.getPages()) {
-                for (var x : page.getResources().getXObjectNames()) {
-                    if (page.getResources().getXObject(x) instanceof PDImageXObject) {
-                        images++;
-                    }
-                }
+                images += images(page.getResources(), 0);
             }
             return new Converted(new PDFTextStripper().getText(doc).replace('\u00A0', ' '), doc.getNumberOfPages(),
                     images);
         }
+    }
+
+    private static int images(PDResources resources, int depth) throws IOException {
+        int n = 0;
+        if (resources == null || depth > 8) {
+            return 0;
+        }
+        for (var x : resources.getXObjectNames()) {
+            var o = resources.getXObject(x);
+            if (o instanceof PDImageXObject) {
+                n++;
+            } else if (o instanceof PDFormXObject f) {
+                n += images(f.getResources(), depth + 1);
+            }
+        }
+        return n;
     }
 
     private static String png(Color color) throws IOException {
@@ -102,6 +118,20 @@ class MailToPdfTest {
         assertFalse(c.text().contains("Plain text fallback"), c.text());
         assertTrue(c.text().contains("réport 2026.pdf (application/pdf, 2.0 KB)"), c.text());
         assertEquals(1, c.images());
+    }
+
+    @Test
+    void aBodyBackgroundPictureNamedByContentIdIsDrawn() throws IOException {
+        String mail = "From: a@example.org\nTo: b@example.org\nSubject: Card\nMIME-Version: 1.0\n"
+                + "Content-Type: multipart/related; boundary=\"rel\"\n\n"
+                + "--rel\nContent-Type: text/html; charset=us-ascii\n\n"
+                + "<html><body background=\"cid:../BG/PAPER.GIF\"><table width=\"300\"><tr>"
+                + "<td height=\"40\">Greetings</td></tr></table></body></html>\n"
+                + "--rel\nContent-Type: image/png\nContent-ID: <../BG/PAPER.GIF>\nContent-Transfer-Encoding: base64\n\n"
+                + png(Color.YELLOW) + "\n--rel--\n";
+        Converted c = convert("card.eml", ascii(mail));
+        assertTrue(c.text().contains("Greetings"), c.text());
+        assertEquals(1, c.images(), c.text());
     }
 
     @Test
@@ -227,11 +257,110 @@ class MailToPdfTest {
         assertEquals(1, c.images());
     }
 
+    @Test
+    void anOutlookMessageDrawsPicturesItsBodyNamesByFileName() throws IOException {
+        byte[] picture = Base64.getMimeDecoder().decode(png(Color.ORANGE));
+        byte[] msg = msg("Welcome", "Team", "team@example.org", "New User",
+                "<HTML><BODY><TABLE><TR><TD><IMG SRC=\"1.jpg\" ALT=\"\"></TD><TD>Welcome aboard</TD></TR></TABLE>"
+                        + "<P><IMG SRC=\"2.jpg\"></P></BODY></HTML>",
+                null, Map.of(), Map.of("1.jpg", picture, "2.jpg", picture, "notes.txt", new byte[10]));
+        Converted c = convert("welcome.msg", msg);
+        assertTrue(c.text().contains("Welcome aboard"), c.text());
+        assertEquals(2, c.images(), c.text());
+        assertTrue(c.text().contains("notes.txt"), c.text());
+        assertFalse(c.text().contains("1.jpg"), c.text());
+    }
+
+    @Test
+    void anOutlookMessageSentOnBehalfOfSomeoneShowsBoth() throws IOException {
+        byte[] msg = msg("Agenda", "Pat Assistant", "pat@example.org", "Board", "<p>Agenda attached</p>", null,
+                Map.of("0042", "Lee Director", "0065", "lee@example.org", "5D02", "lee@example.org"), Map.of());
+        Converted c = convert("agenda.msg", msg);
+        assertTrue(c.text().contains("From: Lee Director <lee@example.org>"), c.text());
+        assertTrue(c.text().contains("Pat Assistant <pat@example.org>"), c.text());
+    }
+
+    @Test
+    void outlookAppointmentsTasksAndContactsShowTheirOwnFields() throws IOException {
+        String appointment = "00062002-0000-0000-C000-000000000046";
+        byte[] meeting = msg("Design review", "Ana Ruiz", "ana@example.org", "Bob Smith", "<p>Bring the drafts</p>",
+                null, Map.of("001A", "IPM.Appointment", "8000", "Room 4", "8004", "Every Tuesday"), Map.of(),
+                new String[][] {{appointment, "0x8208"}, {appointment, "0x820D"}, {appointment, "0x820E"},
+                        {appointment, "0x8205"}, {appointment, "0x8232"}},
+                Map.of(0x8001, java.time.Instant.parse("2026-11-03T14:00:00Z"), 0x8002,
+                        java.time.Instant.parse("2026-11-03T15:30:00Z"), 0x8003, 2));
+        Converted c = convert("meeting.msg", meeting);
+        assertTrue(c.text().contains("Appointment"), c.text());
+        assertTrue(c.text().contains("Organizer: Ana Ruiz <ana@example.org>"), c.text());
+        assertTrue(c.text().contains("Location: Room 4"), c.text());
+        assertTrue(c.text().contains("Start: Tue, 3 Nov 2026 14:00 UTC"), c.text());
+        assertTrue(c.text().contains("End: Tue, 3 Nov 2026 15:30 UTC"), c.text());
+        assertTrue(c.text().contains("Recurrence: Every Tuesday"), c.text());
+        assertTrue(c.text().contains("Show as: Busy"), c.text());
+        assertTrue(c.text().contains("Required attendees: Bob Smith"), c.text());
+
+        byte[] reply = msg("Accepted: Design review", "Bob Smith", "bob@example.org", "Ana Ruiz", "<p>See you</p>",
+                null, Map.of("001A", "IPM.Schedule.Meeting.Resp.Pos", "8000", "Room 4"), Map.of(),
+                new String[][] {{appointment, "0x8208"}}, Map.of());
+        c = convert("reply.msg", reply);
+        assertTrue(c.text().contains("Meeting accepted"), c.text());
+        assertTrue(c.text().contains("From: Bob Smith <bob@example.org>"), c.text());
+        assertTrue(c.text().contains("To: Ana Ruiz"), c.text());
+        assertFalse(c.text().contains("Organizer"), c.text());
+
+        String task = "00062003-0000-0000-C000-000000000046";
+        byte[] todo = msg("File the report", "Ana Ruiz", "ana@example.org", "Bob Smith", "<p>Before Friday</p>", null,
+                Map.of("001A", "IPM.Task", "8003", "Ana Ruiz"), Map.of(),
+                new String[][] {{task, "0x8101"}, {task, "0x8102"}, {task, "0x8105"}, {task, "0x811F"}},
+                Map.of(0x8000, 1, 0x8001, 0.25, 0x8002, java.time.Instant.parse("2026-11-06T00:00:00Z")));
+        c = convert("todo.msg", todo);
+        assertTrue(c.text().contains("Status: In progress"), c.text());
+        assertTrue(c.text().contains("% Complete: 25%"), c.text());
+        assertTrue(c.text().contains("Due date: Fri, 6 Nov 2026"), c.text());
+        assertTrue(c.text().contains("Owner: Ana Ruiz"), c.text());
+
+        String address = "00062004-0000-0000-C000-000000000046";
+        byte[] card = msg("Quick Fox", "Ana Ruiz", "ana@example.org", "", null, null,
+                Map.of("001A", "IPM.Contact", "3001", "Dr Quick Fox", "3A16", "Fence Co", "3A08", "(123) 456-7890",
+                        "3A1C", "(456) 789-0123", "8000", "quick@example.org", "8001", "12 Lazy Dog Lane\r\nSpringfield"),
+                Map.of(), new String[][] {{address, "0x8083"}, {address, "0x801B"}}, Map.of());
+        c = convert("card.msg", card);
+        assertTrue(c.text().contains("Contact"), c.text());
+        assertTrue(c.text().contains("Company: Fence Co"), c.text());
+        assertTrue(c.text().contains("Business phone: (123) 456-7890"), c.text());
+        assertTrue(c.text().contains("Mobile: (456) 789-0123"), c.text());
+        assertTrue(c.text().contains("E-mail: quick@example.org"), c.text());
+        assertTrue(c.text().contains("Business address: 12 Lazy Dog Lane, Springfield"), c.text());
+    }
+
     static byte[] msg(String subject, String fromName, String fromAddress, String to, String html, String rtf)
+            throws IOException {
+        return msg(subject, fromName, fromAddress, to, html, rtf, Map.of(), Map.of());
+    }
+
+    static byte[] msg(String subject, String fromName, String fromAddress, String to, String html, String rtf,
+            Map<String, String> strings, Map<String, byte[]> files) throws IOException {
+        return msg(subject, fromName, fromAddress, to, html, rtf, strings, files, new String[0][], Map.of());
+    }
+
+    static byte[] msg(String subject, String fromName, String fromAddress, String to, String html, String rtf,
+            Map<String, String> strings, Map<String, byte[]> files, String[][] named, Map<Integer, Object> fixed)
             throws IOException {
         try (POIFSFileSystem fs = new POIFSFileSystem()) {
             DirectoryEntry root = fs.getRoot();
-            string(root, "001A", "IPM.Note");
+            string(root, "001A", strings.getOrDefault("001A", "IPM.Note"));
+            for (Map.Entry<String, String> e : new TreeMap<>(strings).entrySet()) {
+                if (!e.getKey().equals("001A")) {
+                    string(root, e.getKey(), e.getValue());
+                }
+            }
+            int n = 0;
+            for (Map.Entry<String, byte[]> f : new TreeMap<>(files).entrySet()) {
+                DirectoryEntry a = root.createDirectory(String.format("__attach_version1.0_#%08X", n++));
+                string(a, "3707", f.getKey());
+                a.createDocument("__substg1.0_37010102", new ByteArrayInputStream(f.getValue()));
+                a.createDocument("__properties_version1.0", new ByteArrayInputStream(new byte[8]));
+            }
             string(root, "0037", subject);
             string(root, "0C1A", fromName);
             string(root, "5D01", fromAddress);
@@ -247,7 +376,44 @@ class MailToPdfTest {
                 b.putInt(raw.length + 12).putInt(raw.length).putInt(0x414C454D).putInt(0).put(raw);
                 root.createDocument("__substg1.0_10090102", new ByteArrayInputStream(b.array()));
             }
-            root.createDocument("__properties_version1.0", new ByteArrayInputStream(new byte[32]));
+            if (named.length > 0) {
+                Map<String, Integer> sets = new java.util.LinkedHashMap<>();
+                ByteBuffer entries = ByteBuffer.allocate(8 * named.length).order(ByteOrder.LITTLE_ENDIAN);
+                for (int i = 0; i < named.length; i++) {
+                    int set = sets.computeIfAbsent(named[i][0], k -> sets.size());
+                    entries.putInt(Integer.decode(named[i][1])).putShort((short) ((set + 3) << 1)).putShort((short) i);
+                }
+                ByteBuffer guids = ByteBuffer.allocate(16 * sets.size());
+                for (String g : sets.keySet()) {
+                    java.util.UUID u = java.util.UUID.fromString(g);
+                    ByteBuffer be = ByteBuffer.allocate(16).putLong(u.getMostSignificantBits())
+                            .putLong(u.getLeastSignificantBits());
+                    byte[] b = be.array();
+                    guids.put(new byte[] {b[3], b[2], b[1], b[0], b[5], b[4], b[7], b[6]}).put(b, 8, 8);
+                }
+                DirectoryEntry ids = root.createDirectory("__nameid_version1.0");
+                ids.createDocument("__substg1.0_00020102", new ByteArrayInputStream(guids.array()));
+                ids.createDocument("__substg1.0_00030102", new ByteArrayInputStream(entries.array()));
+                ids.createDocument("__substg1.0_00040102", new ByteArrayInputStream(new byte[0]));
+            }
+            ByteBuffer props = ByteBuffer.allocate(32 + 16 * fixed.size()).order(ByteOrder.LITTLE_ENDIAN);
+            props.position(32);
+            for (Map.Entry<Integer, Object> e : new TreeMap<>(fixed).entrySet()) {
+                Object v = e.getValue();
+                int type = v instanceof Double ? 0x0005 : v instanceof java.time.Instant ? 0x0040
+                        : v instanceof Boolean ? 0x000B : 0x0003;
+                props.putShort((short) type).putShort((short) (int) e.getKey()).putInt(6);
+                if (v instanceof Double d) {
+                    props.putDouble(d);
+                } else if (v instanceof java.time.Instant t) {
+                    props.putLong((t.getEpochSecond() + 11_644_473_600L) * 10_000_000L);
+                } else if (v instanceof Boolean b) {
+                    props.putLong(b ? 1 : 0);
+                } else {
+                    props.putLong(((Number) v).longValue());
+                }
+            }
+            root.createDocument("__properties_version1.0", new ByteArrayInputStream(props.array()));
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             fs.writeFilesystem(out);
             return out.toByteArray();

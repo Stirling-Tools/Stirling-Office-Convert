@@ -2,11 +2,14 @@ package stirling.software.officeconvert.topdf.html;
 
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 import org.jsoup.nodes.Element;
 
 /** A browser's default look for each tag, then the old presentational attributes; style sheets override both. */
 final class Presentation {
+
+    private static final Set<String> BACKGROUND_ELEMENTS = Set.of("body", "table", "tr", "td", "th");
 
     private static final String[] FONT_SIZES = {"10px", "13px", "16px", "18px", "24px", "32px", "48px"};
 
@@ -114,6 +117,11 @@ final class Presentation {
         }
         if (e.hasAttr("bgcolor")) {
             out.put("background-color", e.attr("bgcolor"));
+        }
+        String background = e.attr("background").strip();
+        if (!background.isEmpty() && BACKGROUND_ELEMENTS.contains(e.normalName())) {
+            out.put("background-image", "picture");
+            out.put("background-url", background);
         }
         for (String dim : new String[] {"width", "height"}) {
             String v = e.attr(dim).strip();

@@ -25,7 +25,10 @@ public final class Mail {
     String bcc;
     String replyTo;
     String date;
+    String kind;
+    boolean organizer;
     byte[] rtf;
+    final List<String[]> fields = new ArrayList<>();
     final List<Segment> body = new ArrayList<>();
     final List<Attachment> attachments = new ArrayList<>();
     final List<Mail> nested = new ArrayList<>();

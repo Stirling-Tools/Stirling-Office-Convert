@@ -8,9 +8,11 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Calendar;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.TimeZone;
 
 import org.apache.poi.hmef.CompressedRTF;
@@ -30,6 +32,7 @@ public final class MsgReader {
     static final int MAX_RTF_BYTES = 64 << 20;
 
     private final MimeAssets assets;
+    private Map<String, Integer> names = Map.of();
     private int nestedCount;
 
     private MsgReader(MimeAssets assets) {
@@ -38,7 +41,10 @@ public final class MsgReader {
 
     public static Mail read(Path source, MimeAssets assets) throws IOException {
         try (POIFSFileSystem fs = new POIFSFileSystem(source.toFile(), true)) {
-            return new MsgReader(assets).mail(new MAPIMessage(fs), 0);
+            MAPIMessage msg = new MAPIMessage(fs);
+            MsgReader reader = new MsgReader(assets);
+            reader.names = MsgItems.names(msg);
+            return reader.mail(msg, 0);
         } catch (RuntimeException e) {
             throw new IOException("The Outlook message could not be read: " + e.getMessage(), e);
         }
@@ -53,7 +59,15 @@ public final class MsgReader {
         Mail mail = new Mail();
         Chunks main = msg.getMainChunks();
         mail.subject = EmlReader.clean(string(msg, main.getSubjectChunk()));
-        mail.from = sender(msg, main);
+        String sender = sender(msg, main);
+        String representing = representing(main);
+        if (representing != null && sender != null && samePerson(representing, sender)) {
+            representing = null;
+        }
+        mail.from = representing != null ? representing : sender;
+        mail.sender = representing != null ? sender : null;
+        String replyTo = EmlReader.clean(stringProperty(main, 0x0050));
+        mail.replyTo = replyTo == null ? null : replyTo.replace(";", ",");
         List<String> to = new ArrayList<>();
         List<String> cc = new ArrayList<>();
         List<String> bcc = new ArrayList<>();
@@ -74,6 +88,7 @@ public final class MsgReader {
         mail.cc = cc.isEmpty() ? EmlReader.clean(string(msg, main.getDisplayCCChunk())) : String.join(", ", cc);
         mail.bcc = bcc.isEmpty() ? EmlReader.clean(string(msg, main.getDisplayBCCChunk())) : String.join(", ", bcc);
         mail.date = date(msg);
+        MsgItems.describe(mail, main, names);
         attachments(msg, mail, depth);
         if (!signed(mail)) {
             body(msg, main, mail);
@@ -174,7 +189,44 @@ public final class MsgReader {
         return name + " <" + address + ">";
     }
 
-    private static String stringProperty(Chunks main, int id) {
+    static boolean samePerson(String a, String b) {
+        String[] x = person(a);
+        String[] y = person(b);
+        return !x[0].isEmpty() && x[0].equals(y[0]) || !x[1].isEmpty() && x[1].equals(y[1]);
+    }
+
+    private static String[] person(String s) {
+        String t = s.strip();
+        String address = "";
+        int lt = t.lastIndexOf('<');
+        if (lt >= 0 && t.endsWith(">")) {
+            address = t.substring(lt + 1, t.length() - 1);
+            t = t.substring(0, lt);
+        } else if (t.contains("@") && !t.contains(" ")) {
+            address = t;
+            t = "";
+        }
+        return new String[] {t.replaceAll("[\"'\\s]", "").toLowerCase(Locale.ROOT),
+                address.strip().toLowerCase(Locale.ROOT)};
+    }
+
+    private static String representing(Chunks main) {
+        String name = EmlReader.clean(stringProperty(main, 0x0042));
+        String address = stringProperty(main, 0x5D02);
+        if (address == null || !address.contains("@")) {
+            address = stringProperty(main, 0x0065);
+        }
+        if (address != null && !address.contains("@")) {
+            address = null;
+        }
+        if (name == null) {
+            return address;
+        }
+        return address == null || name.equalsIgnoreCase(address) || name.contains(address) ? name
+                : name + " <" + address + ">";
+    }
+
+    static String stringProperty(Chunks main, int id) {
         try {
             for (var e : main.getAll().entrySet()) {
                 if (e.getKey().id == id) {
@@ -229,7 +281,35 @@ public final class MsgReader {
         return f.format(c.getTime());
     }
 
-    private static Calendar systemTime(Chunks main, int id) {
+    static byte[] binaryProperty(Chunks main, int id) {
+        try {
+            for (var e : main.getAll().entrySet()) {
+                if (e.getKey().id == id) {
+                    for (Chunk c : e.getValue()) {
+                        if (c instanceof ByteChunk b && b.getValue() != null) {
+                            return b.getValue();
+                        }
+                    }
+                }
+            }
+        } catch (RuntimeException ignored) {
+        }
+        return null;
+    }
+
+    static Object fixed(Chunks main, int id) {
+        try {
+            for (var e : main.getProperties().entrySet()) {
+                if (e.getKey().id == id && !e.getValue().isEmpty()) {
+                    return e.getValue().get(0).getValue();
+                }
+            }
+        } catch (RuntimeException ignored) {
+        }
+        return null;
+    }
+
+    static Calendar systemTime(Chunks main, int id) {
         try {
             for (var e : main.getProperties().entrySet()) {
                 if (e.getKey().id == id && !e.getValue().isEmpty() && e.getValue().get(0).getValue() instanceof Calendar c) {
@@ -428,6 +508,11 @@ public final class MsgReader {
             };
             c.decompress(new ByteArrayInputStream(compressed), out);
             byte[] b = out.toByteArray();
+            long raw = (compressed[4] & 0xFFL) | (compressed[5] & 0xFFL) << 8 | (compressed[6] & 0xFFL) << 16
+                    | (compressed[7] & 0xFFL) << 24;
+            if (raw > 0 && raw < b.length) {
+                b = Arrays.copyOf(b, (int) raw);
+            }
             int i = 0;
             while (i < b.length && i < 64 && Character.isWhitespace(b[i])) {
                 i++;

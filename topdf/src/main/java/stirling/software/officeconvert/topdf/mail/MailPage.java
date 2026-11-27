@@ -292,6 +292,16 @@ public final class MailPage {
         return pre;
     }
 
+    static String shownSender(Mail mail) {
+        return mail.sender != null && mail.from != null && !mail.from.toLowerCase(Locale.ROOT).contains(
+                address(mail.sender).toLowerCase(Locale.ROOT)) ? mail.sender : null;
+    }
+
+    static String shownReplyTo(Mail mail) {
+        return mail.replyTo != null && (mail.from == null || !mail.from.toLowerCase(Locale.ROOT).contains(
+                address(mail.replyTo).toLowerCase(Locale.ROOT))) ? mail.replyTo : null;
+    }
+
     static Element header(Mail mail, boolean nested) {
         Element box = new Element("div").attr("style", BOX + "margin:0 0 16px 0;padding:0 0 10px 0;"
                 + "border-bottom:1px solid #c8c8c8;clear:both;");
@@ -299,22 +309,23 @@ public final class MailPage {
             box.appendElement("div").attr("style", BOX + "font-size:11px;color:#5f5f5f;margin:0 0 4px 0;")
                     .text("Attached message");
         }
+        if (mail.kind != null) {
+            box.appendElement("div").attr("style", BOX + "font-size:11px;color:#5f5f5f;margin:0 0 4px 0;")
+                    .text(mail.kind);
+        }
         String subject = mail.subject == null ? "(no subject)" : mail.subject;
         box.appendElement("div").attr("style", BOX + "font-size:" + (nested ? "15px" : "18px")
                 + ";font-weight:bold;line-height:1.3;margin:0 0 8px 0;").text(subject);
-        row(box, "From", mail.from);
-        if (mail.sender != null && mail.from != null && !mail.from.toLowerCase(Locale.ROOT).contains(
-                address(mail.sender).toLowerCase(Locale.ROOT))) {
-            row(box, "Sender", mail.sender);
-        }
+        row(box, mail.organizer ? "Organizer" : "From", mail.from);
+        row(box, "Sender", shownSender(mail));
         row(box, "To", mail.to);
         row(box, "Cc", mail.cc);
         row(box, "Bcc", mail.bcc);
-        if (mail.replyTo != null && (mail.from == null || !mail.from.toLowerCase(Locale.ROOT).contains(
-                address(mail.replyTo).toLowerCase(Locale.ROOT)))) {
-            row(box, "Reply-To", mail.replyTo);
-        }
+        row(box, "Reply-To", shownReplyTo(mail));
         row(box, "Date", mail.date);
+        for (String[] f : mail.fields) {
+            row(box, f[0], f[1]);
+        }
         List<String> files = new ArrayList<>();
         for (Mail.Attachment a : mail.attachments) {
             files.add(describe(mail, a));

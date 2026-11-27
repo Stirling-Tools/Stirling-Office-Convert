@@ -192,14 +192,13 @@ final class Flow {
     }
 
     private void walkChildren(Element parent, Look look, Frame frame, int depth) throws IOException {
-        Element skip = null;
         Set<Element> skipping = Collections.newSetFromMap(new IdentityHashMap<>());
         for (Node child : parent.childNodes()) {
             Admission.checkpoint();
             if (ctx.stopped()) {
                 return;
             }
-            if (child == skip || child instanceof Element se && skipping.contains(se)) {
+            if (child instanceof Element se && skipping.contains(se)) {
                 continue;
             }
             if (child instanceof TextNode t) {
@@ -208,7 +207,7 @@ final class Flow {
                 FloatRun run = besideFloat(e, look, frame);
                 if (run != null) {
                     floatRow(run.floats(), run.beside(), look, frame, depth + 1);
-                    skip = run.beside();
+                    skipping.addAll(run.beside());
                     skipping.addAll(run.floats());
                 } else {
                     element(e, look, frame, depth + 1);
@@ -217,9 +216,11 @@ final class Flow {
         }
     }
 
-    private record FloatRun(List<Element> floats, Element beside) {}
+    private record FloatRun(List<Element> floats, List<Element> beside) {}
 
     static final int MAX_STACKED_FLOATS = 8;
+
+    static final int MAX_BESIDE_BLOCKS = 32;
 
     private FloatRun besideFloat(Element e, Look look, Frame frame) {
         if (inCell || forceInline > 0 || look.rightToLeft || !floats(e, look, frame, null)) {
@@ -243,11 +244,119 @@ final class Flow {
         if (!(n instanceof Element next) || SKIPPED.contains(next.normalName()) || !BLOCKS.contains(next.normalName())) {
             return null;
         }
-        Map<String, String> nd = ctx.declared(next, look);
-        boolean flows = nd.getOrDefault("float", "none").strip().equalsIgnoreCase("none")
-                && nd.getOrDefault("display", "block").strip().equalsIgnoreCase("block")
-                && !nd.getOrDefault("position", "").strip().matches("(?i)absolute|fixed");
-        return flows ? new FloatRun(run, next) : null;
+        if (!flowsBeside(next, look, false)) {
+            return null;
+        }
+        List<Element> beside = new ArrayList<>();
+        beside.add(next);
+        float width = 0;
+        float tall = 0;
+        for (Element f : run) {
+            float w = floatWidth(f, ctx.declared(f, look), look, frame.width());
+            width = Math.max(width, w);
+        }
+        for (Element f : run) {
+            tall += estimatedHeight(f, look, width, true);
+        }
+        float rest = frame.width() - width;
+        float used = estimatedHeight(next, look, rest, false);
+        n = next.nextSibling();
+        while (beside.size() < MAX_BESIDE_BLOCKS && used < tall && !framed(next, look)) {
+            while (n instanceof TextNode t && t.isBlank() || n instanceof Comment) {
+                n = n.nextSibling();
+            }
+            if (!(n instanceof Element more) || !BLOCKS.contains(more.normalName()) || !flowsBeside(more, look, true)
+                    || framed(more, look)) {
+                break;
+            }
+            float h = estimatedHeight(more, look, rest, false);
+            if (used + h / 2 > tall) {
+                break;
+            }
+            beside.add(more);
+            used += h;
+            n = more.nextSibling();
+        }
+        return new FloatRun(run, beside);
+    }
+
+    private boolean framed(Element e, Look look) {
+        return CellBoxes.framedChild(ctx, e, ctx.declared(e, look), look) != null;
+    }
+
+    private boolean flowsBeside(Element e, Look look, boolean later) {
+        if (SKIPPED.contains(e.normalName()) || e.hasAttr("hidden")) {
+            return false;
+        }
+        Map<String, String> d = ctx.declared(e, look);
+        if (later && (!d.getOrDefault("clear", "none").strip().equalsIgnoreCase("none")
+                || Set.of("table", "hr", "pre").contains(e.normalName()))) {
+            return false;
+        }
+        return d.getOrDefault("float", "none").strip().equalsIgnoreCase("none")
+                && d.getOrDefault("display", "block").strip().equalsIgnoreCase("block")
+                && !d.getOrDefault("position", "").strip().matches("(?i)absolute|fixed");
+    }
+
+    private float estimatedHeight(Element e, Look parent, float width, boolean picture) {
+        Map<String, String> d = ctx.declared(e, parent);
+        Look l = parent.child(d, Math.max(24, width), false);
+        float line = l.linePoints > 0 ? l.linePoints : l.size * (l.lineMultiple > 0 ? l.lineMultiple : 1.2f);
+        float perLine = Math.max(8, width / Math.max(1, l.size * 0.5f));
+        int chars = 0;
+        int blocks = 1;
+        float pictures = 0;
+        Deque<Node> todo = new ArrayDeque<>();
+        todo.add(e);
+        int seen = 0;
+        while (!todo.isEmpty() && seen++ < 2_000 && chars < 100_000) {
+            Node n = todo.pollFirst();
+            if (n instanceof TextNode t) {
+                chars += t.text().strip().length();
+            } else if (n instanceof Element c && !SKIPPED.contains(c.normalName())) {
+                if (c.normalName().equals("img")) {
+                    pictures += pictureHeight(c, parent, width);
+                    continue;
+                }
+                if (c != e && BLOCKS.contains(c.normalName())) {
+                    blocks++;
+                }
+                List<Node> kids = c.childNodes();
+                for (int i = Math.min(256, kids.size()) - 1; i >= 0; i--) {
+                    todo.addFirst(kids.get(i));
+                }
+            }
+        }
+        float lines = (float) Math.ceil(chars / perLine) + (blocks - 1) * 0.5f;
+        float margins = Math.max(0, BoxCss.length(d.get("margin-top"), l.size, width))
+                + Math.max(0, BoxCss.length(d.get("margin-bottom"), l.size, width));
+        float h = lines * line + margins + (picture ? pictures : 0);
+        if (picture && pictures == 0 && pictureSized(e, d)) {
+            h += width * 0.75f;
+        }
+        return h;
+    }
+
+    private float pictureHeight(Element img, Look look, float room) {
+        Map<String, String> d = ctx.declared(img, look);
+        Float w = BoxCss.boxLength(d.get("width"), look, room);
+        Float h = BoxCss.boxLength(d.get("height"), look, room);
+        if (w == null) {
+            w = pixels(img.attr("width"), look, room);
+        }
+        if (h == null) {
+            h = pixels(img.attr("height"), look, room);
+        }
+        if (h == null) {
+            return w == null ? 0 : Math.min(w, room) * 0.75f;
+        }
+        return w != null && w > room && w > 0 ? h * room / w : h;
+    }
+
+    private static Float pixels(String attr, Look look, float room) {
+        String a = attr.strip();
+        return !a.isEmpty() && a.length() < 6 && a.chars().allMatch(Character::isDigit)
+                ? BoxCss.boxLength(a + "px", look, room) : null;
     }
 
     private boolean floats(Element e, Look look, Frame frame, String sameSide) {
@@ -338,7 +447,8 @@ final class Flow {
         return widest;
     }
 
-    private void floatRow(List<Element> sides, Element beside, Look look, Frame frame, int depth) throws IOException {
+    private void floatRow(List<Element> sides, List<Element> beside, Look look, Frame frame, int depth)
+            throws IOException {
         flush();
         Element side = sides.getFirst();
         Map<String, String> d = ctx.declared(side, look);
@@ -365,7 +475,9 @@ final class Flow {
             }
             floated.add(stack);
         }
-        Table.Cell flowing = cell(beside, look, frame, rest, 0, depth, left ? width : 0, left ? 0 : width);
+        Table.Cell flowing = beside.size() == 1
+                ? cell(beside.getFirst(), look, frame, rest, 0, depth, left ? width : 0, left ? 0 : width)
+                : column(beside, look, frame, rest, depth, left ? width : 0, left ? 0 : width);
         Table t = new Table();
         t.indent = frame.left();
         t.cellMarginLeft = 0;
@@ -1474,6 +1586,30 @@ final class Flow {
             if (inner.pendingSpace > inner.pendingMargin && !blocks.isEmpty() && blocks.getLast() instanceof Paragraph p) {
                 p.spaceAfter += inner.pendingSpace - inner.pendingMargin;
             }
+        }
+        return cell;
+    }
+
+    private Table.Cell column(List<Element> items, Look look, Frame frame, float width, int depth, float besideLeft,
+            float besideRight) throws IOException {
+        Table.Cell cell = new Table.Cell();
+        cell.shading = frame.shading();
+        Flow inner = new Flow(ctx, cell::add, true);
+        inner.clipLeft = clipLeft;
+        inner.besideLeft = besideLeft;
+        inner.besideRight = besideRight;
+        ctx.enterCell();
+        try {
+            for (Element item : items) {
+                inner.sized = item;
+                inner.single(item, look, new Frame(0, 0, Math.max(24, width), -1), depth + 1);
+            }
+        } finally {
+            ctx.leaveCell();
+        }
+        List<Block> blocks = cell.blocks();
+        if (inner.pendingSpace > inner.pendingMargin && !blocks.isEmpty() && blocks.getLast() instanceof Paragraph p) {
+            p.spaceAfter += inner.pendingSpace - inner.pendingMargin;
         }
         return cell;
     }
