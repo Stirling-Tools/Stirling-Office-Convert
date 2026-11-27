@@ -28,12 +28,13 @@ final class Similarity {
         float[][][] ring = new float[5][TAPS][w];
         int[] cached = new int[TAPS];
         Arrays.fill(cached, -1);
-        float[] x = new float[w];
-        float[] y = new float[w];
+        float[] x = new float[w + 2 * RADIUS];
+        float[] y = new float[w + 2 * RADIUS];
         double peak = (1 << depth) - 1;
         double c1 = 0.01 * peak * 0.01 * peak;
         double c2 = 0.03 * peak * 0.03 * peak;
-        float[] m = new float[5];
+        float[][] m = new float[5][w];
+        int[] slots = new int[TAPS];
         double sum = 0;
         for (int row = 0; row < h; row++) {
             for (int k = -RADIUS; k <= RADIUS; k++) {
@@ -44,20 +45,26 @@ final class Similarity {
                     cached[slot] = src;
                 }
             }
-            for (int col = 0; col < w; col++) {
-                Arrays.fill(m, 0);
-                for (int k = -RADIUS; k <= RADIUS; k++) {
-                    int slot = reflect(row + k, h) % TAPS;
-                    float g = KERNEL[k + RADIUS];
-                    for (int map = 0; map < 5; map++) {
-                        m[map] += g * ring[map][slot][col];
+            for (int k = -RADIUS; k <= RADIUS; k++) {
+                slots[k + RADIUS] = reflect(row + k, h) % TAPS;
+            }
+            for (int map = 0; map < 5; map++) {
+                float[] acc = m[map];
+                Arrays.fill(acc, 0);
+                for (int k = 0; k < TAPS; k++) {
+                    float g = KERNEL[k];
+                    float[] line = ring[map][slots[k]];
+                    for (int col = 0; col < w; col++) {
+                        acc[col] += g * line[col];
                     }
                 }
-                double ux = m[0];
-                double uy = m[1];
-                double vx = m[2] - ux * ux;
-                double vy = m[3] - uy * uy;
-                double cv = m[4] - ux * uy;
+            }
+            for (int col = 0; col < w; col++) {
+                double ux = m[0][col];
+                double uy = m[1][col];
+                double vx = m[2][col] - ux * ux;
+                double vy = m[3][col] - uy * uy;
+                double cv = m[4][col] - ux * uy;
                 sum += (2 * ux * uy + c1) * (2 * cv + c2) / ((ux * ux + uy * uy + c1) * (vx + vy + c2));
             }
         }
@@ -68,6 +75,12 @@ final class Similarity {
             int slot) {
         luma(a, row, w, x);
         luma(b, row, w, y);
+        for (int k = 1; k <= RADIUS; k++) {
+            x[RADIUS - k] = x[RADIUS + reflect(-k, w)];
+            y[RADIUS - k] = y[RADIUS + reflect(-k, w)];
+            x[RADIUS + w - 1 + k] = x[RADIUS + reflect(w - 1 + k, w)];
+            y[RADIUS + w - 1 + k] = y[RADIUS + reflect(w - 1 + k, w)];
+        }
         for (int col = 0; col < w; col++) {
             float sx = 0;
             float sy = 0;
@@ -75,7 +88,7 @@ final class Similarity {
             float syy = 0;
             float sxy = 0;
             for (int k = -RADIUS; k <= RADIUS; k++) {
-                int i = reflect(col + k, w);
+                int i = RADIUS + col + k;
                 float g = KERNEL[k + RADIUS];
                 float vx = x[i];
                 float vy = y[i];
@@ -97,11 +110,11 @@ final class Similarity {
         int at = row * w;
         if (p.length >= 3) {
             for (int i = 0; i < w; i++) {
-                out[i] = 0.299f * p[0][at + i] + 0.587f * p[1][at + i] + 0.114f * p[2][at + i];
+                out[RADIUS + i] = 0.299f * p[0][at + i] + 0.587f * p[1][at + i] + 0.114f * p[2][at + i];
             }
         } else {
             for (int i = 0; i < w; i++) {
-                out[i] = p[0][at + i];
+                out[RADIUS + i] = p[0][at + i];
             }
         }
     }

@@ -18,8 +18,6 @@ final class EncodeJob {
 
     private static final double MAX_FINENESS = 4;
 
-    private static final double PSNR_HEADROOM = 6;
-
     private static final int FILL_STEPS = 48;
 
     private final JpxEncoder.Planes planes;
@@ -115,13 +113,7 @@ final class EncodeJob {
 
     byte[] run() throws IOException {
         prepare();
-        byte[] out = emit(options.psnr(), options.bitsPerPixel());
-        if (saturated && !reversible && fineness > FINENESS) {
-            fineness = FINENESS;
-            prepare();
-            out = emit(options.psnr(), options.bitsPerPixel());
-        }
-        return out;
+        return emit(options.psnr(), options.bitsPerPixel());
     }
 
     void prepare() throws IOException {
@@ -171,6 +163,11 @@ final class EncodeJob {
 
     byte[] emit(double psnr, double bitsPerPixel) throws IOException {
         allocate(psnr, bitsPerPixel);
+        if (saturated && fineness > FINENESS) {
+            fineness = FINENESS;
+            prepare();
+            allocate(psnr, bitsPerPixel);
+        }
         return assemble();
     }
 
@@ -178,7 +175,7 @@ final class EncodeJob {
         if (options.psnr() <= 0) {
             return RATE_FINENESS;
         }
-        double mse = 255.0 * 255.0 / Math.pow(10, (options.psnr() + PSNR_HEADROOM) / 10);
+        double mse = 255.0 * 255.0 / Math.pow(10, options.psnr() / 10);
         return Math.clamp(Math.sqrt(mse) * FINENESS, FINENESS, MAX_FINENESS);
     }
 
@@ -270,10 +267,9 @@ final class EncodeJob {
             pick = Math.max(pick, qualityIndex(slopes, psnr));
         }
         if (bitsPerPixel > 0) {
-            int rate = rateIndex(slopes, bitsPerPixel);
-            saturated = rate < 0 && psnr <= 0;
-            pick = Math.max(pick, rate);
+            pick = Math.max(pick, rateIndex(slopes, bitsPerPixel));
         }
+        saturated = pick < 0;
         select(slopes, pick);
     }
 
