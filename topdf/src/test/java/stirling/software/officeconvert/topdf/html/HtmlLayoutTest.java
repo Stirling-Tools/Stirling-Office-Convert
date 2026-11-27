@@ -151,6 +151,27 @@ class HtmlLayoutTest {
     }
 
     @Test
+    void aPictureThatCannotBeLoadedKeepsItsSizeAndShowsItsAlt() throws IOException {
+        Laid l = lay("""
+                <html><body style="margin:0"><p>Before<img src="http://example.invalid/x.png" width="200" height="100"
+                alt="Logo">After</p><p>Plain<img src="http://example.invalid/y.png" alt="Unsized">End</p>
+                <p>Next</p></body></html>""");
+        assertEquals(150, l.word("After").left() - l.word("Before").right(), 2f, l.words().toString());
+        assertTrue(l.word("Logo").left() >= l.word("Before").right(), l.words().toString());
+        assertTrue(l.word("Logo").top() < l.word("Before").top() - 50, l.words().toString());
+        assertTrue(l.word("Plain[Unsized]End").top() - l.word("Before").top() < 40, l.words().toString());
+        assertTrue(l.text().contains("[Unsized]"), l.words().toString());
+        Laid tight = lay("""
+                <html><body style="margin:0"><p><img src="http://example.invalid/z.png" width="120" height="40"
+                alt="alpha beta gamma delta epsilon zeta eta theta iota kappa lambda">After</p><p>Below</p></body></html>""");
+        assertTrue(tight.text().contains("alpha"), tight.words().toString());
+        assertTrue(tight.word("Below").top() > tight.word("alpha").top(), tight.words().toString());
+        for (Word w : tight.words()) {
+            assertTrue(w.top() < tight.word("Below").top() - 2 || w.text().equals("Below"), tight.words().toString());
+        }
+    }
+
+    @Test
     void flexRowItemsKeepTheirPlacesOnTheLine() throws IOException {
         Laid l = lay("""
                 <html><head><style>

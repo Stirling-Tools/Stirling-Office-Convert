@@ -55,6 +55,8 @@ final class Flow {
 
     private static final float BROKEN_PICTURE = 12;
 
+    private static final int MISSING_EDGE = 0xC0C0C0;
+
     static final Set<String> SKIPPED = Set.of("head", "script", "style", "template", "title", "meta", "link",
             "base", "iframe", "object", "embed", "applet", "frame", "frameset", "video", "audio", "canvas",
             "map", "area", "input", "select", "option", "datalist", "param", "source", "track", "noembed", "noframes",
@@ -1934,6 +1936,12 @@ final class Flow {
         FlowImages.measureImage(ctx, e, d, look, frame);
         Picture pic = ctx.images().picture(e, d, look, room, pictureRoom());
         if (pic == null) {
+            Inline.FormControl missing = missingPicture(e, d, look, room);
+            if (missing != null) {
+                inline(missing, look);
+                lastSpace = false;
+                return;
+            }
             String alt = e.attr("alt").strip();
             if (!alt.isEmpty()) {
                 text("[" + alt + "]", look);
@@ -1948,6 +1956,33 @@ final class Flow {
         }
         FlowImages.turn(pic, d, look);
         place(pic, d, look, frame);
+    }
+
+    private Inline.FormControl missingPicture(Element e, Map<String, String> d, Look look, float room) {
+        String hv = d.getOrDefault("height", "").strip();
+        Float w = BoxCss.boxLength(d.get("width"), look, room);
+        Float h = hv.endsWith("%") ? null : BoxCss.boxLength(hv, look, room);
+        if (w == null || h == null || w < 1 || h < 1) {
+            return null;
+        }
+        if (w > room) {
+            h = h * room / w;
+            w = room;
+        }
+        h = Math.min(h, ctx.pageRoom());
+        String alt = e.attr("alt").strip();
+        boolean decorative = e.hasAttr("alt") && alt.isEmpty();
+        boolean edge = !decorative && w >= 8 && h >= 8;
+        Paragraph shown = new Paragraph();
+        shown.align = Paragraph.Align.LEFT;
+        RunStyle r = look.run();
+        float inset = edge ? 2 : 0;
+        float lines = (float) Math.floor((h - 2 * inset) / (r.size() * 1.2f));
+        if (!alt.isEmpty() && lines >= 1 && w - 2 * inset >= r.size()) {
+            shown.inlines.add(new Inline.Text(alt, r, null, -1));
+        }
+        return new Inline.FormControl(null, shown, w, h, inset, inset, inset, inset, -1, edge ? MISSING_EDGE : -1,
+                edge ? 0.75f : 0, 0, false, 0, false, true);
     }
 
     // A row in a cell cannot break, so a picture there leaves room for its caption on the same page

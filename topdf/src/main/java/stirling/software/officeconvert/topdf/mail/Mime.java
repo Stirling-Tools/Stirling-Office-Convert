@@ -142,7 +142,12 @@ public final class Mime {
         }
 
         public String text() {
-            return MailCharsets.decode(body(), charsetName());
+            byte[] b = body();
+            String name = charsetName();
+            if ((name == null || name.isBlank()) && "text/html".equals(type())) {
+                name = MailCharsets.metaCharset(b);
+            }
+            return MailCharsets.decode(b, name);
         }
     }
 

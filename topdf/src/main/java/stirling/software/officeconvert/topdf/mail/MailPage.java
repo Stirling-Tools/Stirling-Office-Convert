@@ -286,7 +286,7 @@ public final class MailPage {
 
     static Element pre(String text) {
         Element pre = new Element("pre").attr("style", "white-space:pre-wrap;overflow-wrap:anywhere;word-wrap:break-word;"
-                + "font-family:'Courier New',Courier,monospace;font-size:13px;line-height:1.35;margin:0 0 8px 0;"
+                + "font-family:'Courier New',Courier,monospace;font-size:13px;line-height:normal;margin:0 0 8px 0;"
                 + "color:#1f1f1f;background:transparent;text-align:left");
         pre.text(text.replace("\r\n", "\n").replace('\r', '\n'));
         return pre;

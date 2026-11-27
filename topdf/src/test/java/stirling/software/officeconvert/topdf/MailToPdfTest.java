@@ -135,6 +135,19 @@ class MailToPdfTest {
     }
 
     @Test
+    void anHtmlPartWithoutACharsetUsesItsMetaCharset() throws IOException {
+        Charset big5 = Charset.forName("Big5");
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        out.writeBytes(ascii("From: a@example.org\nTo: b@example.org\nSubject: Form\nMIME-Version: 1.0\n"
+                + "Content-Type: text/html;;;\nContent-Transfer-Encoding: 8bit\n\n"
+                + "<META HTTP-EQUIV=\"Content-Type\" CONTENT=\"text/html;charset=big5\"><html><body><p>"));
+        out.writeBytes("\u7522\u54c1\u540d\u7a31".getBytes(big5));
+        out.writeBytes(ascii("</p></body></html>\n"));
+        Converted c = convert("form.eml", out.toByteArray());
+        assertTrue(c.text().contains("\u7522\u54c1\u540d\u7a31"), c.text());
+    }
+
+    @Test
     void legacyCharsetsAndFlowedTextAreDecoded() throws IOException {
         Charset koi8 = Charset.forName("KOI8-R");
         ByteArrayOutputStream out = new ByteArrayOutputStream();
