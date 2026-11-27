@@ -313,8 +313,9 @@ of more than 67 million samples, judged from its codestream header before anythi
 serves callers directly.
 
 `JpxEncoder` writes JPEG 2000 (Part 1) as a JP2 file or a raw codestream from a `BufferedImage` or from
-`JpxEncoder.Planes` (1 to 16 bit samples, signed or not, any number of components, an alpha channel, enumerated sRGB,
-grey, sYCC or CMYK colour or an ICC profile). `Options.exact()` is lossless (5/3 wavelet, reversible colour
+`JpxEncoder.Planes` (1 to 16 bit samples, signed or not, any number of components, each subsampled by its own
+horizontal and vertical factor from 1 to 255, an alpha channel, enumerated sRGB, grey, sYCC or CMYK colour or an ICC
+profile). `Options.exact()` is lossless (5/3 wavelet, reversible colour
 transform) and decodes to the same samples; `Options.rate(bitsPerPixel)` and `Options.quality(psnr)` are lossy (9/7
 wavelet, irreversible colour transform), with the code-block passes chosen by rate-distortion optimisation to fit the
 size or reach the PSNR. Options set the decomposition levels (0 to 12), quality layers (1 to 64), tile size (0 picks

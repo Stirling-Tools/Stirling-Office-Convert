@@ -109,6 +109,79 @@ class JpxEncoderTest {
         }
     }
 
+    static JpxEncoder.Planes subsampled(int w, int h, int[] dx, int[] dy, int depth, long seed) {
+        Random rnd = new Random(seed);
+        int n = dx.length;
+        int[][] s = new int[n][];
+        int max = (1 << depth) - 1;
+        for (int c = 0; c < n; c++) {
+            int cw = Math.ceilDiv(w, dx[c]);
+            int ch = Math.ceilDiv(h, dy[c]);
+            s[c] = new int[cw * ch];
+            for (int y = 0; y < ch; y++) {
+                for (int x = 0; x < cw; x++) {
+                    double v = 0.5 + 0.35 * Math.sin(x * dx[c] * 0.03 + c) * Math.cos(y * dy[c] * 0.021)
+                            + 0.04 * rnd.nextGaussian();
+                    s[c][y * cw + x] = Math.clamp(Math.round(v * max), 0, max);
+                }
+            }
+        }
+        int[] depths = new int[n];
+        java.util.Arrays.fill(depths, depth);
+        JpxEncoder.Colour colour = n == 3 ? JpxEncoder.Colour.SYCC : JpxEncoder.Colour.GREY;
+        return new JpxEncoder.Planes(w, h, s, depths, null, colour, -1, dx, dy);
+    }
+
+    static int[][] nativeSamples(byte[] data) throws IOException {
+        JpxRaster r = JpxDecoder.decode(data).raster();
+        int[][] out = new int[r.components()][];
+        for (int c = 0; c < r.components(); c++) {
+            out[c] = new int[r.width(c) * r.height(c)];
+            for (int y = 0; y < r.height(c); y++) {
+                for (int x = 0; x < r.width(c); x++) {
+                    out[c][y * r.width(c) + x] = r.sample(c, x, y);
+                }
+            }
+        }
+        return out;
+    }
+
+    @Test
+    void subsampledComponentsRoundTripExactly() throws IOException {
+        int[][][] factors = {{{1, 2, 2}, {1, 2, 2}}, {{1, 2, 1, 2}, {1, 1, 2, 2}}, {{3, 3, 3}, {2, 2, 2}},
+            {{1, 4}, {1, 1}}};
+        for (int[][] f : factors) {
+            for (int[] size : new int[][] {{131, 77}, {12, 9}, {300, 256}}) {
+                JpxEncoder.Planes p = subsampled(size[0], size[1], f[0], f[1], 8, size[0]);
+                for (JpxEncoder.Order order : JpxEncoder.Order.values()) {
+                    JpxEncoder.Options o = JpxEncoder.Options.exact().withOrder(order).withLayers(2).withTileSize(64);
+                    byte[] data = JpxEncoder.encode(p, o);
+                    int[][] d = nativeSamples(data);
+                    for (int c = 0; c < f[0].length; c++) {
+                        assertArrayEquals(p.samples()[c], d[c], java.util.Arrays.toString(f[0]) + " " + size[0]
+                                + " " + order + " component " + c);
+                    }
+                }
+                byte[] whole = JpxEncoder.encode(p, JpxEncoder.Options.exact().withCodestream(true));
+                assertArrayEquals(p.samples()[f[0].length - 1], nativeSamples(whole)[f[0].length - 1]);
+            }
+        }
+    }
+
+    @Test
+    void subsampledComponentsMeetARateAndKeepTheirShape() throws IOException {
+        JpxEncoder.Planes p = subsampled(320, 240, new int[] {1, 2, 2}, new int[] {1, 2, 2}, 8, 3);
+        byte[] data = JpxEncoder.encode(p, JpxEncoder.Options.rate(1));
+        assertTrue(data.length <= 320 * 240 / 8, "size " + data.length);
+        int[][] d = nativeSamples(data);
+        JpxEncoder.Planes back = new JpxEncoder.Planes(320, 240, d, p.depths(), null, JpxEncoder.Colour.SYCC, -1,
+                p.dx(), p.dy());
+        assertTrue(p.psnr(back) > 26, "psnr " + p.psnr(back));
+        assertTrue(p.ssim(back) > 0.6, "ssim " + p.ssim(back));
+        assertThrows(IllegalArgumentException.class, () -> new JpxEncoder.Planes(10, 10, new int[][] {new int[25]},
+                new int[] {8}, null, JpxEncoder.Colour.GREY, -1, new int[] {0}, new int[] {1}));
+    }
+
     @Test
     void threadsDoNotChangeTheOutput() throws IOException {
         JpxEncoder.Planes p = photo(700, 450, 3, 8, 21);

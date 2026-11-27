@@ -34,6 +34,10 @@ final class EncodeJob {
 
     private final int width;
 
+    private final int[] dx;
+
+    private final int[] dy;
+
     private final int height;
 
     private final int tileW;
@@ -67,13 +71,18 @@ final class EncodeJob {
         comps = planes.count();
         width = planes.width();
         height = planes.height();
+        dx = planes.dx();
+        dy = planes.dy();
         int tile = options.tileSize();
         if (tile == 0 && (long) width * height > AUTO_TILE_PIXELS) {
             tile = AUTO_TILE;
         }
         tileW = tile == 0 ? width : Math.min(tile, width);
         tileH = tile == 0 ? height : Math.min(tile, height);
-        int smallest = Math.min(tileW, tileH);
+        int smallest = Integer.MAX_VALUE;
+        for (int c = 0; c < comps; c++) {
+            smallest = Math.min(smallest, Math.min(Math.ceilDiv(tileW, dx[c]), Math.ceilDiv(tileH, dy[c])));
+        }
         levels = Math.min(options.levels(), 31 - Integer.numberOfLeadingZeros(Math.max(1, smallest)));
         blockLog = Integer.numberOfTrailingZeros(options.blockSize());
         order = options.order().ordinal();
@@ -92,7 +101,8 @@ final class EncodeJob {
             return false;
         }
         for (int c = 1; c < 3; c++) {
-            if (planes.depth(c) != planes.depth(0) || planes.isSigned(c) != planes.isSigned(0)) {
+            if (planes.depth(c) != planes.depth(0) || planes.isSigned(c) != planes.isSigned(0)
+                    || dx[c] != dx[0] || dy[c] != dy[0]) {
                 return false;
             }
         }
@@ -136,17 +146,17 @@ final class EncodeJob {
             int x0 = tx * tileW;
             int y0 = ty * tileH;
             TileCoder tc = new TileCoder(t, x0, y0, Math.min(width, x0 + tileW), Math.min(height, y0 + tileH),
-                    comps, levels, blockLog);
+                    levels, blockLog, dx, dy);
             tiles[t] = tc;
             for (int c = 0; c < comps; c++) {
                 int[][] boxes = tc.resolutionBoxes(c);
                 if (reversible) {
                     int[] a = integers(tc, c);
-                    Fdwt.reversible(a, tc.x1 - tc.x0, boxes);
+                    Fdwt.reversible(a, tc.components[c].x1 - tc.components[c].x0, boxes);
                     tc.codeReversible(c, a, quant, pool, options.layers() > 1);
                 } else {
                     float[] a = floats(tc, c);
-                    Fdwt.irreversible(a, tc.x1 - tc.x0, boxes);
+                    Fdwt.irreversible(a, tc.components[c].x1 - tc.components[c].x0, boxes);
                     tc.codeIrreversible(c, a, quant, pool);
                 }
             }
@@ -155,7 +165,7 @@ final class EncodeJob {
         if (quant.settle() > 7) {
             throw new IOException("The image needs more JPEG 2000 guard bits than the format allows");
         }
-        tier2 = new Tier2(tiles, options.layers(), order, levels, quant);
+        tier2 = new Tier2(tiles, options.layers(), order, levels, quant, dx, dy);
         slopes = slopes();
     }
 
@@ -190,11 +200,13 @@ final class EncodeJob {
     }
 
     private int[] integers(TileCoder tc, int c) {
-        int w = tc.x1 - tc.x0;
-        int h = tc.y1 - tc.y0;
+        TileCoder.Component comp = tc.components[c];
+        int w = comp.x1 - comp.x0;
+        int h = comp.y1 - comp.y0;
+        int stride = planes.width(c);
         int[] a = new int[w * h];
         for (int y = 0; y < h; y++) {
-            int row = (tc.y0 + y) * width + tc.x0;
+            int row = (comp.y0 + y) * stride + comp.x0;
             int at = y * w;
             if (mct && c < 3) {
                 for (int x = 0; x < w; x++) {
@@ -214,11 +226,13 @@ final class EncodeJob {
     }
 
     private float[] floats(TileCoder tc, int c) {
-        int w = tc.x1 - tc.x0;
-        int h = tc.y1 - tc.y0;
+        TileCoder.Component comp = tc.components[c];
+        int w = comp.x1 - comp.x0;
+        int h = comp.y1 - comp.y0;
+        int stride = planes.width(c);
         float[] a = new float[w * h];
         for (int y = 0; y < h; y++) {
-            int row = (tc.y0 + y) * width + tc.x0;
+            int row = (comp.y0 + y) * stride + comp.x0;
             int at = y * w;
             if (mct && c < 3) {
                 for (int x = 0; x < w; x++) {
@@ -342,7 +356,10 @@ final class EncodeJob {
     private int qualityIndex(double[] slopes, double psnr) {
         double peak = (1 << planes.depth(0)) - 1;
         double mse = peak * peak / Math.pow(10, psnr / 10);
-        double samples = (double) width * height * comps;
+        double samples = 0;
+        for (int c = 0; c < comps; c++) {
+            samples += (double) planes.width(c) * planes.height(c);
+        }
         double allowed = mse * samples - samples / 12;
         int lo = -1;
         int hi = slopes.length - 1;
@@ -449,8 +466,8 @@ final class EncodeJob {
         m.u16(comps);
         for (int c = 0; c < comps; c++) {
             m.u8(planes.depth(c) - 1 | (planes.isSigned(c) ? 0x80 : 0));
-            m.u8(1);
-            m.u8(1);
+            m.u8(dx[c]);
+            m.u8(dy[c]);
         }
         m.u16(0xFF52);
         m.u16(12);

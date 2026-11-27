@@ -20,8 +20,14 @@ final class Tier2 {
 
     private final List<List<int[]>> packets = new ArrayList<>();
 
-    Tier2(TileCoder[] tiles, int layers, int order, int levels, Quantiser q) {
+    private final int[] dx;
+
+    private final int[] dy;
+
+    Tier2(TileCoder[] tiles, int layers, int order, int levels, Quantiser q, int[] dx, int[] dy) {
         this.tiles = tiles;
+        this.dx = dx;
+        this.dy = dy;
         this.layers = layers;
         this.order = order;
         this.levels = levels;
@@ -82,12 +88,11 @@ final class Tier2 {
             TileCoder.Resolution[] res = tile.components[c].resolutions;
             for (int r = 0; r <= levels; r++) {
                 TileCoder.Resolution s = res[r];
-                long scale = 1L << (levels - r);
                 for (int k = 0; k < s.precincts.length; k++) {
                     int i = k % s.wide;
                     int j = k / s.wide;
-                    long y = trigger(j, s.y0, scale, tile.y0);
-                    long x = trigger(i, s.x0, scale, tile.x0);
+                    long y = trigger(j, s.y0, (long) dy[c] << (levels - r), tile.y0);
+                    long x = trigger(i, s.x0, (long) dx[c] << (levels - r), tile.x0);
                     cursors.add(new long[] {c, r, k, y, x});
                 }
             }

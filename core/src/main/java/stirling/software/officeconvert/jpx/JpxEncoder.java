@@ -9,6 +9,7 @@ import java.awt.image.DataBuffer;
 import java.awt.image.IndexColorModel;
 import java.awt.image.Raster;
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.Objects;
 
 public final class JpxEncoder {
@@ -50,7 +51,12 @@ public final class JpxEncoder {
     }
 
     public record Planes(int width, int height, int[][] samples, int[] depths, boolean[] signed, Colour colour,
-            int alpha) {
+            int alpha, int[] dx, int[] dy) {
+
+        public Planes(int width, int height, int[][] samples, int[] depths, boolean[] signed, Colour colour,
+                int alpha) {
+            this(width, height, samples, depths, signed, colour, alpha, null, null);
+        }
 
         public Planes {
             Objects.requireNonNull(samples, "samples");
@@ -64,8 +70,17 @@ public final class JpxEncoder {
             if (n < 1 || n > 16384 || depths.length != n || signed != null && signed.length != n) {
                 throw new IllegalArgumentException("Every component needs samples and a depth");
             }
-            long pixels = (long) width * height;
+            if (dx != null && dx.length != n || dy != null && dy.length != n) {
+                throw new IllegalArgumentException("Every component needs a subsampling factor");
+            }
+            dx = dx == null ? ones(n) : dx.clone();
+            dy = dy == null ? ones(n) : dy.clone();
             for (int c = 0; c < n; c++) {
+                if (dx[c] < 1 || dx[c] > 255 || dy[c] < 1 || dy[c] > 255) {
+                    throw new IllegalArgumentException("Subsampling factors run from 1 to 255, was " + dx[c] + " by "
+                            + dy[c]);
+                }
+                long pixels = (long) Math.ceilDiv(width, dx[c]) * Math.ceilDiv(height, dy[c]);
                 if (samples[c] == null || samples[c].length < pixels) {
                     throw new IllegalArgumentException("Component " + c + " has fewer than " + pixels + " samples");
                 }
@@ -106,32 +121,81 @@ public final class JpxEncoder {
             return signed.clone();
         }
 
+        @Override
+        public int[] dx() {
+            return dx.clone();
+        }
+
+        @Override
+        public int[] dy() {
+            return dy.clone();
+        }
+
+        public int width(int c) {
+            return Math.ceilDiv(width, dx[c]);
+        }
+
+        public int height(int c) {
+            return Math.ceilDiv(height, dy[c]);
+        }
+
+        private static int[] ones(int n) {
+            int[] a = new int[n];
+            Arrays.fill(a, 1);
+            return a;
+        }
+
+        private boolean sameShape(Planes other) {
+            return other.samples.length == samples.length && other.width == width && other.height == height
+                    && Arrays.equals(other.dx, dx) && Arrays.equals(other.dy, dy);
+        }
+
+        private boolean uniform(int comps) {
+            for (int c = 1; c < comps; c++) {
+                if (dx[c] != dx[0] || dy[c] != dy[0]) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
         public double psnr(Planes other) {
-            if (other.samples.length != samples.length || other.width != width || other.height != height) {
+            if (!sameShape(other)) {
                 throw new IllegalArgumentException("Planes of different shapes have no PSNR");
             }
-            int n = width * height;
             double se = 0;
+            long total = 0;
             for (int c = 0; c < samples.length; c++) {
+                int n = width(c) * height(c);
                 int[] a = samples[c];
                 int[] b = other.samples[c];
                 for (int i = 0; i < n; i++) {
                     double d = a[i] - b[i];
                     se += d * d;
                 }
+                total += n;
             }
             if (se == 0) {
                 return Double.POSITIVE_INFINITY;
             }
             double peak = (1 << depths[0]) - 1;
-            return 10 * Math.log10(peak * peak * n * samples.length / se);
+            return 10 * Math.log10(peak * peak * total / se);
         }
 
         public double ssim(Planes other) {
-            if (other.samples.length != samples.length || other.width != width || other.height != height) {
+            if (!sameShape(other)) {
                 throw new IllegalArgumentException("Planes of different shapes have no SSIM");
             }
-            return Similarity.ssim(samples, other.samples, width, height, depths[0]);
+            int luma = samples.length >= 3 ? 3 : 1;
+            if (uniform(luma)) {
+                return Similarity.ssim(samples, other.samples, width(0), height(0), depths[0]);
+            }
+            double sum = 0;
+            for (int c = 0; c < luma; c++) {
+                sum += Similarity.ssim(new int[][] {samples[c]}, new int[][] {other.samples[c]}, width(c), height(c),
+                        depths[0]);
+            }
+            return sum / luma;
         }
 
         int sample(int c, int i) {

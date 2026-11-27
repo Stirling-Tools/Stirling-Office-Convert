@@ -87,21 +87,25 @@ final class TileCoder {
 
     final Component[] components;
 
-    TileCoder(int index, int x0, int y0, int x1, int y1, int comps, int levels, int blockLog) {
+    TileCoder(int index, int x0, int y0, int x1, int y1, int levels, int blockLog, int[] dx, int[] dy) {
         this.index = index;
         this.x0 = x0;
         this.y0 = y0;
         this.x1 = x1;
         this.y1 = y1;
-        components = new Component[comps];
-        for (int c = 0; c < comps; c++) {
+        components = new Component[dx.length];
+        for (int c = 0; c < dx.length; c++) {
+            int cx0 = Math.ceilDiv(x0, dx[c]);
+            int cy0 = Math.ceilDiv(y0, dy[c]);
+            int cx1 = Math.ceilDiv(x1, dx[c]);
+            int cy1 = Math.ceilDiv(y1, dy[c]);
             Resolution[] res = new Resolution[levels + 1];
             for (int r = 0; r <= levels; r++) {
                 int shift = levels - r;
-                int rx0 = ceilShift(x0, shift);
-                int ry0 = ceilShift(y0, shift);
-                int rx1 = ceilShift(x1, shift);
-                int ry1 = ceilShift(y1, shift);
+                int rx0 = ceilShift(cx0, shift);
+                int ry0 = ceilShift(cy0, shift);
+                int rx1 = ceilShift(cx1, shift);
+                int ry1 = ceilShift(cy1, shift);
                 int[][] bands;
                 int[] orients;
                 if (r == 0) {
@@ -116,8 +120,8 @@ final class TileCoder {
                         long xo = (o & 1) != 0 ? 1L << (nb - 1) : 0;
                         long yo = (o & 2) != 0 ? 1L << (nb - 1) : 0;
                         long d = 1L << nb;
-                        bands[b] = new int[] {(int) Math.ceilDiv(x0 - xo, d), (int) Math.ceilDiv(y0 - yo, d),
-                            (int) Math.ceilDiv(x1 - xo, d), (int) Math.ceilDiv(y1 - yo, d)};
+                        bands[b] = new int[] {(int) Math.ceilDiv(cx0 - xo, d), (int) Math.ceilDiv(cy0 - yo, d),
+                            (int) Math.ceilDiv(cx1 - xo, d), (int) Math.ceilDiv(cy1 - yo, d)};
                     }
                 }
                 Resolution resolution = new Resolution(rx0, ry0, rx1, ry1, bands, orients);
@@ -138,7 +142,7 @@ final class TileCoder {
                 }
                 res[r] = resolution;
             }
-            components[c] = new Component(x0, y0, x1, y1, res);
+            components[c] = new Component(cx0, cy0, cx1, cy1, res);
         }
     }
 
