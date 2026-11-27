@@ -156,6 +156,22 @@ final class Blend {
         return s <= 0 ? 0 : 1 - Math.min(1, (1 - b) / s);
     }
 
+    static void pixelCmyk(int mode, float[] b, int bo, float[] s, int so, float[] out) {
+        float kb = b[bo + 3];
+        float ks = s[so + 3];
+        if (mode == DARKER_COLOR || mode == LIGHTER_COLOR) {
+            float lb = (b[bo] * 0.3f + b[bo + 1] * 0.59f + b[bo + 2] * 0.11f) * kb;
+            float ls = (s[so] * 0.3f + s[so + 1] * 0.59f + s[so + 2] * 0.11f) * ks;
+            boolean source = mode == DARKER_COLOR ? ls < lb : ls > lb;
+            for (int i = 0; i < 4; i++) {
+                out[i] = source ? s[so + i] : b[bo + i];
+            }
+            return;
+        }
+        pixel(mode, b, bo, s, so, out);
+        out[3] = mode == LUMINOSITY ? ks : kb;
+    }
+
     static void pixel(int mode, float[] b, int bo, float[] s, int so, float[] out) {
         float br = b[bo];
         float bg = b[bo + 1];

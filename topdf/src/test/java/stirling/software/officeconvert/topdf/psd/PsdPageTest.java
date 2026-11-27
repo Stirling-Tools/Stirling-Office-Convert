@@ -459,6 +459,25 @@ class PsdPageTest {
     }
 
     @Test
+    void colorBlendingInCmykKeepsTheBlackOfWhatIsBelow() throws IOException {
+        PsdFixture f = new PsdFixture(1, 1);
+        f.hasMerged = false;
+        f.mode = PsdDocument.CMYK;
+        f.flat(255).flat(255).flat(255).flat(255);
+        f.layers.add(new PsdFixture.Layer().rect(0, 0, 1, 1).fill(0, 128).fill(1, 128).fill(2, 128).fill(3, 255));
+        PsdFixture.Layer top = new PsdFixture.Layer().rect(0, 0, 1, 1).fill(-1, 255).fill(0, 255).fill(1, 0)
+                .fill(2, 0).fill(3, 128);
+        top.blend = "colr";
+        f.layers.add(top);
+        convert(f, "cmyk-color.psd");
+        try (PDDocument pdf = open("cmyk-color.psd")) {
+            byte[] s = samples(image(pdf.getPage(0)));
+            assertEquals(0, s[3] & 0xFF);
+            assertTrue((s[1] & 0xFF) > (s[0] & 0xFF), java.util.Arrays.toString(s));
+        }
+    }
+
+    @Test
     void levelsMapTheInputRange() throws IOException {
         PsdFixture f = new PsdFixture(1, 1);
         f.hasMerged = false;

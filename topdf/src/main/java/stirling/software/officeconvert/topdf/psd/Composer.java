@@ -1016,8 +1016,9 @@ final class Composer {
     }
 
     private void composite(float[] dest, float[] src, int mode, float opacity, float[] clip) {
-        float[] mixed = new float[3];
-        boolean whole = Blend.whole(mode) && rgb;
+        boolean cmyk = doc.mode == PsdDocument.CMYK;
+        float[] mixed = new float[4];
+        boolean whole = Blend.whole(mode) && (rgb || cmyk);
         boolean separable = Blend.separable(mode) && doc.mode != PsdDocument.LAB;
         for (int x = 0; x < width; x++) {
             int at = x * stride;
@@ -1028,7 +1029,11 @@ final class Composer {
             float ab = dest[at + n];
             float ao = as + ab - as * ab;
             if (whole && ab > 0) {
-                Blend.pixel(mode, dest, at, src, at, mixed);
+                if (cmyk) {
+                    Blend.pixelCmyk(mode, dest, at, src, at, mixed);
+                } else {
+                    Blend.pixel(mode, dest, at, src, at, mixed);
+                }
             }
             for (int i = 0; i < n; i++) {
                 float cb = dest[at + i];
