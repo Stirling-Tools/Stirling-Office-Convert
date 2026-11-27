@@ -791,8 +791,12 @@ exactly what is written.
   differently.
 - JPEG 2000. Part 1 does not allow JPX images, so they are decoded and stored again (JPEG when photographic, lossless
   otherwise, with any alpha as a soft mask); parts 2 and 3 keep them unless they break the part 2 JPX rules (channel
-  count, bit depth, colour boxes). Parts 2 to 4 store a broken one again as JPEG 2000 that follows the rules when that
-  is smaller: a photograph when a JPEG 2000 copy at least as close to the decoded picture as the JPEG copy, in PSNR
+  count, bit depth, colour boxes). When the only problem is the channels (an alpha channel in the picture, or mixed
+  depths between colour and alpha) and the colour is plain sRGB, grey or CMYK, parts 2 to 4 split the codestream
+  itself into the colour picture and its soft mask without decoding and encoding again, so both keep their exact
+  samples, and use that when it takes no more bytes than the alternatives below; the split is decoded and compared
+  sample by sample before it is kept. Otherwise parts 2 to 4 store a broken one again as JPEG 2000 that follows the
+  rules when that is smaller: a photograph when a JPEG 2000 copy at least as close to the decoded picture as the JPEG copy, in PSNR
   and SSIM, takes fewer bytes; anything else, and soft masks, when a lossless JPEG 2000 copy is smaller than the
   lossless one. Otherwise, and for pictures of more than 4.2 million samples, it is stored as in part 1. Decoding
   and encoding use the core library's own JPEG 2000 code, so nothing extra is needed.

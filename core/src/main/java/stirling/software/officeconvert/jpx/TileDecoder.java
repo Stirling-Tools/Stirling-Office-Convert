@@ -161,7 +161,7 @@ final class TileDecoder {
         return (int) Math.rint(f);
     }
 
-    private static ComponentStyle style(int c, MarkerSet tile, MarkerSet main) {
+    static ComponentStyle style(int c, MarkerSet tile, MarkerSet main) {
         ComponentStyle s = tile.coc.get(c);
         if (s != null) {
             return s;
@@ -172,7 +172,7 @@ final class TileDecoder {
         return main.coc.getOrDefault(c, main.cod.style());
     }
 
-    private static Quant quant(int c, MarkerSet tile, MarkerSet main) {
+    static Quant quant(int c, MarkerSet tile, MarkerSet main) {
         Quant q = tile.qcc.get(c);
         if (q != null) {
             return q;
@@ -183,7 +183,7 @@ final class TileDecoder {
         return main.qcc.getOrDefault(c, main.qcd);
     }
 
-    private static int roi(int c, MarkerSet tile, MarkerSet main) {
+    static int roi(int c, MarkerSet tile, MarkerSet main) {
         Integer r = tile.roi.get(c);
         return r != null ? r : main.roi.getOrDefault(c, 0);
     }

@@ -25,6 +25,7 @@ import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import stirling.software.officeconvert.jpx.JpxDecoder;
 import stirling.software.officeconvert.jpx.JpxEncoder;
 import stirling.software.officeconvert.jpx.JpxImage;
+import stirling.software.officeconvert.jpx.JpxSplit;
 
 final class JpxImages {
 
@@ -96,6 +97,7 @@ final class JpxImages {
             throw new IOException("The PDF has a JPEG 2000 image mask, which " + level.label() + " does not allow");
         }
         JpxImage jpx = jpx(encoded);
+        Copy copy = level.part() > 1 ? exactCopy(s, encoded, jpx, colourSpace, smaskInData) : null;
         BufferedImage decoded = composed(jpx);
         COSStream from;
         PDImageXObject mask;
@@ -134,6 +136,12 @@ final class JpxImages {
         try (InputStream in = from.createRawInputStream()) {
             data = in.readAllBytes();
         }
+        long converted = data.length + (mask == null ? 0 : mask.getCOSObject().getLength());
+        if (copy != null && copy.bytes() <= converted) {
+            apply(s, copy, smaskInData);
+            report.warn("Converted JPEG 2000 images, which " + level.label() + " does not allow as they were");
+            return;
+        }
         for (COSName k : REPLACED) {
             s.removeItem(k);
         }
@@ -149,6 +157,100 @@ final class JpxImages {
             s.setItem(COSName.SMASK, mask.getCOSObject());
         }
         report.warn("Converted JPEG 2000 images, which " + level.label() + " does not allow as they were");
+    }
+
+    private record Copy(byte[][] parts, int[][] sizes, int colours) {
+
+        long bytes() {
+            long n = 0;
+            for (byte[] p : parts) {
+                n += p.length;
+            }
+            return n;
+        }
+    }
+
+    private static Copy exactCopy(COSStream s, byte[] encoded, JpxImage jpx, COSBase colourSpace, int smaskInData)
+            throws IOException {
+        JpxHeader h = JpxHeader.parse(encoded);
+        if (h == null || h.palette() || jpx.palette() || s.containsKey(COSName.SMASK) || !plainColour(h)
+                || colourSpace == null && h.colours().isEmpty()) {
+            return null;
+        }
+        int n = colourSpace != null ? components(colourSpace) : switch (h.colours().get(0)[2]) {
+            case 17 -> 1;
+            case 16 -> 3;
+            default -> 4;
+        };
+        int total = jpx.raster().components();
+        if (n < 1 || total < n) {
+            return null;
+        }
+        int alpha = RawJpx.alphaComponent(jpx, n, smaskInData);
+        int[] colours = new int[n];
+        for (int c = 0, i = 0; i < n; c++) {
+            if (c != alpha) {
+                colours[i++] = c;
+            }
+        }
+        int[][] groups = alpha >= 0 ? new int[][] {colours, {alpha}} : new int[][] {colours};
+        byte[][] parts;
+        try {
+            parts = JpxSplit.split(encoded, groups);
+        } catch (RuntimeException e) {
+            return null;
+        }
+        if (parts == null) {
+            return null;
+        }
+        byte[][] wrapped = new byte[parts.length][];
+        int[][] sizes = new int[parts.length][];
+        for (int i = 0; i < parts.length; i++) {
+            sizes[i] = JpxDecoder.size(parts[i]);
+            wrapped[i] = JpxHeader.wrap(parts[i], sizes[i][0], sizes[i][1]);
+            JpxHeader w = JpxHeader.parse(wrapped[i]);
+            if (w == null || !w.allowedInPdfA(colourSpace != null || i > 0)) {
+                return null;
+            }
+        }
+        return new Copy(wrapped, sizes, n);
+    }
+
+    private void apply(COSStream s, Copy copy, int smaskInData) throws IOException {
+        if (copy.parts().length > 1) {
+            COSStream mask = doc.getDocument().createCOSStream();
+            try (OutputStream out = mask.createRawOutputStream()) {
+                out.write(copy.parts()[1]);
+            }
+            mask.setItem(COSName.TYPE, COSName.XOBJECT);
+            mask.setItem(COSName.SUBTYPE, COSName.IMAGE);
+            mask.setItem(COSName.FILTER, COSName.JPX_DECODE);
+            mask.setInt(COSName.WIDTH, copy.sizes()[1][0]);
+            mask.setInt(COSName.HEIGHT, copy.sizes()[1][1]);
+            mask.setItem(COSName.COLORSPACE, COSName.DEVICEGRAY);
+            COSBase matte = s.getDictionaryObject(COSName.getPDFName("Matte"));
+            if (smaskInData == 2 && matte instanceof COSArray m && m.size() == copy.colours()) {
+                mask.setItem(COSName.getPDFName("Matte"), m);
+            }
+            s.setItem(COSName.SMASK, mask);
+        }
+        s.removeItem(COSName.DECODE_PARMS);
+        s.removeItem(COSName.BITS_PER_COMPONENT);
+        s.removeItem(SMASK_IN_DATA);
+        s.setItem(COSName.FILTER, COSName.JPX_DECODE);
+        s.setInt(COSName.WIDTH, copy.sizes()[0][0]);
+        s.setInt(COSName.HEIGHT, copy.sizes()[0][1]);
+        try (OutputStream out = s.createRawOutputStream()) {
+            out.write(copy.parts()[0]);
+        }
+    }
+
+    private static boolean plainColour(JpxHeader h) {
+        if (h.colours().isEmpty()) {
+            return true;
+        }
+        int[] first = h.colours().get(0);
+        return first[0] == 1 && (first[2] == 16 || first[2] == 17 || first[2] == 12);
     }
 
     private PDImageXObject encode(BufferedImage image) throws IOException {

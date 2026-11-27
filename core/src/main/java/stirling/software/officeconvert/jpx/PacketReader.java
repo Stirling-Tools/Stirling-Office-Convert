@@ -47,6 +47,10 @@ final class PacketReader implements Progression.Visitor {
         }
     }
 
+    int position() {
+        return pos;
+    }
+
     @Override
     public boolean packet(int layer, int r, int c, int k) throws IOException {
         if (Thread.currentThread().isInterrupted()) {

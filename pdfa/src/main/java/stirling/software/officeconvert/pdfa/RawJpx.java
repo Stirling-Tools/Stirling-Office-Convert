@@ -69,7 +69,7 @@ final class RawJpx {
         return false;
     }
 
-    private static int alphaComponent(JpxImage jpx, int n, int smaskInData) {
+    static int alphaComponent(JpxImage jpx, int n, int smaskInData) {
         int[][] defs = jpx.channelDefinitions();
         if (defs != null && !jpx.palette()) {
             for (int[] d : defs) {

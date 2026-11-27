@@ -513,6 +513,39 @@ class JpxImagesTest {
     }
 
     @Test
+    void partTwoSplitsColourAndAlphaOutOfTheCodestreamWithoutReencoding() throws Exception {
+        for (boolean colour : new boolean[] {true, false}) {
+            JpxEncoder.Planes source = photoWithAlpha(400, 300, colour);
+            byte[] encoded = JpxEncoder.encode(source, JpxEncoder.Options.rate(0.5).withLayers(3));
+            Path in = page(encoded, 400, 300, true);
+            Path out = dir.resolve("2b-split-" + colour + ".pdf");
+            PdfToPdfA.convert(in, out, PdfToPdfA.Options.defaults().level(PdfALevel.A2B));
+            VeraPdf.assertCompliant(out, PdfALevel.A2B);
+            JpxRaster original = JpxDecoder.decode(encoded).raster();
+            int colours = colour ? 3 : 1;
+            try (PDDocument d = Loader.loadPDF(out.toFile())) {
+                COSStream image = largestImage(d);
+                COSStream mask = (COSStream) image.getDictionaryObject(COSName.SMASK);
+                assertEquals(COSName.JPX_DECODE, image.getDictionaryObject(COSName.FILTER));
+                assertEquals(COSName.JPX_DECODE, mask.getDictionaryObject(COSName.FILTER));
+                assertTrue(image.getLength() + mask.getLength() < encoded.length + 200,
+                        image.getLength() + mask.getLength() + " vs " + encoded.length);
+                JpxRaster kept = JpxDecoder.decode(samples(image, true)).raster();
+                JpxRaster alpha = JpxDecoder.decode(samples(mask, true)).raster();
+                assertEquals(colours, kept.components());
+                for (int y = 0; y < 300; y++) {
+                    for (int x = 0; x < 400; x++) {
+                        for (int c = 0; c < colours; c++) {
+                            assertEquals(original.sample(c, x, y), kept.sample(c, x, y));
+                        }
+                        assertEquals(original.sample(colours, x, y), alpha.sample(0, x, y));
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
     void partTwoStoresGreyAndAlphaAsLosslessJpegTwoThousand() throws Exception {
         JpxEncoder.Planes source = photoWithAlpha(400, 300, false);
         Path in = page(JpxEncoder.encode(source, JpxEncoder.Options.exact()), 400, 300, true);
