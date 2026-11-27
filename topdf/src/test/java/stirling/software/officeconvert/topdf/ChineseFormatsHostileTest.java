@@ -227,6 +227,68 @@ class ChineseFormatsHostileTest {
     }
 
     @Test
+    void tinyPatternStepsAndHugeMeshesStayBounded() throws IOException {
+        String tiles = "<ofd:PathObject ID=\"2\" Boundary=\"0 0 200 200\" Fill=\"true\"><ofd:FillColor>"
+                + "<ofd:Pattern Width=\"0.02\" Height=\"0.02\" XStep=\"0.02\" YStep=\"0.02\"><ofd:CellContent>"
+                + "<ofd:PathObject ID=\"3\" Boundary=\"0 0 1 1\" Fill=\"true\"><ofd:FillColor Value=\"0 0 0\"/>"
+                + "<ofd:AbbreviatedData>M 0 0 L 1 0 L 1 1 C</ofd:AbbreviatedData></ofd:PathObject></ofd:CellContent>"
+                + "</ofd:Pattern></ofd:FillColor><ofd:AbbreviatedData>M 0 0 L 200 0 L 200 200 C</ofd:AbbreviatedData>"
+                + "</ofd:PathObject>";
+        StringBuilder points = new StringBuilder();
+        for (int i = 0; i < 60_000; i++) {
+            points.append("<ofd:Point X=\"").append(i % 300).append("\" Y=\"").append(i / 300)
+                    .append("\"><ofd:Color Value=\"1 2 3\"/></ofd:Point>");
+        }
+        String mesh = "<ofd:PathObject ID=\"4\" Boundary=\"0 0 200 200\" Fill=\"true\"><ofd:FillColor>"
+                + "<ofd:LaGouraudShd VerticesPerRow=\"300\">" + points + "</ofd:LaGouraudShd></ofd:FillColor>"
+                + "<ofd:AbbreviatedData>M 0 0 L 200 0 L 200 200 C</ofd:AbbreviatedData></ofd:PathObject>";
+        byte[] data = ofd("", tiles + mesh).bytes();
+        long start = System.nanoTime();
+        Allocation.Measured m = Allocation.measure(() -> convert("bounded.ofd", data));
+        assertNull(m.failure());
+        assertTrue(System.nanoTime() - start < 20_000_000_000L, "took too long");
+        assertTrue(Files.size(dir.resolve("bounded.ofd.pdf")) < 16L << 20, "output too large");
+    }
+
+    @Test
+    void theOfdMemoryEstimateCoversPageXmlThatCompressesWell() throws IOException {
+        String path = "<ofd:PathObject ID=\"2\" Boundary=\"0 0 1 1\"><ofd:AbbreviatedData>M 0 0 L 1 1"
+                + "</ofd:AbbreviatedData></ofd:PathObject>";
+        String body = path.repeat(100_000);
+        byte[] data = ofd("", body).bytes();
+        Path in = Files.write(dir.resolve("dense.ofd"), data);
+        long page = ofdPage(body).getBytes(StandardCharsets.UTF_8).length;
+        assertTrue(data.length * 20L < page, "the page should compress well");
+        assertTrue(OfficeToPdf.memoryEstimate(in) >= page * 14, "estimate " + OfficeToPdf.memoryEstimate(in));
+    }
+
+    @Test
+    void ofdAttachmentsOutsideThePackageOrPastTheBudgetAreLeftOut() throws IOException {
+        Path secret = canary();
+        String list = "<ofd:Attachments " + NS + "><ofd:Attachment ID=\"1\" Name=\"secret\"><ofd:FileLoc>file://"
+                + secret.toAbsolutePath() + "</ofd:FileLoc></ofd:Attachment><ofd:Attachment ID=\"2\" Name=\"up\">"
+                + "<ofd:FileLoc>../../../../" + secret.toAbsolutePath() + "</ofd:FileLoc></ofd:Attachment>"
+                + "<ofd:Attachment ID=\"3\" Name=\"zeros.bin\"><ofd:FileLoc>zeros.bin</ofd:FileLoc></ofd:Attachment>"
+                + "</ofd:Attachments>";
+        byte[] data = new ZipBytes().add("OFD.xml", ofdRoot(""))
+                .add("Doc_0/Document.xml", ofdDocument("", "<ofd:Page ID=\"1\" BaseLoc=\"Pages/P0.xml\"/>",
+                        "<ofd:Attachments>Attachments.xml</ofd:Attachments>"))
+                .add("Doc_0/Pages/P0.xml", ofdPage("")).add("Doc_0/Attachments.xml", list)
+                .add("Doc_0/zeros.bin", new byte[24 << 20]).bytes();
+        try (NoNetwork net = NoNetwork.start()) {
+            Path pdf = convert("attach.ofd", data);
+            assertTrue(activeContent(pdf).isEmpty(), activeContent(pdf).toString());
+            try (PDDocument doc = Loader.loadPDF(pdf.toFile())) {
+                var names = doc.getDocumentCatalog().getNames();
+                assertTrue(names == null || names.getEmbeddedFiles() == null
+                        || names.getEmbeddedFiles().getNames() == null
+                        || names.getEmbeddedFiles().getNames().isEmpty());
+            }
+            net.assertNothingConnected();
+        }
+    }
+
+    @Test
     void ofdActionsLinksAndMediaAreNeverCarriedIntoThePdf() throws IOException {
         String actions = "<ofd:Actions><ofd:Action Event=\"DO\"><ofd:URI URI=\"javascript:app.alert(1)\"/></ofd:Action>"
                 + "<ofd:Action Event=\"DO\"><ofd:Sound ResourceID=\"1\"/></ofd:Action><ofd:Action Event=\"DO\"><ofd:Movie"

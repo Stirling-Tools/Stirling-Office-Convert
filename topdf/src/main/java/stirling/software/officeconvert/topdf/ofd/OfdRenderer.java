@@ -69,14 +69,16 @@ public final class OfdRenderer {
     }
 
     public static long memoryBound(Path file) throws IOException {
-        return (48L << 20) + SourceFile.size(file) * 12;
+        return (48L << 20) + SourceFile.size(file) * 12 + OfdPackage.largestXml(file) * 14;
     }
 
     public static Drawn draw(Path source, PdfOutput output, FontLibrary library, int maxPages) throws IOException {
         Set<String> notes = new LinkedHashSet<>();
         try (OfdPackage pkg = OfdPackage.open(source)) {
             OfdRenderer r = new OfdRenderer(pkg, output, library, notes, 0);
-            int[] counts = r.documents(maxPages <= 0 ? MAX_PAGES : Math.min(maxPages, MAX_PAGES));
+            OfdAttachments attachments = new OfdAttachments(pkg, notes, SourceFile.size(source) * 4 + (1 << 20));
+            int[] counts = r.documents(maxPages <= 0 ? MAX_PAGES : Math.min(maxPages, MAX_PAGES), attachments);
+            attachments.write(output.document());
             return new Drawn(counts[0], counts[1], List.copyOf(notes));
         }
     }
@@ -84,7 +86,7 @@ public final class OfdRenderer {
     private record Doc(String part, Element root, OfdResources res, OfdResources.ColorSpace space,
             Element pageArea, Map<String, String> templates, List<String[]> pages) {}
 
-    private int[] documents(int maxPages) throws IOException {
+    private int[] documents(int maxPages, OfdAttachments attachments) throws IOException {
         Element ofd = pkg.xml(rootPart());
         int drawn = 0;
         int total = 0;
@@ -97,6 +99,7 @@ public final class OfdRenderer {
                 info(Dom.kid(body, "DocInfo"));
             }
             Doc doc = load(rootLoc);
+            attachments.collect(output.document(), doc.part(), doc.root());
             Map<String, List<Element>> annots = annotations(doc);
             Map<String, List<Stamp>> stamps = stamps(body);
             Map<String, Integer> index = new HashMap<>();

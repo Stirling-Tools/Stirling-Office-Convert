@@ -300,6 +300,136 @@ class OfdRendererTest {
         assertEquals(null, OfdSeals.picture(new byte[] {0x30, (byte) 0x84, 0x7F, 0x7F, 0x7F, 0x7F, 0, 0}));
     }
 
+    @Test
+    void attachmentsAreEmbeddedAsTheyAre() throws IOException {
+        byte[] payload = {0x50, 0x4B, 3, 4, 9, 9, 9};
+        String list = "<ofd:Attachments " + NS + "><ofd:Attachment ID=\"1\" Name=\"../发票明细\" Usage=\"清单\">"
+                + "<ofd:FileLoc>Attachs/a.zip</ofd:FileLoc></ofd:Attachment>"
+                + "<ofd:Attachment ID=\"2\" Name=\"gone\"><ofd:FileLoc>Attachs/missing.bin</ofd:FileLoc>"
+                + "</ofd:Attachment></ofd:Attachments>";
+        byte[] data = new ZipBytes().add("OFD.xml", root(""))
+                .add("Doc_0/Document.xml", document("", "<ofd:Page ID=\"1\" BaseLoc=\"Pages/Page_0/Content.xml\"/>",
+                        "<ofd:Attachments>Attachments.xml</ofd:Attachments>"))
+                .add("Doc_0/PublicRes.xml", PUBLIC_RES).add("Doc_0/DocumentRes.xml", documentRes(""))
+                .add("Doc_0/Pages/Page_0/Content.xml", page("")).add("Doc_0/Attachments.xml", list)
+                .add("Doc_0/Attachs/a.zip", payload).bytes();
+        Path pdf = convert(data);
+        try (PDDocument doc = Loader.loadPDF(pdf.toFile())) {
+            var files = doc.getDocumentCatalog().getNames().getEmbeddedFiles().getNames();
+            assertEquals(1, files.size());
+            String name = files.keySet().iterator().next();
+            assertEquals(".._发票明细.zip", name);
+            assertEquals("清单", files.get(name).getFileDescription());
+            assertTrue(java.util.Arrays.equals(payload, files.get(name).getEmbeddedFile().toByteArray()));
+        }
+    }
+
+    @Test
+    void patternCellsAreRepeatedInsideThePath() throws IOException {
+        String body = "<ofd:PathObject ID=\"11\" Boundary=\"10 10 100 20\" Fill=\"true\" Stroke=\"false\">"
+                + "<ofd:FillColor><ofd:Pattern Width=\"10\" Height=\"10\" XStep=\"20\" YStep=\"20\"><ofd:CellContent>"
+                + "<ofd:PathObject ID=\"12\" Boundary=\"0 0 10 10\" Fill=\"true\" Stroke=\"false\">"
+                + "<ofd:FillColor Value=\"255 0 0\"/><ofd:AbbreviatedData>M 0 0 L 10 0 L 10 10 L 0 10 C"
+                + "</ofd:AbbreviatedData></ofd:PathObject></ofd:CellContent></ofd:Pattern></ofd:FillColor>"
+                + "<ofd:AbbreviatedData>M 0 0 L 100 0 L 100 20 L 0 20 C</ofd:AbbreviatedData></ofd:PathObject>";
+        BufferedImage image = render(convert(ofd(body).bytes()));
+        assertTrue(reddish(at(image, 15, 15)));
+        assertTrue(reddish(at(image, 55, 15)));
+        assertTrue(reddish(at(image, 95, 15)));
+        assertEquals(Color.WHITE, at(image, 25, 15));
+        assertEquals(Color.WHITE, at(image, 115, 15));
+    }
+
+    @Test
+    void gouraudMeshesBlendTheirCornerColours() throws IOException {
+        String body = "<ofd:PathObject ID=\"11\" Boundary=\"10 10 100 100\" Fill=\"true\" Stroke=\"false\">"
+                + "<ofd:FillColor><ofd:LaGouraudShd VerticesPerRow=\"2\">"
+                + point(0, 0, "255 0 0") + point(100, 0, "255 0 0") + point(0, 100, "0 0 255") + point(100, 100, "0 0 255")
+                + "</ofd:LaGouraudShd></ofd:FillColor>"
+                + "<ofd:AbbreviatedData>M 0 0 L 100 0 L 100 100 L 0 100 C</ofd:AbbreviatedData></ofd:PathObject>";
+        BufferedImage image = render(convert(ofd(body).bytes()));
+        Color top = at(image, 60, 14);
+        Color bottom = at(image, 60, 106);
+        Color middle = at(image, 60, 60);
+        assertTrue(top.getRed() > 200 && top.getBlue() < 60, "top: " + top);
+        assertTrue(bottom.getBlue() > 200 && bottom.getRed() < 60, "bottom: " + bottom);
+        assertTrue(middle.getRed() > 80 && middle.getBlue() > 80, "middle: " + middle);
+        assertEquals(Color.WHITE, at(image, 150, 60));
+    }
+
+    @Test
+    void freeFormGouraudTrianglesFollowTheirEdgeFlags() throws IOException {
+        String body = "<ofd:PathObject ID=\"11\" Boundary=\"10 10 100 100\" Fill=\"true\" Stroke=\"false\">"
+                + "<ofd:FillColor><ofd:GouraudShd>" + flagged(0, 0, 0) + flagged(100, 0, 0) + flagged(0, 100, 0)
+                + flagged(100, 100, 1) + "</ofd:GouraudShd></ofd:FillColor>"
+                + "<ofd:AbbreviatedData>M 0 0 L 100 0 L 100 100 L 0 100 C</ofd:AbbreviatedData></ofd:PathObject>";
+        BufferedImage image = render(convert(ofd(body).bytes()));
+        assertTrue(reddish(at(image, 30, 30)));
+        assertTrue(reddish(at(image, 90, 90)));
+    }
+
+    @Test
+    void imageMasksHideTheBlackPartOfAPicture() throws IOException {
+        String media = "<ofd:MultiMedia ID=\"40\" Type=\"Image\"><ofd:MediaFile>red.png</ofd:MediaFile></ofd:MultiMedia>"
+                + "<ofd:MultiMedia ID=\"41\" Type=\"Image\"><ofd:MediaFile>mask.png</ofd:MediaFile></ofd:MultiMedia>";
+        String body = "<ofd:ImageObject ID=\"13\" Boundary=\"20 20 100 80\" CTM=\"100 0 0 80 0 0\" ResourceID=\"40\""
+                + " ImageMask=\"41\"/>";
+        byte[] data = new ZipBytes().add("OFD.xml", root(""))
+                .add("Doc_0/Document.xml", document("", "<ofd:Page ID=\"1\" BaseLoc=\"Pages/Page_0/Content.xml\"/>", ""))
+                .add("Doc_0/PublicRes.xml", PUBLIC_RES).add("Doc_0/DocumentRes.xml", documentRes(media))
+                .add("Doc_0/Pages/Page_0/Content.xml", page(body)).add("Doc_0/Res/red.png", png(Color.RED))
+                .add("Doc_0/Res/mask.png", halves()).bytes();
+        BufferedImage image = render(convert(data));
+        assertTrue(reddish(at(image, 40, 60)), "kept: " + at(image, 40, 60));
+        assertEquals(Color.WHITE, at(image, 100, 60));
+    }
+
+    @Test
+    void verticalTextAdvancesDownByTheEm() throws IOException {
+        String body = "<ofd:TextObject ID=\"10\" Boundary=\"20 30 100 100\" Font=\"2\" Size=\"8\" ReadDirection=\"90\">"
+                + "<ofd:TextCode X=\"0\" Y=\"8\">中文字</ofd:TextCode></ofd:TextObject>";
+        Path pdf = convert(ofd(body).bytes());
+        List<TextPosition> glyphs = new ArrayList<>();
+        try (PDDocument doc = Loader.loadPDF(pdf.toFile())) {
+            PDFTextStripper stripper = new PDFTextStripper() {
+                @Override
+                protected void processTextPosition(TextPosition text) {
+                    glyphs.add(text);
+                }
+            };
+            stripper.getText(doc);
+        }
+        assertEquals(3, glyphs.size());
+        assertEquals(glyphs.get(0).getXDirAdj(), glyphs.get(2).getXDirAdj(), 0.5);
+        assertEquals(8 * MM, glyphs.get(1).getYDirAdj() - glyphs.get(0).getYDirAdj(), 0.5);
+        assertEquals(16 * MM, glyphs.get(2).getYDirAdj() - glyphs.get(0).getYDirAdj(), 0.5);
+    }
+
+    private static String point(double x, double y, String rgb) {
+        return "<ofd:Point X=\"" + x + "\" Y=\"" + y + "\"><ofd:Color Value=\"" + rgb + "\"/></ofd:Point>";
+    }
+
+    private static String flagged(double x, double y, int flag) {
+        return "<ofd:Point X=\"" + x + "\" Y=\"" + y + "\" EdgeFlag=\"" + flag + "\"><ofd:Color Value=\"255 0 0\"/>"
+                + "</ofd:Point>";
+    }
+
+    private static byte[] halves() {
+        BufferedImage image = new BufferedImage(8, 8, BufferedImage.TYPE_INT_RGB);
+        for (int y = 0; y < 8; y++) {
+            for (int x = 0; x < 8; x++) {
+                image.setRGB(x, y, x < 4 ? Color.WHITE.getRGB() : Color.BLACK.getRGB());
+            }
+        }
+        try {
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            ImageIO.write(image, "png", out);
+            return out.toByteArray();
+        } catch (IOException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
     private static byte[] png(Color color) {
         BufferedImage image = new BufferedImage(8, 8, BufferedImage.TYPE_INT_RGB);
         for (int y = 0; y < 8; y++) {

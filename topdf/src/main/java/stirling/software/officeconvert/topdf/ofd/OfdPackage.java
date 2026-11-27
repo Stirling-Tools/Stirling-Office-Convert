@@ -52,6 +52,21 @@ final class OfdPackage implements Closeable {
         return new OfdPackage(BoundedZip.open(file, OfficeZip.Limits.DEFAULT));
     }
 
+    static long largestXml(Path file) {
+        long largest = 0;
+        try (BoundedZip z = BoundedZip.open(file)) {
+            for (ZipEntry e : z.entries()) {
+                if (!e.isDirectory() && BoundedZip.normalised(e.getName()).toLowerCase(Locale.ROOT).endsWith(".xml")) {
+                    long size = e.getSize() < 0 ? MAX_XML_BYTES : Math.min(e.getSize(), MAX_XML_BYTES);
+                    largest = Math.max(largest, size);
+                }
+            }
+        } catch (IOException | RuntimeException e) {
+            return 0;
+        }
+        return largest;
+    }
+
     static boolean is(Path file) {
         try {
             byte[] head = SourceFile.head(file, 2);

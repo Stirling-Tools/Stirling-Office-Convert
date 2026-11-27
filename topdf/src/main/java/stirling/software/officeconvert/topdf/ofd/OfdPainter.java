@@ -4,6 +4,7 @@ import java.awt.Color;
 import java.awt.Shape;
 import java.awt.geom.AffineTransform;
 import java.awt.geom.Area;
+import java.awt.geom.NoninvertibleTransformException;
 import java.awt.geom.Path2D;
 import java.awt.geom.Rectangle2D;
 import java.io.IOException;
@@ -28,6 +29,8 @@ final class OfdPainter {
     static final int MAX_CLIP_CHARS = 200_000;
 
     static final double DEFAULT_LINE_WIDTH = 0.353;
+
+    static final int MAX_TILES = 4_096;
 
     private final PdfCanvas canvas;
 
@@ -98,7 +101,7 @@ final class OfdPainter {
             canvas.translate((float) box.x, (float) box.y);
             clipsIn(e, ctm);
             switch (Dom.local(e)) {
-                case "PathObject" -> path(e, param, ctm, alpha);
+                case "PathObject" -> path(e, param, ctm, alpha, depth);
                 case "TextObject" -> text.draw(canvas, e, param, ctm, alpha, this);
                 case "ImageObject" -> image(e, ctm, alpha, box);
                 case "CompositeObject" -> composite(e, param, ctm, depth);
@@ -188,7 +191,7 @@ final class OfdPainter {
         return t == null ? shape : t.createTransformedShape(shape);
     }
 
-    private void path(Element e, Element param, AffineTransform ctm, double alpha) throws IOException {
+    private void path(Element e, Element param, AffineTransform ctm, double alpha, int depth) throws IOException {
         Path2D.Double shape = OfdPath.parse(Dom.text(Dom.kid(e, "AbbreviatedData")));
         if (shape.getCurrentPoint() == null) {
             return;
@@ -201,9 +204,78 @@ final class OfdPainter {
         if (ctm != null) {
             canvas.transform(ctm);
         }
-        Fill f = fill && colourElement(e, param, "FillColor") != null ? fill(e, param, alpha) : null;
+        Element colour = fill ? colourElement(e, param, "FillColor") : null;
         Stroke s = stroke ? stroke(e, param, alpha) : null;
-        canvas.draw(shape, f, s);
+        Element pattern = colour == null ? null : Dom.kid(colour, "Pattern");
+        Element mesh = colour == null ? null : OfdMesh.element(colour);
+        if (pattern == null && mesh == null) {
+            canvas.draw(shape, colour != null ? fill(e, param, alpha) : null, s);
+            return;
+        }
+        canvas.save();
+        try {
+            canvas.clip(shape);
+            if (pattern != null) {
+                tile(pattern, shape, param, depth);
+            } else {
+                OfdMesh.paint(canvas, mesh, res, defaultSpace, alpha);
+            }
+        } finally {
+            canvas.restore();
+        }
+        if (s != null) {
+            canvas.draw(shape, null, s);
+        }
+    }
+
+    private void tile(Element pattern, Shape shape, Element param, int depth) throws IOException {
+        Element cell = Dom.kid(pattern, "CellContent");
+        double w = OfdNumbers.number(pattern.getAttribute("Width"), 0);
+        double h = OfdNumbers.number(pattern.getAttribute("Height"), 0);
+        double xs = OfdNumbers.number(pattern.getAttribute("XStep"), w);
+        double ys = OfdNumbers.number(pattern.getAttribute("YStep"), h);
+        if (cell == null || depth >= MAX_DEPTH || !(w > 0 && h > 0 && xs > 0.01 && ys > 0.01)) {
+            return;
+        }
+        AffineTransform pt = OfdNumbers.ctm(pattern.getAttribute("CTM"));
+        if (pt == null) {
+            pt = new AffineTransform();
+        }
+        Rectangle2D b;
+        try {
+            b = pt.createInverse().createTransformedShape(shape.getBounds2D()).getBounds2D();
+        } catch (NoninvertibleTransformException ex) {
+            return;
+        }
+        double i0 = Math.floor(b.getMinX() / xs);
+        double i1 = Math.ceil(b.getMaxX() / xs);
+        double j0 = Math.floor(b.getMinY() / ys);
+        double j1 = Math.ceil(b.getMaxY() / ys);
+        if ((i1 - i0 + 1) * (j1 - j0 + 1) > MAX_TILES) {
+            return;
+        }
+        boolean mirrorColumns = pattern.getAttribute("ReflectMethod").matches("Column|RowAndColumn");
+        boolean mirrorRows = pattern.getAttribute("ReflectMethod").matches("Row|RowAndColumn");
+        canvas.transform(pt);
+        for (double j = j0; j <= j1; j++) {
+            for (double i = i0; i <= i1; i++) {
+                OfficeZip.checkNotInterrupted();
+                canvas.save();
+                try {
+                    canvas.translate((float) (i * xs), (float) (j * ys));
+                    boolean flipX = mirrorColumns && Math.floorMod((long) i, 2) == 1;
+                    boolean flipY = mirrorRows && Math.floorMod((long) j, 2) == 1;
+                    if (flipX || flipY) {
+                        canvas.translate(flipX ? (float) w : 0, flipY ? (float) h : 0);
+                        canvas.scale(flipX ? -1 : 1, flipY ? -1 : 1);
+                    }
+                    canvas.clipRect(0, 0, (float) w, (float) h);
+                    block(cell, param, depth + 1);
+                } finally {
+                    canvas.restore();
+                }
+            }
+        }
     }
 
     Fill fill(Element e, Element param, double alpha) {
@@ -224,7 +296,7 @@ final class OfdPainter {
         return withAlpha(OfdColors.color(colourElement(e, param, "StrokeColor"), res, defaultSpace, Color.BLACK), alpha);
     }
 
-    private Stroke stroke(Element e, Element param, double alpha) {
+    Stroke stroke(Element e, Element param, double alpha) {
         Color col = strokeColor(e, param, alpha);
         double width = OfdNumbers.number(attr(e, param, "LineWidth"), DEFAULT_LINE_WIDTH);
         width = Math.clamp(width, 0, 1000);
@@ -263,7 +335,9 @@ final class OfdPainter {
     }
 
     private void image(Element e, AffineTransform ctm, double alpha, Rectangle2D.Double box) throws IOException {
-        DecodedPicture picture = images.picture(e.getAttribute("ResourceID"));
+        DecodedPicture picture = e.hasAttribute("ImageMask")
+                ? images.masked(e.getAttribute("ResourceID"), e.getAttribute("ImageMask"))
+                : images.picture(e.getAttribute("ResourceID"));
         if (picture == null) {
             return;
         }

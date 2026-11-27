@@ -18,6 +18,7 @@ import stirling.software.officeconvert.topdf.io.Dom;
 import stirling.software.officeconvert.topdf.io.OfficeZip;
 import stirling.software.officeconvert.topdf.pdf.Fill;
 import stirling.software.officeconvert.topdf.pdf.PdfCanvas;
+import stirling.software.officeconvert.topdf.pdf.Stroke;
 import stirling.software.officeconvert.topdf.pdf.TextStyle;
 
 final class OfdText {
@@ -67,6 +68,8 @@ final class OfdText {
         boolean italic = OfdPainter.flag(e, "Italic", false) || font != null && font.italic();
         Faces f = faces(fontId, font, bold, italic);
         Color color = fill ? painter.fillColor(e, param, alpha) : painter.strokeColor(e, param, alpha);
+        Fill outlineFill = fill ? Fill.solid(color) : null;
+        Stroke outlineStroke = stroke ? painter.stroke(e, param, alpha) : null;
         double hscale = OfdNumbers.number(e.getAttribute("HScale"), 1);
         if (!(hscale > 0.01 && hscale < 100)) {
             hscale = 1;
@@ -97,7 +100,8 @@ final class OfdText {
                 }
                 int cp = cps[i];
                 if (!Character.isWhitespace(cp) && !Character.isISOControl(cp)) {
-                    glyph(canvas, cp, glyphs.getOrDefault(code, 0), x, y, f, base, hscale, charDir);
+                    glyph(canvas, cp, glyphs.getOrDefault(code, 0), x, y, f, base, hscale, charDir, outlineFill,
+                            outlineStroke);
                 }
                 if (i < dx.length || i < dy.length) {
                     x += i < dx.length ? dx[i] : 0;
@@ -105,7 +109,8 @@ final class OfdText {
                     continue;
                 }
                 FontFace face = f.embedded() != null && f.embedded().covers(cp) ? f.embedded() : f.system();
-                double advance = face.advance(cp, (float) size) * hscale;
+                boolean vertical = readDir == 90 || readDir == 270;
+                double advance = vertical && charDir == 0 ? size : face.advance(cp, (float) size) * hscale;
                 switch (readDir) {
                     case 90 -> y += advance;
                     case 180 -> x -= advance;
@@ -119,7 +124,7 @@ final class OfdText {
     }
 
     private void glyph(PdfCanvas canvas, int cp, int glyphId, double x, double y, Faces f, TextStyle base,
-            double hscale, int charDir) throws IOException {
+            double hscale, int charDir, Fill outlineFill, Stroke outlineStroke) throws IOException {
         String ch = new String(Character.toChars(cp));
         FontFace embedded = f.embedded();
         boolean covered = embedded != null && embedded.covers(cp);
@@ -141,7 +146,7 @@ final class OfdText {
             }
             if (shape != null) {
                 AffineTransform t = AffineTransform.getScaleInstance(base.size() * hscale, base.size());
-                canvas.draw(t.createTransformedShape(shape), Fill.solid(base.color()), null);
+                canvas.draw(t.createTransformedShape(shape), outlineFill, outlineStroke);
                 if (!privateUse) {
                     boolean was = canvas.hideText(true);
                     canvas.text(ch, 0, 0, base);

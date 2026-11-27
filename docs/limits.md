@@ -170,6 +170,10 @@ misses a drawn form. Images are charged wherever they are listed.
 | OFD characters per text object / glyph mappings | 100,000 / 100,000 | the rest is skipped |
 | OFD seal: DER depth / nodes / nested seal documents | 24 / 100,000 / 200 per document | the seal appearance is left out with a note |
 | OFD JBIG2 picture | 100 M pixels, 10,000 segments | the picture is left out with a note |
+| OFD pattern tiles per filled path | 4,096 | the pattern fill is left out |
+| OFD Gouraud mesh points / drawn pieces | 10,000 / 60,000 | later points are ignored; the mesh is drawn coarser |
+| OFD image mask | 4 M pixels for the picture and the mask | the picture is drawn without its mask, with a note |
+| OFD attachments / bytes | 1,000 / 4 × the file size + 1 MB in all, 64 MB each | the rest are left out with a note |
 | UOF file | 256 MB | refused |
 | UOF rewritten package text | 32 MB + 16 × the file size, at most 256 M characters | refused as too large to convert |
 | UOF paragraphs and tables / nesting | 2,000,000 / 40 | the rest is skipped |
