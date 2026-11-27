@@ -35,6 +35,7 @@ final class Layers {
         int fill;
         boolean disabled;
         boolean invert;
+        boolean fromVector;
         int density = 255;
         double feather;
         int channel = -2;
@@ -334,6 +335,7 @@ final class Layers {
             int mf = c.u8();
             m.disabled = (mf & 2) != 0;
             m.invert = (mf & 4) != 0;
+            m.fromVector = (mf & 8) != 0;
             l.masks.add(m);
             if (maskLen >= 36 && l.channel(-3) != null) {
                 Mask real = new Mask();
@@ -454,6 +456,21 @@ final class Layers {
             }
         } else if (key == tag("lrFX")) {
             Effects.legacy(c, len, l.legacyEffects);
+        } else if (key == tag("vscg") && len > 8) {
+            int type = c.tag();
+            long rest = len - 4;
+            if (type == tag("SoCo") && l.solid == null) {
+                l.fill = true;
+                l.solid = Effects.solidColor(c, rest);
+            } else if (type == tag("GdFl") && l.gradient == null && rest <= Adjustments.MAX_BYTES && keep(rest)) {
+                l.fill = true;
+                l.gradient = new byte[(int) rest];
+                c.fully(l.gradient);
+            } else if (type == tag("PtFl") && l.pattern == null && rest <= Adjustments.MAX_BYTES && keep(rest)) {
+                l.fill = true;
+                l.pattern = new byte[(int) rest];
+                c.fully(l.pattern);
+            }
         } else if (key == tag("SoCo")) {
             l.fill = true;
             l.solid = Effects.solidColor(c, len);

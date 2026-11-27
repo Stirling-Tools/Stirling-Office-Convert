@@ -478,6 +478,56 @@ class PsdPageTest {
     }
 
     @Test
+    void vividLightAndHardMixFollowTheSourceAtTheEnds() throws IOException {
+        for (String[] c : new String[][] {{"vLit", "0,255,0"}, {"hMix", "0,0,255"}}) {
+            PsdFixture f = new PsdFixture(1, 1);
+            f.hasMerged = false;
+            f.flat(255).flat(255).flat(255);
+            f.layers.add(new PsdFixture.Layer().rect(0, 0, 1, 1).fill(0, 0).fill(1, 0).fill(2, 255));
+            PsdFixture.Layer top = new PsdFixture.Layer().rect(0, 0, 1, 1).fill(-1, 255).fill(0, 0).fill(1, 255)
+                    .fill(2, 0);
+            top.blend = c[0];
+            f.layers.add(top);
+            convert(f, c[0] + ".psd");
+            try (PDDocument pdf = open(c[0] + ".psd")) {
+                assertEquals(c[1], java.util.Arrays.toString(ints(samples(image(pdf.getPage(0))), 0))
+                        .replace("[", "").replace("]", "").replace(" ", ""));
+            }
+        }
+    }
+
+    @Test
+    void aPassThroughGroupWithReducedFillKeepsItsAdjustmentInside() throws IOException {
+        PsdFixture f = new PsdFixture(2, 1);
+        f.hasMerged = false;
+        f.mode = PsdDocument.GRAY;
+        f.flat(255);
+        f.layers.add(new PsdFixture.Layer().rect(0, 0, 1, 2).fill(0, 200));
+        f.layers.add(new PsdFixture.Layer().rect(0, 0, 0, 0).section(3));
+        f.layers.add(new PsdFixture.Layer().rect(0, 1, 1, 2).fill(-1, 255).fill(0, 100));
+        f.layers.add(new PsdFixture.Layer().rect(0, 0, 0, 0).block("nvrt", new byte[0]));
+        PsdFixture.Layer group = new PsdFixture.Layer().rect(0, 0, 0, 0)
+                .block("lsct", new byte[] {0, 0, 0, 1, '8', 'B', 'I', 'M', 'p', 'a', 's', 's'})
+                .block("iOpa", new byte[] {(byte) 255, 0, 0, 0});
+        group.blend = "pass";
+        f.layers.add(group);
+        convert(f, "passthrough.psd");
+        try (PDDocument pdf = open("passthrough.psd")) {
+            byte[] s = samples(image(pdf.getPage(0)));
+            assertEquals(55, s[0] & 0xFF);
+            assertEquals(155, s[1] & 0xFF);
+        }
+        f.layers.get(4).blocks.reset();
+        f.layers.get(4).block("lsct", new byte[] {0, 0, 0, 1, '8', 'B', 'I', 'M', 'p', 'a', 's', 's'})
+                .block("iOpa", new byte[] {(byte) 128, 0, 0, 0});
+        convert(f, "passthrough-fill.psd");
+        try (PDDocument pdf = open("passthrough-fill.psd")) {
+            byte[] s = samples(image(pdf.getPage(0)));
+            assertEquals(200, s[0] & 0xFF);
+        }
+    }
+
+    @Test
     void levelsMapTheInputRange() throws IOException {
         PsdFixture f = new PsdFixture(1, 1);
         f.hasMerged = false;

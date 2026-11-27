@@ -41,6 +41,12 @@ final class Composer {
 
     private Node top;
 
+    private final List<float[]> shapes = new ArrayList<>();
+
+    private int spanLo;
+
+    private int spanHi;
+
     private List<long[]> patternBlocks = List.of();
 
     private final java.util.Map<String, Pattern> patterns = new java.util.HashMap<>();
@@ -177,6 +183,7 @@ final class Composer {
         final List<Plane> masks = new ArrayList<>();
         VectorMask vector;
         float vectorDensity = 1;
+        boolean vectorBaked;
     }
 
     private static final class Group extends Node {
@@ -421,6 +428,8 @@ final class Composer {
         }
         boolean pixels = !l.empty() && l.channel(0) != null && l.channel(0).length() > 2;
         if (pixels) {
+            p.vectorBaked |= (l.fill || l.solid != null) && !l.strokeApart && l.vectorDensity >= 255
+                    && !(l.vectorFeather > 0);
             p.color = new Plane[n];
             for (int i = 0; i < n; i++) {
                 p.color[i] = new Plane(l.channel(i), l.top, l.left, l.bottom, l.right, 0);
@@ -598,14 +607,30 @@ final class Composer {
             if (ch == null) {
                 continue;
             }
+            boolean rendered = m.fromVector && l.vectorMask && l.vector != null;
+            if (m.fromVector && !rendered) {
+                continue;
+            }
             Plane plane = new Plane(ch, m.top, m.left, m.bottom, m.right, m.fill);
-            plane.density = m.density / 255f;
-            plane.feather = Double.isFinite(m.feather) ? Math.min(1000, Math.max(0, m.feather)) : 0;
+            plane.density = (rendered ? l.vectorDensity : m.density) / 255f;
+            double feather = rendered ? l.vectorFeather : m.feather;
+            plane.feather = Double.isFinite(feather) ? Math.min(1000, Math.max(0, feather)) : 0;
             node.masks.add(plane);
+            node.vectorBaked |= rendered;
         }
         if (l.vectorMask && l.vector != null) {
             node.vector = VectorMask.of(l.vector, doc.width, doc.height);
             node.vectorDensity = l.vectorDensity / 255f;
+        }
+    }
+
+    private float[] shapeRow() {
+        return shapes.isEmpty() ? new float[width] : shapes.remove(shapes.size() - 1);
+    }
+
+    private void releaseShape(float[] s) {
+        if (s != null && s.length == width && shapes.size() < 64) {
+            shapes.add(s);
         }
     }
 
@@ -654,6 +679,15 @@ final class Composer {
         }
     }
 
+    private static boolean adjusts(Group g) {
+        for (Node c : g.children) {
+            if (c instanceof Adjust && !c.layer.hidden) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static boolean knocks(List<Node> list, int kind) {
         for (Node c : list) {
             if (c.layer.knockout == kind && !c.layer.hidden && !(c instanceof Adjust)) {
@@ -673,8 +707,9 @@ final class Composer {
         float[] knock = l.knockout == 1 ? shallowBase : deepBase;
         float[] src = buffer();
         float[] tmp = buffer();
+        float[] shape = null;
         try {
-            float[] shape = coverage(base, src);
+            shape = coverage(base, src);
             if (knock == null) {
                 Arrays.fill(tmp, 0);
             } else {
@@ -701,6 +736,7 @@ final class Composer {
                 dest[at + n] = ao;
             }
         } finally {
+            releaseShape(shape);
             release(src);
             release(tmp);
         }
@@ -717,7 +753,7 @@ final class Composer {
             return;
         }
         float opacity = l.opacity / 255f * (base instanceof Group ? l.fillOpacity / 255f : 1);
-        if (base instanceof Group g && l.blend == Blend.PASS_THROUGH) {
+        if (base instanceof Group g && l.blend == Blend.PASS_THROUGH && (l.fillOpacity >= 255 || !adjusts(g))) {
             if (base.clipped.isEmpty()) {
                 passThrough(g, dest, opacity);
                 return;
@@ -732,6 +768,7 @@ final class Composer {
                 }
                 clip(c, dest, shape);
             }
+            releaseShape(shape);
             return;
         }
         if (base.clipped.isEmpty()) {
@@ -743,8 +780,8 @@ final class Composer {
                 drawEffect(dest, fx, fx.stroke, l.stroke.color(), l.stroke.opacity(), l.stroke.blend(), opacity);
             }
             float[] src = buffer();
-            coverage(base, src);
-            composite(dest, src, l.blend, opacity, null);
+            releaseShape(coverage(base, src));
+            composite(dest, src, l.blend, opacity, null, spanLo, spanHi);
             release(src);
             if (fx != null && fx.stroke != null && !fx.strokeUnder) {
                 drawEffect(dest, fx, fx.stroke, l.stroke.color(), l.stroke.opacity(), l.stroke.blend(), opacity);
@@ -771,6 +808,7 @@ final class Composer {
             composite(dest, src, l.blend, opacity, null);
         }
         release(src);
+        releaseShape(shape);
     }
 
     private void clip(Node c, float[] dest, float[] shape) throws IOException {
@@ -779,8 +817,8 @@ final class Composer {
             return;
         }
         float[] s = buffer();
-        coverage(c, s);
-        composite(dest, s, c.layer.blend, c.layer.opacity / 255f, shape);
+        releaseShape(coverage(c, s));
+        composite(dest, s, c.layer.blend, c.layer.opacity / 255f, shape, spanLo, spanHi);
         release(s);
     }
 
@@ -835,7 +873,7 @@ final class Composer {
     }
 
     private float[] mask(Node node) throws IOException {
-        if (node.masks.isEmpty() && node.vector == null) {
+        if (node.masks.isEmpty() && (node.vector == null || node.vectorBaked)) {
             return null;
         }
         if (maskRow == null) {
@@ -851,7 +889,7 @@ final class Composer {
                 m[x] *= 1 - p.density * (1 - tmp[x]);
             }
         }
-        if (node.vector != null) {
+        if (node.vector != null && !node.vectorBaked) {
             node.vector.row(y, tmp);
             for (int x = 0; x < width; x++) {
                 m[x] *= 1 - node.vectorDensity * (1 - tmp[x]);
@@ -880,10 +918,12 @@ final class Composer {
                     out[x * stride + n] *= m[x];
                 }
             }
-            float[] shape = new float[width];
+            float[] shape = shapeRow();
             for (int x = 0; x < width; x++) {
                 shape[x] = out[x * stride + n];
             }
+            spanLo = 0;
+            spanHi = width;
             return shape;
         }
         Pixels p = (Pixels) node;
@@ -912,10 +952,14 @@ final class Composer {
             }
         } else {
             Arrays.fill(out, 0);
-            return new float[width];
+            float[] none = shapeRow();
+            Arrays.fill(none, 0);
+            spanLo = 0;
+            spanHi = 0;
+            return none;
         }
         float[] m = mask(node);
-        float[] shape = new float[width];
+        float[] shape = shapeRow();
         Effects.Overlay overlay = l.overlay;
         float[] tint = overlay == null || overlay.color() == null ? null : solid(overlay.color());
         float[] ramp = null;
@@ -1006,6 +1050,14 @@ final class Composer {
                 out[at] = noise(x, y) < a ? 255f / Math.max(1, l.opacity) : 0;
             }
         }
+        if (p.color != null && p.line == null) {
+            boolean inside = y >= l.top && y < l.bottom;
+            spanLo = inside ? Math.max(0, Math.min(width, l.left)) : 0;
+            spanHi = inside ? Math.max(spanLo, Math.min(width, l.right)) : 0;
+        } else {
+            spanLo = 0;
+            spanHi = width;
+        }
         return shape;
     }
 
@@ -1016,11 +1068,36 @@ final class Composer {
     }
 
     private void composite(float[] dest, float[] src, int mode, float opacity, float[] clip) {
+        composite(dest, src, mode, opacity, clip, 0, width);
+    }
+
+    private void composite(float[] dest, float[] src, int mode, float opacity, float[] clip, int lo, int hi) {
         boolean cmyk = doc.mode == PsdDocument.CMYK;
         float[] mixed = new float[4];
         boolean whole = Blend.whole(mode) && (rgb || cmyk);
         boolean separable = Blend.separable(mode) && doc.mode != PsdDocument.LAB;
-        for (int x = 0; x < width; x++) {
+        if (!whole && !separable) {
+            for (int x = lo; x < hi; x++) {
+                int at = x * stride;
+                float as = src[at + n] * opacity * (clip == null ? 1 : clip[x]);
+                if (as <= 0) {
+                    continue;
+                }
+                if (as >= 1) {
+                    System.arraycopy(src, at, dest, at, n);
+                    dest[at + n] = 1;
+                    continue;
+                }
+                float kb = dest[at + n] * (1 - as);
+                float ao = as + kb;
+                for (int i = 0; i < n; i++) {
+                    dest[at + i] = (kb * dest[at + i] + as * src[at + i]) / ao;
+                }
+                dest[at + n] = ao;
+            }
+            return;
+        }
+        for (int x = lo; x < hi; x++) {
             int at = x * stride;
             float as = src[at + n] * opacity * (clip == null ? 1 : clip[x]);
             if (as <= 0) {
@@ -1114,6 +1191,7 @@ final class Composer {
                 y = yy;
                 float[] shape = coverage(copy, row);
                 System.arraycopy(shape, x0, alpha, (yy - y0) * w, w);
+                releaseShape(shape);
             }
         } finally {
             saved.fillOpacity = fill;
@@ -1142,7 +1220,7 @@ final class Composer {
             }
         }
         double vf = node.layer.vectorFeather;
-        if (node.vector != null && Double.isFinite(vf) && vf > 0) {
+        if (node.vector != null && !node.vectorBaked && Double.isFinite(vf) && vf > 0) {
             java.awt.geom.Rectangle2D b = node.vector.shape();
             Plane p = new Plane(null, 0, 0, 0, 0, 0);
             p.density = node.vectorDensity;

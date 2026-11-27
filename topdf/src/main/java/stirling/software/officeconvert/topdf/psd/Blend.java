@@ -112,6 +112,12 @@ final class Blend {
             return Math.min(1, b + s);
         }
         if (mode == VIVID_LIGHT) {
+            if (s <= 0) {
+                return 0;
+            }
+            if (s >= 1) {
+                return 1;
+            }
             return s <= 0.5f ? burn(b, 2 * s) : dodge(b, 2 * s - 1);
         }
         if (mode == LINEAR_LIGHT) {
@@ -121,7 +127,7 @@ final class Blend {
             return s <= 0.5f ? Math.min(b, 2 * s) : Math.max(b, 2 * s - 1);
         }
         if (mode == HARD_MIX) {
-            return b + s >= 1 ? 1 : 0;
+            return (s <= 0.5f ? burn(b, 2 * s) : dodge(b, 2 * s - 1)) >= 0.5f ? 1 : 0;
         }
         if (mode == DIFFERENCE) {
             return Math.abs(b - s);
