@@ -52,11 +52,12 @@ final class VectorMask {
         double[] first = null;
         double[] last = null;
         int knots = 0;
+        boolean startFull = false;
         for (int at = 8; at + 26 <= data.length; at += 26) {
             int selector = (data[at] & 0xFF) << 8 | data[at + 1] & 0xFF;
             if (selector == 8) {
                 if (((data[at + 2] & 0xFF) << 8 | data[at + 3] & 0xFF) == 1 && path == null && total == null) {
-                    total = full();
+                    startFull = true;
                 }
             } else if (selector == 0 || selector == 3) {
                 if (path != null) {
@@ -89,7 +90,7 @@ final class VectorMask {
             total = combine(total, finish(path, closed, first, last), op);
         }
         if (total == null) {
-            total = new Area();
+            total = startFull ? full() : new Area();
         }
         return new VectorMask(total, (flags & 1) != 0, width, height);
     }

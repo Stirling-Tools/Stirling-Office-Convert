@@ -429,7 +429,8 @@ final class Composer {
         }
         boolean pixels = !l.empty() && l.channel(0) != null && l.channel(0).length() > 2;
         if (pixels) {
-            p.vectorBaked |= (l.fill || l.solid != null) && !l.strokeApart && l.vectorDensity >= 255
+            boolean stroked = l.strokeApart && l.vectorStroke != null && l.vectorStroke.flag("strokeEnabled", false);
+            p.vectorBaked |= (l.fill || l.solid != null) && !stroked && l.vectorDensity >= 255
                     && !(l.vectorFeather > 0);
             p.color = new Plane[n];
             for (int i = 0; i < n; i++) {

@@ -564,6 +564,23 @@ class PsdPageTest {
     }
 
     @Test
+    void aPathAfterAFilledStartLimitsTheLayerToThePath() throws IOException {
+        PsdFixture f = new PsdFixture(2, 1);
+        f.hasMerged = false;
+        f.mode = PsdDocument.GRAY;
+        f.flat(255);
+        byte[] square = square(0, 0, 1, 0.5);
+        java.nio.ByteBuffer vm = java.nio.ByteBuffer.allocate(8 + 26 + square.length - 8);
+        vm.putInt(3).putInt(0).putShort((short) 8).putShort((short) 1).put(new byte[22]);
+        vm.put(square, 8, square.length - 8);
+        f.layers.add(new PsdFixture.Layer().rect(0, 0, 1, 2).fill(-1, 255).fill(0, 30).block("vmsk", vm.array()));
+        convert(f, "startfilled.psd");
+        try (PDDocument pdf = open("startfilled.psd")) {
+            assertArrayEquals(new byte[] {30, (byte) 255}, samples(image(pdf.getPage(0))));
+        }
+    }
+
+    @Test
     void levelsMapTheInputRange() throws IOException {
         PsdFixture f = new PsdFixture(1, 1);
         f.hasMerged = false;
