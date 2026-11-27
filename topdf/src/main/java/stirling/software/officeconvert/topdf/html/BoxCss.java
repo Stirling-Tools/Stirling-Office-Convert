@@ -3,6 +3,7 @@ package stirling.software.officeconvert.topdf.html;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 final class BoxCss {
 
@@ -137,21 +138,49 @@ final class BoxCss {
         return border(d, side, true) >= DOUBLE_LEAST;
     }
 
+    record Shorthand(String width, String style, Integer color) {}
+
+    private static final int MAX_SHORTHANDS = 1024;
+
+    private static final Map<String, Shorthand> SHORTHANDS = new ConcurrentHashMap<>();
+
+    static Shorthand shorthand(String all) {
+        Shorthand known = SHORTHANDS.get(all);
+        if (known != null) {
+            return known;
+        }
+        String width = null;
+        String style = null;
+        Integer color = null;
+        for (String token : Css.tokens(all)) {
+            String t = token.toLowerCase(Locale.ROOT);
+            Integer c = Css.color(token);
+            if (c != null) {
+                color = c;
+            }
+            if (t.equals("none") || t.equals("hidden")) {
+                style = style == null ? "none" : style;
+            } else if (Css.length(t, 12, 0) != null || !keyword(t).equals(t)) {
+                width = width == null ? t : width;
+            } else if (c == null) {
+                style = style == null ? t : style;
+            }
+        }
+        Shorthand parsed = new Shorthand(width, style, color);
+        if (SHORTHANDS.size() < MAX_SHORTHANDS) {
+            SHORTHANDS.put(all, parsed);
+        }
+        return parsed;
+    }
+
     private static float border(Map<String, String> d, String side, boolean onlyDouble) {
         String style = d.get("border-" + side + "-style");
         String all = d.get("border-" + side);
         String width = d.get("border-" + side + "-width");
         if (all != null) {
-            for (String token : Css.tokens(all)) {
-                String t = token.toLowerCase(Locale.ROOT);
-                if (t.equals("none") || t.equals("hidden")) {
-                    style = style == null ? "none" : style;
-                } else if (Css.length(t, 12, 0) != null || !keyword(t).equals(t)) {
-                    width = width == null ? t : width;
-                } else if (Css.color(t) == null) {
-                    style = style == null ? t : style;
-                }
-            }
+            Shorthand parsed = shorthand(all);
+            width = width == null ? parsed.width() : width;
+            style = style == null ? parsed.style() : style;
             if (style == null) {
                 style = "solid";
             }

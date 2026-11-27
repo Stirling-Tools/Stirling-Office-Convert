@@ -222,6 +222,36 @@ class MarkdownToPdfTest {
         }
     }
 
+    @Test
+    void aPageWiderThanThePaperIsShrunkToFit() throws IOException {
+        StringBuilder wide = new StringBuilder("# Title\n\n|");
+        StringBuilder rule = new StringBuilder("|");
+        StringBuilder row = new StringBuilder("|");
+        for (int c = 1; c <= 18; c++) {
+            wide.append(" Column ").append(c).append(" |");
+            rule.append("---|");
+            row.append(" v1.").append(c).append(" |");
+        }
+        String table = wide + "\n" + rule + "\n" + row + "\n";
+        assertTrue(titleHeight(write("wide.md", table)) < 0.8f * titleHeight(write("plain.md", "# Title\n\nText\n")));
+    }
+
+    private float titleHeight(Path md) throws IOException {
+        try (PDDocument doc = convert(md, OPTIONS)) {
+            float[] height = {0};
+            PDFTextStripper stripper = new PDFTextStripper() {
+                @Override
+                protected void writeString(String text, List<org.apache.pdfbox.text.TextPosition> positions) {
+                    if (height[0] == 0 && !positions.isEmpty()) {
+                        height[0] = positions.getFirst().getHeightDir() * positions.getFirst().getYScale();
+                    }
+                }
+            };
+            stripper.getText(doc);
+            return height[0];
+        }
+    }
+
     private static int images(PDDocument doc) throws IOException {
         int n = 0;
         for (PDPage page : doc.getPages()) {

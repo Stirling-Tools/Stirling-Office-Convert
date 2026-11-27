@@ -603,7 +603,8 @@ At most 4,000 linked files and 192 MB are read per page, 64 MB each.
 Markdown (`.md .markdown`) is read as GitHub Flavored Markdown (CommonMark 0.31 with tables, strikethrough, task
 lists, extended autolinks, footnotes, alerts such as `> [!NOTE]` and the disallowed raw HTML filter) and drawn
 through the HTML layout above with a built-in style sheet: A4 pages, a heading scale, bordered tables, and code blocks
-in a monospaced font that wrap rather than run off the page. Headings become bookmarks and link targets (GitHub's
+in a monospaced font that wrap rather than run off the page; a page whose tables or pictures are wider than the paper
+is shrunk to fit by at most a third, as browsers print. Headings become bookmarks and link targets (GitHub's
 anchors, or an explicit `{#id}`), links stay links, YAML (`---`) or TOML (`+++`) front matter is left out and its
 `title` names the PDF, and right-to-left paragraphs, headings and lists are set right to left. Math in `$…$`, `$$…$$`
 and ```` ```math ```` blocks is typeset as text (Greek letters, operators, scripts, fractions as `a/b`, matrices,

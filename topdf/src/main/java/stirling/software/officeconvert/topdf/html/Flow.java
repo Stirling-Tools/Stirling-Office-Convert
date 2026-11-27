@@ -1831,8 +1831,8 @@ final class Flow {
             float slack = room - (margins < room ? Math.min(width, room - margins) : width);
             float left = StackedTables.stackIndent(e, d, look, legacy, room, slack);
             Frame inside = frame.inner(left, slack - left, fill == null ? -1 : fill);
-            for (Element tr : e.select(HtmlTables.ROWS)) {
-                for (Element cell : tr.select("> td, > th")) {
+            for (Element tr : e.select(HtmlTables.ROW_QUERY)) {
+                for (Element cell : tr.select(HtmlTables.CELL_QUERY)) {
                     stackedCell = cell;
                     element(cell, look, inside, depth + 1);
                 }
@@ -1863,9 +1863,9 @@ final class Flow {
 
     // A table nested past the limit: each row becomes a line, its cells side by side with their own formatting
     private void nestedTable(Element table, Look look, Frame frame, int depth) throws IOException {
-        for (Element tr : table.select(HtmlTables.ROWS)) {
+        for (Element tr : table.select(HtmlTables.ROW_QUERY)) {
             boolean first = true;
-            for (Element td : tr.select("> td, > th")) {
+            for (Element td : tr.select(HtmlTables.CELL_QUERY)) {
                 pendingGap = first ? null : new Inline.Text("  ", look.run(), null, -1);
                 first = false;
                 forceInline++;
