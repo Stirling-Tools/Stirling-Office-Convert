@@ -477,7 +477,7 @@ class JpxImagesTest {
     @Test
     void partTwoStoresAPhotoAsJpegTwoThousandWhenThatIsSmallerThanJpeg() throws Exception {
         JpxEncoder.Planes source = photoWithAlpha(400, 300, true);
-        byte[] encoded = JpxEncoder.encode(source, JpxEncoder.Options.rate(2));
+        byte[] encoded = JpxEncoder.encode(source, JpxEncoder.Options.rate(5));
         Path in = page(encoded, 400, 300, true);
         Path out = dir.resolve("2b-photo.pdf");
         PdfToPdfA.convert(in, out, PdfToPdfA.Options.defaults().level(PdfALevel.A2B));

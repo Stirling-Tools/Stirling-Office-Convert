@@ -105,18 +105,28 @@ final class JpxImages {
         RawJpx raw = colourSpace == null ? null : RawJpx.of(jpx, colourSpace, smaskInData, decoded);
         if (raw != null) {
             from = raw.colours(doc);
+            mask = raw.alpha(doc);
+            if (copied(s, copy, from, mask, smaskInData)) {
+                return;
+            }
             JpxEncoder.Planes planes = level.part() > 1 ? raw.planes() : null;
             if (planes != null) {
                 from = JpxRecode.smaller(doc, planes, from, from.getDictionaryObject(COSName.COLORSPACE));
             }
-            mask = raw.alpha(doc);
             maskPlanes = level.part() > 1 ? raw.alphaPlanes() : null;
         } else {
             BufferedImage alpha = alpha(decoded);
             BufferedImage opaque = alpha != null ? colours(decoded)
                     : new PDImageXObject(new PDStream(s), null).getOpaqueImage();
-            from = encode(opaque).getCOSObject();
+            BufferedImage img = plain(opaque);
+            boolean photographic = Transparency.photographic(img);
+            PDImageXObject x = photographic ? JPEGFactory.createFromImage(doc, img, 0.92f)
+                    : GreyImages.lossless(doc, img);
             mask = alpha == null ? null : GreyImages.lossless(doc, alpha);
+            if (copied(s, copy, x.getCOSObject(), mask, smaskInData)) {
+                return;
+            }
+            from = (level.part() > 1 ? JpxRecode.smaller(doc, img, x, photographic) : x).getCOSObject();
             boolean small = alpha != null && (long) alpha.getWidth() * alpha.getHeight() <= JpxRecode.MAX_SAMPLES;
             maskPlanes = small && level.part() > 1 ? JpxEncoder.planes(alpha) : null;
         }
@@ -136,10 +146,7 @@ final class JpxImages {
         try (InputStream in = from.createRawInputStream()) {
             data = in.readAllBytes();
         }
-        long converted = data.length + (mask == null ? 0 : mask.getCOSObject().getLength());
-        if (copy != null && copy.bytes() <= converted) {
-            apply(s, copy, smaskInData);
-            report.warn("Converted JPEG 2000 images, which " + level.label() + " does not allow as they were");
+        if (copied(s, copy, from, mask, smaskInData)) {
             return;
         }
         for (COSName k : REPLACED) {
@@ -254,7 +261,18 @@ final class JpxImages {
         return first[0] == 1 && (first[2] == 16 || first[2] == 17 || first[2] == 12);
     }
 
-    private PDImageXObject encode(BufferedImage image) throws IOException {
+    private boolean copied(COSStream s, Copy copy, COSStream from, PDImageXObject mask, int smaskInData)
+            throws IOException {
+        long converted = from.getLength() + (mask == null ? 0 : mask.getCOSObject().getLength());
+        if (copy == null || copy.bytes() > converted) {
+            return false;
+        }
+        apply(s, copy, smaskInData);
+        report.warn("Converted JPEG 2000 images, which " + level.label() + " does not allow as they were");
+        return true;
+    }
+
+    private static BufferedImage plain(BufferedImage image) {
         BufferedImage img = image;
         if (img.getType() != BufferedImage.TYPE_BYTE_GRAY && img.getType() != BufferedImage.TYPE_INT_RGB) {
             BufferedImage rgb = new BufferedImage(img.getWidth(), img.getHeight(),
@@ -263,9 +281,7 @@ final class JpxImages {
             rgb.createGraphics().drawImage(img, 0, 0, null);
             img = rgb;
         }
-        boolean photographic = Transparency.photographic(img);
-        PDImageXObject x = photographic ? JPEGFactory.createFromImage(doc, img, 0.92f) : GreyImages.lossless(doc, img);
-        return level.part() > 1 ? JpxRecode.smaller(doc, img, x, photographic) : x;
+        return img;
     }
 
     private static JpxImage jpx(byte[] encoded) throws IOException {
