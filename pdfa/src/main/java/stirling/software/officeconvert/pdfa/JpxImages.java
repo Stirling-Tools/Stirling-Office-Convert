@@ -159,10 +159,10 @@ final class JpxImages {
         report.warn("Converted JPEG 2000 images, which " + level.label() + " does not allow as they were");
     }
 
-    private record Copy(byte[][] parts, int[][] sizes, int colours) {
+    private record Copy(byte[][] parts, int[][] sizes, int colours, long kept) {
 
         long bytes() {
-            long n = 0;
+            long n = kept;
             for (byte[] p : parts) {
                 n += p.length;
             }
@@ -173,7 +173,7 @@ final class JpxImages {
     private static Copy exactCopy(COSStream s, byte[] encoded, JpxImage jpx, COSBase colourSpace, int smaskInData)
             throws IOException {
         JpxHeader h = JpxHeader.parse(encoded);
-        if (h == null || h.palette() || jpx.palette() || s.containsKey(COSName.SMASK) || !plainColour(h)
+        if (h == null || h.palette() || jpx.palette() || !plainColour(h)
                 || colourSpace == null && h.colours().isEmpty()) {
             return null;
         }
@@ -186,7 +186,7 @@ final class JpxImages {
         if (n < 1 || total < n) {
             return null;
         }
-        int alpha = RawJpx.alphaComponent(jpx, n, smaskInData);
+        int alpha = s.containsKey(COSName.SMASK) ? -1 : RawJpx.alphaComponent(jpx, n, smaskInData);
         int[] colours = new int[n];
         for (int c = 0, i = 0; i < n; c++) {
             if (c != alpha) {
@@ -213,7 +213,8 @@ final class JpxImages {
                 return null;
             }
         }
-        return new Copy(wrapped, sizes, n);
+        long kept = s.getDictionaryObject(COSName.SMASK) instanceof COSStream m ? m.getLength() : 0;
+        return new Copy(wrapped, sizes, n, kept);
     }
 
     private void apply(COSStream s, Copy copy, int smaskInData) throws IOException {
