@@ -97,7 +97,7 @@ final class JpxImages {
             throw new IOException("The PDF has a JPEG 2000 image mask, which " + level.label() + " does not allow");
         }
         JpxImage jpx = jpx(encoded);
-        Copy copy = level.part() > 1 ? exactCopy(s, encoded, jpx, colourSpace, smaskInData) : null;
+        Candidate copy = level.part() > 1 ? new Candidate(s, encoded, jpx, colourSpace, smaskInData) : null;
         BufferedImage decoded = composed(jpx);
         COSStream from;
         PDImageXObject mask;
@@ -261,10 +261,73 @@ final class JpxImages {
         return first[0] == 1 && (first[2] == 16 || first[2] == 17 || first[2] == 12);
     }
 
-    private boolean copied(COSStream s, Copy copy, COSStream from, PDImageXObject mask, int smaskInData)
+    private static final class Candidate {
+
+        private static final int WRAPPING = 512;
+
+        private final COSStream s;
+        private final byte[] encoded;
+        private final JpxImage jpx;
+        private final COSBase colourSpace;
+        private final int smaskInData;
+        private boolean tried;
+        private Copy copy;
+
+        Candidate(COSStream s, byte[] encoded, JpxImage jpx, COSBase colourSpace, int smaskInData) {
+            this.s = s;
+            this.encoded = encoded;
+            this.jpx = jpx;
+            this.colourSpace = colourSpace;
+            this.smaskInData = smaskInData;
+        }
+
+        Copy within(long budget) throws IOException {
+            if (jpx.raster().components() == used() && codestreamLength(encoded) * 0.9 > budget + WRAPPING) {
+                return null;
+            }
+            if (!tried) {
+                tried = true;
+                copy = exactCopy(s, encoded, jpx, colourSpace, smaskInData);
+            }
+            return copy != null && copy.bytes() <= budget ? copy : null;
+        }
+
+        private int used() {
+            int n = colourSpace != null ? components(colourSpace) : jpx.raster().components();
+            boolean alpha = !s.containsKey(COSName.SMASK) && RawJpx.alphaComponent(jpx, n, smaskInData) >= 0;
+            return n + (alpha ? 1 : 0);
+        }
+    }
+
+    private static long codestreamLength(byte[] data) {
+        if (data.length >= 2 && (data[0] & 0xFF) == 0xFF && (data[1] & 0xFF) == 0x4F) {
+            return data.length;
+        }
+        long at = 0;
+        while (at + 8 <= data.length) {
+            long size = (data[(int) at] & 0xFFL) << 24 | (data[(int) at + 1] & 0xFF) << 16
+                    | (data[(int) at + 2] & 0xFF) << 8 | data[(int) at + 3] & 0xFF;
+            boolean codestream = data[(int) at + 4] == 'j' && data[(int) at + 5] == 'p' && data[(int) at + 6] == '2'
+                    && data[(int) at + 7] == 'c';
+            if (size == 0) {
+                size = data.length - at;
+            }
+            if (codestream) {
+                return size - 8;
+            }
+            if (size < 8) {
+                return 0;
+            }
+            at += size;
+        }
+        return 0;
+    }
+
+    private boolean copied(COSStream s, Candidate candidate, COSStream from, PDImageXObject mask, int smaskInData)
             throws IOException {
         long converted = from.getLength() + (mask == null ? 0 : mask.getCOSObject().getLength());
-        if (copy == null || copy.bytes() > converted) {
+        Copy copy = candidate == null ? null : candidate.within(converted);
+        if (copy == null) {
             return false;
         }
         apply(s, copy, smaskInData);

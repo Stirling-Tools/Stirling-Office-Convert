@@ -18,6 +18,8 @@ final class JpxRecode {
 
     static final long MAX_SAMPLES = 1L << 22;
 
+    private static final double FLAT_BITS = 1;
+
     private JpxRecode() {}
 
     static PDImageXObject smaller(PDDocument doc, BufferedImage image, PDImageXObject current, boolean lossy)
@@ -29,7 +31,7 @@ final class JpxRecode {
         byte[] encoded = encoded(current.getCOSObject());
         JpxEncoder.Planes planes = JpxEncoder.planes(image);
         int expected = current.getColorSpace().getNumberOfComponents();
-        if (planes.depths().length != expected) {
+        if (planes.depths().length != expected || !lossy && encoded.length * 8L < samples * FLAT_BITS) {
             return current;
         }
         byte[] jpx = lossy ? matching(planes, decoded(current.getCOSObject(), planes), encoded.length)
@@ -42,7 +44,8 @@ final class JpxRecode {
 
     static COSStream smaller(PDDocument doc, JpxEncoder.Planes planes, COSStream current, COSBase colourSpace)
             throws IOException {
-        if ((long) planes.width() * planes.height() * planes.depths().length > MAX_SAMPLES) {
+        long samples = (long) planes.width() * planes.height() * planes.depths().length;
+        if (samples > MAX_SAMPLES || current.getLength() * 8 < samples * FLAT_BITS) {
             return current;
         }
         byte[] jpx = JpxEncoder.encode(planes, JpxEncoder.Options.exact());
