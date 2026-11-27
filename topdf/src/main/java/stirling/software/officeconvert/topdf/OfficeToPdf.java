@@ -79,7 +79,7 @@ public final class OfficeToPdf {
                         "sylk", "dif", "dbf", "numbers", "wk1", "wks", "wk3", "wk4", "123" -> XLSX;
                 case "csv" -> CSV;
                 case "tsv", "tab" -> TSV;
-                case "html", "htm", "xhtml", "zip", "htmlz", "mobi", "azw3", "azw", "prc", "pdb", "fb2", "fbz" -> HTML;
+                case "html", "htm", "xhtml", "zip", "htmlz", "mobi", "azw3", "azw", "prc", "pdb", "fb2", "fbz", "md", "markdown" -> HTML;
                 case "epub" -> EPUB;
                 case "json" -> JSON;
                 case "ppt", "pps", "pot" -> PPT;
@@ -92,7 +92,7 @@ public final class OfficeToPdf {
                             + " .sxc, .stc, .sxi, .sti, .sxd, .std, .vsdx, .vsdm, .vssx, .vssm, .vstx, .vstm, .xml, .slk,"
                             + " .dif, .dbf, .wk1, .wks, .wk3, .wk4, .123, .pages, .numbers, .key, .pub, .vsd, .vss, .vst, .vsw,"
                             + " .txt,"
-                            + " .text, .log, .asc, .csv, .tsv, .tab, .html, .htm, .xhtml, .zip of HTML, .htmlz, .epub, .mobi, .azw3, .azw, .prc, .pdb, .fb2, .fbz or .json");
+                            + " .text, .log, .asc, .csv, .tsv, .tab, .html, .htm, .xhtml, .md, .markdown, .zip of HTML, .htmlz, .epub, .mobi, .azw3, .azw, .prc, .pdb, .fb2, .fbz or .json");
                 }
             };
         }
@@ -104,7 +104,7 @@ public final class OfficeToPdf {
                         "xltx", "xltm", "doc", "dot", "ppt", "pps", "pot", "xls", "xlt", "xlsb", "rtf", "odt", "ott", "fodt",
                         "odm", "ods", "ots", "fods", "odp", "otp", "fodp", "odg", "otg", "fodg", "xml", "sxw", "stw", "sxc",
                         "stc", "sxi", "sti", "sxd", "std", "vsdx", "vsdm", "vssx", "vssm", "vstx", "vstm" -> true;
-                case "txt", "text", "log", "asc", "csv", "tsv", "tab", "html", "htm", "xhtml", "json" -> true;
+                case "txt", "text", "log", "asc", "csv", "tsv", "tab", "html", "htm", "xhtml", "json", "md", "markdown" -> true;
                 case "mobi", "azw3", "azw", "prc", "fb2", "fbz", "htmlz" -> true;
                 case "slk", "sylk", "dif", "dbf", "pages", "numbers", "key", "wk1", "wks", "wk3", "wk4", "123" -> true;
                 case "pub", "vsd", "vss", "vst", "vsw" -> true;

@@ -481,7 +481,8 @@ public final class Main {
 
     private static boolean page(Path file) {
         String name = file.getFileName() == null ? "" : file.getFileName().toString().toLowerCase(Locale.ROOT);
-        return name.endsWith(".html") || name.endsWith(".htm") || name.endsWith(".xhtml");
+        return name.endsWith(".html") || name.endsWith(".htm") || name.endsWith(".xhtml") || name.endsWith(".md")
+                || name.endsWith(".markdown");
     }
 
     static boolean officeOrPage(Path file) {
@@ -555,10 +556,10 @@ public final class Main {
                         + " worksheets (.wk1 .wks .wk3 .wk4 .123), Apple iWork"
                         + " files, Publisher publications and Visio 2003-2010 drawings from their preview (.pages .numbers"
                         + " .key .pub .vsd .vss .vst .vsw), plain text (.txt .text .log .asc) and comma or"
-                        + " tab separated tables (.csv .tsv .tab), HTML (.html .htm .xhtml) and the JSON this tool writes (.json) convert to PDF; --password opens a protected one. A folder converts its PDFs, Office files and eBooks,"
-                        + " and its .zip files with --allow-packages; --format pdf takes all but its PDFs, and its text, HTML and JSON files too. Nothing a document"
+                        + " tab separated tables (.csv .tsv .tab), HTML (.html .htm .xhtml), Markdown (.md .markdown) and the JSON this tool writes (.json) convert to PDF; --password opens a protected one. A folder converts its PDFs, Office files and eBooks,"
+                        + " and its .zip files with --allow-packages; --format pdf takes all but its PDFs, and its text, HTML, Markdown and JSON files too. Nothing a document"
                         + " links to is fetched and no macro, field or formula is run. A .zip of an HTML page converts only"
-                        + " with --allow-packages; --allow-local-files lets an HTML page draw the pictures and style sheets"
+                        + " with --allow-packages; --allow-local-files lets an HTML or Markdown page draw the pictures and style sheets"
                         + " in its own folder (never outside it). eBooks use only what they hold; an EPUB inside another .zip, or"
                         + " a FictionBook inside a .zip not named .fbz or .fb2.zip, needs --allow-packages. --toc adds a table of"
                         + " contents with page numbers and links after the document and --page-numbers numbers the pages at"

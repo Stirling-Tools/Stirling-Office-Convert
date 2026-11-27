@@ -2,6 +2,7 @@
 pdfbox = "3.0.8"
 poi = "5.5.1"
 junit = "5.13.4"
+commonmark = "0.30.0"
 
 [libraries]
 pdfbox = { module = "org.apache.pdfbox:pdfbox", version.ref = "pdfbox" }
@@ -12,6 +13,11 @@ brotli-dec = { module = "org.brotli:dec", version = "0.1.2" }
 poi-ooxml = { module = "org.apache.poi:poi-ooxml", version.ref = "poi" }
 poi-scratchpad = { module = "org.apache.poi:poi-scratchpad", version.ref = "poi" }
 jsoup = { module = "org.jsoup:jsoup", version = "1.23.2" }
+commonmark = { module = "org.commonmark:commonmark", version.ref = "commonmark" }
+commonmark-ext-gfm-tables = { module = "org.commonmark:commonmark-ext-gfm-tables", version.ref = "commonmark" }
+commonmark-ext-gfm-strikethrough = { module = "org.commonmark:commonmark-ext-gfm-strikethrough", version.ref = "commonmark" }
+commonmark-ext-task-list-items = { module = "org.commonmark:commonmark-ext-task-list-items", version.ref = "commonmark" }
+commonmark-ext-footnotes = { module = "org.commonmark:commonmark-ext-footnotes", version.ref = "commonmark" }
 imageio-webp = { module = "com.twelvemonkeys.imageio:imageio-webp", version = "3.15.2" }
 proguard-base = { module = "com.guardsquare:proguard-base", version = "7.9.1" }
 
