@@ -182,6 +182,11 @@ class DocxLineRulesTest {
         DocxDoc.Rendered over = render("leastover", new DocxDoc().styles(STYLES).body(para(tall, run("One"))
                 + para(tall, run("Two"))).section(lines));
         assertEquals(36, over.word("Two").y() - over.word("One").y(), 0.3f, "an 18.5 pt minimum needs two pitches");
+        DocxDoc.Rendered pic = render("leastpic", new DocxDoc().styles(STYLES)
+                .media("blue.png", Fixtures.png(4, 4, Color.BLUE), "rIdImg").body(DocxDoc.p("Before")
+                        + para(least, inline(40, 18.5f)) + DocxDoc.p("After")).section(lines));
+        assertEquals(18 + 36, pic.word("After").y() - pic.word("Before").y(), 0.3f,
+                "an 18.5 pt picture on an at-least line takes two pitches");
     }
 
     @Test

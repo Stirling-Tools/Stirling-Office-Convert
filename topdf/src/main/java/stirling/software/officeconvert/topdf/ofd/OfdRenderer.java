@@ -208,13 +208,14 @@ public final class OfdRenderer {
         } catch (IOException | RuntimeException e) {
             notes.add("Page " + (output.pageCount() + 1) + " of the OFD document could not be read and is blank");
         }
-        Rectangle2D.Double box = box(page, templateArea(doc, page), doc.pageArea());
+        Map<String, Optional<Element>> parsed = new HashMap<>();
+        Rectangle2D.Double box = box(page, templateArea(doc, page, parsed), doc.pageArea());
         PdfCanvas canvas = output.newPage((float) (box.width * POINTS_PER_MM), (float) (box.height * POINTS_PER_MM));
         canvas.scale(POINTS_PER_MM, POINTS_PER_MM);
         canvas.clipRect(0, 0, (float) box.width, (float) box.height);
         canvas.translate((float) -box.x, (float) -box.y);
         if (page != null) {
-            content(canvas, doc, page, part);
+            content(canvas, doc, page, part, parsed);
         }
         OfdPainter painter = painter(canvas, doc, doc.res());
         for (String file : annots) {
@@ -228,7 +229,8 @@ public final class OfdRenderer {
         canvas.close();
     }
 
-    private void content(PdfCanvas canvas, Doc doc, Element page, String part) throws IOException {
+    private void content(PdfCanvas canvas, Doc doc, Element page, String part, Map<String, Optional<Element>> parsed)
+            throws IOException {
         OfdResources res = new OfdResources(doc.res());
         for (Element r : Dom.kids(page, "PageRes")) {
             loadRes(res, part, Dom.text(r));
@@ -243,16 +245,14 @@ public final class OfdRenderer {
             int cut = ref.indexOf('\u0000');
             String loc = ref.substring(0, cut);
             String z = t.hasAttribute("ZOrder") ? t.getAttribute("ZOrder").trim() : ref.substring(cut + 1);
-            try {
-                Element tpl = pkg.xml(loc);
-                (z.equalsIgnoreCase("Foreground") ? front : back).add(new Element[] {tpl});
-                for (Element r : Dom.kids(tpl, "PageRes")) {
-                    loadRes(res, loc, Dom.text(r));
-                }
-            } catch (InterruptedIOException e) {
-                throw e;
-            } catch (IOException | RuntimeException e) {
+            Element tpl = template(loc, parsed);
+            if (tpl == null) {
                 notes.add("A template page of the OFD document could not be read and was left out");
+                continue;
+            }
+            (z.equalsIgnoreCase("Foreground") ? front : back).add(new Element[] {tpl});
+            for (Element r : Dom.kids(tpl, "PageRes")) {
+                loadRes(res, loc, Dom.text(r));
             }
         }
         OfdPainter painter = painter(canvas, doc, res);
@@ -290,7 +290,25 @@ public final class OfdRenderer {
         }
     }
 
-    private Element templateArea(Doc doc, Element page) throws InterruptedIOException {
+    private Element template(String loc, Map<String, Optional<Element>> parsed) throws InterruptedIOException {
+        Optional<Element> known = parsed.get(loc);
+        if (known != null) {
+            return known.orElse(null);
+        }
+        Element tpl = null;
+        try {
+            tpl = pkg.xml(loc);
+        } catch (InterruptedIOException e) {
+            throw e;
+        } catch (IOException | RuntimeException e) {
+            tpl = null;
+        }
+        parsed.put(loc, Optional.ofNullable(tpl));
+        return tpl;
+    }
+
+    private Element templateArea(Doc doc, Element page, Map<String, Optional<Element>> parsed)
+            throws InterruptedIOException {
         if (page == null || usable(Dom.kid(page, "Area"))) {
             return null;
         }
@@ -299,15 +317,9 @@ public final class OfdRenderer {
             if (ref == null) {
                 continue;
             }
-            try {
-                Element area = Dom.kid(pkg.xml(ref.substring(0, ref.indexOf('\u0000'))), "Area");
-                if (usable(area)) {
-                    return area;
-                }
-            } catch (InterruptedIOException e) {
-                throw e;
-            } catch (IOException | RuntimeException e) {
-                continue;
+            Element area = Dom.kid(template(ref.substring(0, ref.indexOf('\u0000')), parsed), "Area");
+            if (usable(area)) {
+                return area;
             }
         }
         return null;
@@ -316,10 +328,6 @@ public final class OfdRenderer {
     private static boolean usable(Element area) {
         Rectangle2D.Double b = area == null ? null : OfdNumbers.box(Dom.text(Dom.kid(area, "PhysicalBox")));
         return b != null && b.width > 1 && b.height > 1 && b.width < 20_000 && b.height < 20_000;
-    }
-
-    private static Rectangle2D.Double box(Element page, Element pageArea) {
-        return box(page, null, pageArea);
     }
 
     private static Rectangle2D.Double box(Element page, Element templateArea, Element pageArea) {
@@ -498,13 +506,14 @@ public final class OfdRenderer {
                 }
                 String part = doc.pages().get(0)[1];
                 Element page = seal.xml(part);
-                Rectangle2D.Double pb = box(page, doc.pageArea());
+                Map<String, Optional<Element>> parsed = new HashMap<>();
+                Rectangle2D.Double pb = box(page, inner.templateArea(doc, page, parsed), doc.pageArea());
                 canvas.save();
                 try {
                     canvas.translate((float) b.x, (float) b.y);
                     canvas.scale((float) (b.width / pb.width), (float) (b.height / pb.height));
                     canvas.translate((float) -pb.x, (float) -pb.y);
-                    inner.content(canvas, doc, page, part);
+                    inner.content(canvas, doc, page, part, parsed);
                 } finally {
                     canvas.restore();
                 }

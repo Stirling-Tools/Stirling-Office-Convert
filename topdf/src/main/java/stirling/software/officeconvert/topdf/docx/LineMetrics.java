@@ -101,6 +101,7 @@ final class LineMetrics {
             }
         }
         line.objectsOnBaseline = objects && content;
+        float objectExtent = !objects ? 0 : content ? baseAsc + baseDesc : soloAsc + soloDesc;
         if (objects && content) {
             // Beside text an inline object stands on the baseline; its run's font still sizes the line
             asc = Math.max(asc, baseAsc);
@@ -144,7 +145,7 @@ final class LineMetrics {
             case EXACT -> h = value;
             case AT_LEAST -> {
                 float pitch = bodyGrid ? gridPitch : 0;
-                h = Math.max(snap(natural, pitch, pp, 0.05f), snap(value, pitch, pp, 1e-4f));
+                h = Math.max(snap(natural, pitch, pp, 0.05f), snap(Math.max(value, objectExtent), pitch, pp, 1e-4f));
             }
             default -> {
                 // A list label's height is not multiplied with the text's

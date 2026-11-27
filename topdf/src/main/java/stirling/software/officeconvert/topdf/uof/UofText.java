@@ -54,6 +54,10 @@ final class UofText {
 
     private long written;
 
+    private long pending;
+
+    private final Map<String, Integer> suffixes = new HashMap<>();
+
     private int noteDepth;
 
     private boolean evenHeaders;
@@ -124,8 +128,12 @@ final class UofText {
         doc.append(sectPr(section)).append("</w:body></w:document>");
         grow(doc);
         parts.wordPart("document", doc.toString());
-        parts.add("word/styles.xml", styles());
-        parts.add("word/numbering.xml", numberingPart());
+        String styles = styles();
+        written += styles.length();
+        parts.add("word/styles.xml", styles);
+        String numbering = numberingPart();
+        written += numbering.length();
+        parts.add("word/numbering.xml", numbering);
         parts.wordPart("footnotes", notesPart("footnotes", "footnote", footnotes));
         parts.wordPart("endnotes", notesPart("endnotes", "endnote", endnotes));
         parts.add("word/settings.xml", UofParts.XML + "<w:settings " + UofParts.W_NS + "><w:defaultTabStop w:val=\"420\"/>"
@@ -245,14 +253,20 @@ final class UofText {
         return depth <= MAX_DEPTH && nodes++ < MAX_NODES;
     }
 
+    private void keep(List<String> after, StringBuilder s) throws IOException {
+        after.add(s.toString());
+        pending += s.length();
+        grow(null);
+    }
+
     private void grow(StringBuilder b) throws IOException {
-        long total = written;
+        long total = written + pending;
         boolean counted = false;
         for (StringBuilder o : open) {
             total += o.length();
             counted |= o == b;
         }
-        if (!counted) {
+        if (!counted && b != null) {
             total += b.length();
         }
         if (total > parts.limit()) {
@@ -282,6 +296,7 @@ final class UofText {
         b.append("</w:p>");
         for (String s : after) {
             b.append(s);
+            pending -= s.length();
         }
         grow(b);
     }
@@ -329,7 +344,7 @@ final class UofText {
                 } finally {
                     open.remove(open.size() - 1);
                 }
-                after.add(s.toString());
+                keep(after, s);
             }
             return;
         }
@@ -404,7 +419,7 @@ final class UofText {
                 } finally {
                     open.remove(open.size() - 1);
                 }
-                after.add(s.toString());
+                keep(after, s);
             } finally {
                 expanding.remove(ref);
             }
@@ -933,9 +948,11 @@ final class UofText {
         }
         String base = styleId(id);
         String out = base;
-        for (int i = 2; !takenIds.add(out); i++) {
-            out = base + "_" + i;
+        int i = suffixes.getOrDefault(base, 2);
+        while (!takenIds.add(out)) {
+            out = base + "_" + i++;
         }
+        suffixes.put(base, i);
         styleIds.put(id, out);
         return out;
     }
@@ -950,8 +967,17 @@ final class UofText {
         return b.isEmpty() ? "s" : b.toString();
     }
 
-    private String styles() {
+    private String styles() throws IOException {
         StringBuilder b = new StringBuilder();
+        open.add(b);
+        try {
+            return styles(b);
+        } finally {
+            open.remove(b);
+        }
+    }
+
+    private String styles(StringBuilder b) throws IOException {
         b.append(UofParts.XML).append("<w:styles ").append(UofParts.W_NS).append(">");
         b.append("<w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii=\"Times New Roman\" w:hAnsi=\"Times New Roman\""
                 + " w:eastAsia=\"宋体\" w:cs=\"Times New Roman\"/><w:sz w:val=\"21\"/><w:szCs w:val=\"21\"/>"
@@ -974,6 +1000,7 @@ final class UofText {
             }
             b.append("<w:pPr>").append(paragraphProps(s, false)).append("</w:pPr>");
             b.append("<w:rPr>").append(runProps(Uof.kid(s, "句属性"))).append("</w:rPr></w:style>");
+            grow(b);
         }
         for (Element s : Uof.kids(set, "句式样")) {
             String id = Uof.attr(s, "标识符");
@@ -987,6 +1014,7 @@ final class UofText {
                 b.append("<w:basedOn w:val=\"").append(Uof.esc(style(base))).append("\"/>");
             }
             b.append("<w:rPr>").append(runProps(s)).append("</w:rPr></w:style>");
+            grow(b);
         }
         b.append("</w:styles>");
         return b.toString().replace("<w:pPr></w:pPr>", "").replace("<w:rPr></w:rPr>", "");
@@ -1001,8 +1029,17 @@ final class UofText {
         return n == null || n.isBlank() ? id : n;
     }
 
-    private String numberingPart() {
+    private String numberingPart() throws IOException {
         StringBuilder b = new StringBuilder();
+        open.add(b);
+        try {
+            return numberingPart(b);
+        } finally {
+            open.remove(b);
+        }
+    }
+
+    private String numberingPart(StringBuilder b) throws IOException {
         b.append(UofParts.XML).append("<w:numbering ").append(UofParts.W_NS).append(">");
         Map<String, Element> lists = new HashMap<>();
         for (Element n : Uof.kids(Uof.path(root, "式样集", "自动编号集"), "自动编号")) {
@@ -1026,6 +1063,7 @@ final class UofText {
                 b.append(level(level, lvl));
             }
             b.append("</w:abstractNum>");
+            grow(b);
         }
         for (Integer id : numbering.values()) {
             b.append("<w:num w:numId=\"").append(id).append("\"><w:abstractNumId w:val=\"").append(id)

@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.awt.Color;
@@ -14,6 +15,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.Base64;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
@@ -241,6 +243,23 @@ class UofPackageTest {
         assertTrue(styles.contains("w:styleId=\"Heading_A\"") && styles.contains("w:styleId=\"Heading_A_2\""), styles);
         assertTrue(styles.contains("<w:basedOn w:val=\"Heading_A\"/>"), styles);
         assertTrue(entry(docx, "word/document.xml").contains("<w:pStyle w:val=\"Heading_A_2\"/>"));
+    }
+
+    @Test
+    void manyStylesThatSanitiseAlikeStayQuick() throws IOException {
+        StringBuilder set = new StringBuilder();
+        for (int n = 0; n < 1 << 15; n++) {
+            StringBuilder id = new StringBuilder("S");
+            for (int bit = 14; bit >= 0; bit--) {
+                id.append((n >> bit & 1) == 0 ? '.' : '_');
+            }
+            set.append("<uof:段落式样 字:标识符=\"").append(id).append("\"/>");
+        }
+        String xml = HEAD + "vnd.uof.text\"><uof:式样集>" + set + "</uof:式样集><uof:文字处理><字:主体><字:段落>"
+                + run("Body", "") + "</字:段落></字:主体></uof:文字处理></uof:UOF>";
+        String styles = assertTimeoutPreemptively(Duration.ofSeconds(3),
+                () -> entry(rewrite("alike.uot", xml, UofPackage.Kind.TEXT), "word/styles.xml"));
+        assertTrue(styles.contains("w:styleId=\"S_______________\"") && styles.contains("_32768\""), "distinct ids");
     }
 
     private static String entry(byte[] zip, String name) throws IOException {
