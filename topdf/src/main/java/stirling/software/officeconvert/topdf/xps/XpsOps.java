@@ -1,0 +1,265 @@
+package stirling.software.officeconvert.topdf.xps;
+
+import java.awt.Shape;
+import java.awt.geom.AffineTransform;
+import java.awt.geom.PathIterator;
+import java.awt.geom.Rectangle2D;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.util.ArrayDeque;
+import java.util.Deque;
+import java.util.IdentityHashMap;
+import java.util.Map;
+
+import org.apache.pdfbox.cos.COSBase;
+import org.apache.pdfbox.cos.COSDictionary;
+import org.apache.pdfbox.cos.COSName;
+import org.apache.pdfbox.pdmodel.PDResources;
+
+final class XpsOps {
+
+    private final OutputStream out;
+
+    final PDResources resources;
+
+    final Rectangle2D bounds;
+
+    private final byte[] buf = new byte[1 << 15];
+
+    private int len;
+
+    private final Map<COSBase, COSName> names = new IdentityHashMap<>();
+
+    private int counter;
+
+    AffineTransform ctm = new AffineTransform();
+
+    private final Deque<AffineTransform> saved = new ArrayDeque<>();
+
+    private float[] fill;
+
+    private float[] strokeColor;
+
+    private long bytes;
+
+    XpsOps(OutputStream out, PDResources resources, Rectangle2D bounds) {
+        this.out = out;
+        this.resources = resources;
+        this.bounds = bounds;
+    }
+
+    long written() {
+        return bytes + len;
+    }
+
+    int depth() {
+        return saved.size();
+    }
+
+    void q() throws IOException {
+        saved.push(new AffineTransform(ctm));
+        op("q\n");
+    }
+
+    void Q() throws IOException {
+        if (saved.isEmpty()) {
+            return;
+        }
+        ctm = saved.pop();
+        fill = null;
+        strokeColor = null;
+        op("Q\n");
+    }
+
+    void cm(AffineTransform t) throws IOException {
+        if (t == null || t.isIdentity()) {
+            return;
+        }
+        num(t.getScaleX()).num(t.getShearY()).num(t.getShearX()).num(t.getScaleY()).num(t.getTranslateX())
+                .num(t.getTranslateY()).op("cm\n");
+        ctm.concatenate(t);
+    }
+
+    XpsOps num(double v) throws IOException {
+        if (!Double.isFinite(v)) {
+            v = 0;
+        }
+        v = Math.max(-1e9, Math.min(1e9, v));
+        long scaled = Math.round(v * 10_000);
+        if (scaled < 0) {
+            put('-');
+            scaled = -scaled;
+        }
+        long whole = scaled / 10_000;
+        long frac = scaled % 10_000;
+        digits(whole);
+        if (frac != 0) {
+            put('.');
+            for (long div = 1000; div > 0 && frac != 0; div /= 10) {
+                put((char) ('0' + frac / div));
+                frac %= div;
+            }
+        }
+        put(' ');
+        return this;
+    }
+
+    XpsOps integer(long v) throws IOException {
+        if (v < 0) {
+            put('-');
+            v = -v;
+        }
+        digits(v);
+        put(' ');
+        return this;
+    }
+
+    private final char[] scratch = new char[20];
+
+    private void digits(long v) throws IOException {
+        int i = scratch.length;
+        do {
+            scratch[--i] = (char) ('0' + v % 10);
+            v /= 10;
+        } while (v > 0);
+        while (i < scratch.length) {
+            put(scratch[i++]);
+        }
+    }
+
+    XpsOps op(String s) throws IOException {
+        for (int i = 0; i < s.length(); i++) {
+            put(s.charAt(i));
+        }
+        return this;
+    }
+
+    XpsOps name(COSName n) throws IOException {
+        put('/');
+        op(n.getName());
+        put(' ');
+        return this;
+    }
+
+    void hex4(int v) throws IOException {
+        final String digits = "0123456789ABCDEF";
+        put(digits.charAt((v >> 12) & 0xF));
+        put(digits.charAt((v >> 8) & 0xF));
+        put(digits.charAt((v >> 4) & 0xF));
+        put(digits.charAt(v & 0xF));
+    }
+
+    private void put(char c) throws IOException {
+        if (len == buf.length) {
+            flush();
+        }
+        buf[len++] = (byte) c;
+    }
+
+    void flush() throws IOException {
+        out.write(buf, 0, len);
+        bytes += len;
+        len = 0;
+    }
+
+    void close() throws IOException {
+        while (!saved.isEmpty()) {
+            Q();
+        }
+        flush();
+        out.close();
+    }
+
+    boolean path(Shape shape, AffineTransform extra) throws IOException {
+        PathIterator it = shape.getPathIterator(extra);
+        double[] c = new double[6];
+        boolean any = false;
+        double x = 0;
+        double y = 0;
+        double sx = 0;
+        double sy = 0;
+        while (!it.isDone()) {
+            switch (it.currentSegment(c)) {
+                case PathIterator.SEG_MOVETO -> {
+                    num(c[0]).num(c[1]).op("m\n");
+                    x = sx = c[0];
+                    y = sy = c[1];
+                    any = true;
+                }
+                case PathIterator.SEG_LINETO -> {
+                    if (c[0] == x && c[1] == y) {
+                        it.next();
+                        continue;
+                    }
+                    num(c[0]).num(c[1]).op("l\n");
+                    x = c[0];
+                    y = c[1];
+                }
+                case PathIterator.SEG_QUADTO -> {
+                    num(x + 2.0 / 3 * (c[0] - x)).num(y + 2.0 / 3 * (c[1] - y)).num(c[2] + 2.0 / 3 * (c[0] - c[2]))
+                            .num(c[3] + 2.0 / 3 * (c[1] - c[3])).num(c[2]).num(c[3]).op("c\n");
+                    x = c[2];
+                    y = c[3];
+                }
+                case PathIterator.SEG_CUBICTO -> {
+                    num(c[0]).num(c[1]).num(c[2]).num(c[3]).num(c[4]).num(c[5]).op("c\n");
+                    x = c[4];
+                    y = c[5];
+                }
+                case PathIterator.SEG_CLOSE -> {
+                    op("h\n");
+                    x = sx;
+                    y = sy;
+                }
+                default -> {}
+            }
+            it.next();
+        }
+        return any;
+    }
+
+    void rect(Rectangle2D r) throws IOException {
+        num(r.getX()).num(r.getY()).num(r.getWidth()).num(r.getHeight()).op("re\n");
+    }
+
+    void fillColor(float[] rgb) throws IOException {
+        if (fill != null && fill[0] == rgb[0] && fill[1] == rgb[1] && fill[2] == rgb[2]) {
+            return;
+        }
+        num(rgb[0]).num(rgb[1]).num(rgb[2]).op("rg\n");
+        fill = rgb.clone();
+    }
+
+    void strokeColor(float[] rgb) throws IOException {
+        if (strokeColor != null && strokeColor[0] == rgb[0] && strokeColor[1] == rgb[1] && strokeColor[2] == rgb[2]) {
+            return;
+        }
+        num(rgb[0]).num(rgb[1]).num(rgb[2]).op("RG\n");
+        strokeColor = rgb.clone();
+    }
+
+    void forgetColors() {
+        fill = null;
+        strokeColor = null;
+    }
+
+    COSName resource(COSName kind, String prefix, COSBase object) {
+        COSName known = names.get(object);
+        if (known != null) {
+            return known;
+        }
+        COSDictionary all = resources.getCOSObject();
+        COSDictionary dict = all.getCOSDictionary(kind);
+        if (dict == null) {
+            dict = new COSDictionary();
+            all.setItem(kind, dict);
+        }
+        COSName n;
+        do {
+            n = COSName.getPDFName(prefix + (++counter));
+        } while (dict.containsKey(n));
+        dict.setItem(n, object);
+        names.put(object, n);
+        return n;
+    }
+}

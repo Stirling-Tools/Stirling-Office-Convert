@@ -44,7 +44,9 @@ final class OfficeFiles {
             new Kind("application/vnd.ms-visio.drawing.main+xml", "vsdx"),
             new Kind("application/vnd.ms-visio.drawing.macroEnabled.main+xml", "vsdm"),
             new Kind("application/vnd.ms-visio.stencil.main+xml", "vssx"),
-            new Kind("application/vnd.ms-visio.template.main+xml", "vstx"));
+            new Kind("application/vnd.ms-visio.template.main+xml", "vstx"),
+            new Kind("application/vnd.ms-package.xps-fixeddocumentsequence+xml", "xps"),
+            new Kind("application/vnd.openxps-fixeddocumentsequence+xml", "oxps"));
 
     private static final List<Map.Entry<String, String>> MAIN_PARTS = List.of(Map.entry("word/document.xml", "docx"),
             Map.entry("ppt/presentation.xml", "pptx"), Map.entry("xl/workbook.xml", "xlsx"));
@@ -71,7 +73,7 @@ final class OfficeFiles {
                     "pages" -> "docx";
             case "pptx", "pptm", "ppsx", "ppsm", "potx", "potm", "ppt", "pps", "pot", "odp", "otp", "fodp", "odg", "otg",
                     "fodg", "sxi", "sti", "sxd", "std", "key", "vsdx", "vsdm", "vssx", "vssm", "vstx", "vstm", "vsd", "vss",
-                    "vst", "vsw", "pub" -> "pptx";
+                    "vst", "vsw", "pub", "xps", "oxps" -> "pptx";
             case "xlsx", "xlsm", "xltx", "xltm", "xls", "xlt", "xlsb", "ods", "ots", "fods", "sxc", "stc", "slk", "sylk",
                     "dif", "dbf", "numbers", "wk1", "wks", "wk3", "wk4", "123" -> "xlsx";
             case "txt", "text", "log", "asc" -> "docx";
