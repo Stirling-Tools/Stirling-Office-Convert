@@ -230,9 +230,13 @@ class HtmlReviewRegressionTest {
                 + "<span>B</span></div>");
         Paragraph row = paragraphs.getFirst();
         assertEquals("A\u2002\u00a0\u00a0\u2002B", text(row));
-        List<Float> spacing = row.inlines.stream().filter(Inline.Text.class::isInstance).map(Inline.Text.class::cast)
-                .filter(run -> run.text().equals("\u00a0")).map(run -> run.style().spacing()).toList();
-        assertEquals(List.of(9f, 3f), spacing);
+        List<Inline.Text> gaps = row.inlines.stream().filter(Inline.Text.class::isInstance).map(Inline.Text.class::cast)
+                .filter(run -> run.text().equals("\u00a0")).toList();
+        assertEquals(2, gaps.size());
+        float outer = gaps.get(0).style().spacing();
+        float inner = gaps.get(1).style().spacing();
+        assertEquals(6, outer - inner, 0.01f);
+        assertTrue(outer > 6 && outer < 12, gaps.toString());
     }
 
     @Test

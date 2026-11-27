@@ -1049,4 +1049,40 @@ class HtmlLayoutTest {
         assertEquals(1.245f * 36, red, 4);
         assertTrue(now.left() - go.right() > 1.2f * 36, go + " " + now);
     }
+
+    private OfficeToPdf.Options testFonts() throws IOException {
+        Path fonts = Files.createDirectories(dir.resolve("fonts"));
+        Files.write(fonts.resolve("TestSans.ttf"), TestFonts.renamed("TestSans"));
+        Files.write(fonts.resolve("TallCjk.ttf"), TestFonts.withLineMetrics(TestFonts.withEastAsianGlyphs("TallCjk"), 1600, 600));
+        return OfficeToPdf.Options.defaults().fonts(FontSet.builder().directory(fonts).systemFonts(false).build());
+    }
+
+    @Test
+    void textIsKernedAsBrowsersKernIt() throws IOException {
+        Laid l = lay("<p style=\"font-family:TestSans;font-size:30px\">AVAVAVAV AAAAVVVV</p>", testFonts());
+        Word kerned = l.word("AVAVAVAV");
+        Word plain = l.word("AAAAVVVV");
+        assertTrue(kerned.right() - kerned.left() < plain.right() - plain.left() - 4, kerned + " " + plain);
+    }
+
+    @Test
+    void inlinePaddingAddsWhatItAsks() throws IOException {
+        Laid l = lay("<p style=\"font-family:TestSans\">alpha <code style=\"font-family:TestSans;font-size:60px;"
+                + "padding-left:12pt\">xx</code></p><p style=\"font-family:TestSans\">alpha <code style=\""
+                + "font-family:TestSans;font-size:60px\">xx</code></p>", testFonts());
+        List<Word> ends = l.words().stream().filter(w -> w.text().endsWith("xx")).toList();
+        assertEquals(2, ends.size(), l.words().toString());
+        assertEquals(12, ends.get(0).right() - ends.get(1).right(), 0.5f, ends.toString());
+    }
+
+    @Test
+    void aFallbackFontDoesNotGrowCssLines() throws IOException {
+        Laid l = lay("<p style=\"font-family:TestSans,TallCjk;font-size:20px;line-height:1.5;width:150px\">"
+                + "\u4e00".repeat(60) + "</p>", testFonts());
+        List<Float> tops = l.words().stream().map(Word::top).distinct().sorted().toList();
+        assertTrue(tops.size() >= 3, l.words().toString());
+        for (int i = 1; i < tops.size(); i++) {
+            assertEquals(22.5f, tops.get(i) - tops.get(i - 1), 0.6f, tops.toString());
+        }
+    }
 }

@@ -462,9 +462,9 @@ final class Flow {
             return null;
         }
         RunStyle s = look.run();
-        float space = s.size() * 0.25f;
+        float space = Measure.width("\u00a0", s);
         RunStyle g = new RunStyle(s.font(), s.size(), false, false, false, false, s.rgb(), -1, 0, false,
-                Math.max(0, Math.min(MAX_INLINE_GAP, pt) - space), s.scale(), false, -1);
+                Math.min(MAX_INLINE_GAP, pt) - space, s.scale(), false, -1);
         return new Inline.Text("\u00a0", g, null, -1);
     }
 

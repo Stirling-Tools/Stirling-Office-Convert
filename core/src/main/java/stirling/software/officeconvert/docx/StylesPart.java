@@ -19,6 +19,7 @@ final class StylesPart {
         sb.append("<w:rFonts w:ascii=\"").append(latin).append("\" w:hAnsi=\"").append(latin).append("\" w:eastAsia=\"")
                 .append(Xml.esc(slots.eastAsian())).append("\" w:cs=\"").append(Xml.esc(slots.complex())).append("\"/>");
         int hp = Xml.halfPoints(normal.size());
+        sb.append(sheet.kerning ? "<w:kern w:val=\"1\"/>" : "");
         sb.append("<w:sz w:val=\"").append(hp).append("\"/><w:szCs w:val=\"").append(hp).append("\"/>")
                 .append("<w:lang w:val=\"").append(latinLanguage(sheet.scripts)).append("\" w:eastAsia=\"")
                 .append(eastAsianLanguage(sheet.scripts))
