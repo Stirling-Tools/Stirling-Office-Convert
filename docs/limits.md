@@ -178,6 +178,7 @@ XPS and OpenXPS input has its own limits, on top of the package limits above:
 | Font part / all fonts / fonts | 64 MB / 256 MB / 2,000 | the font's text uses a standard font, with a warning |
 | Picture part / pictures | 128 MB / 20,000 | the picture is left out with a warning |
 | ICC profile / profiles | 4 MB / 64 | colours using further profiles are converted without them |
+| ICC profiles kept in the PDF | 16 MB in all | colours using further profiles are converted to sRGB |
 | Outline entries / link targets per page | 100,000 / 1,000,000 | the rest are left out |
 | Links / named elements per page | 10,000 / 100,000 | further links are not made; further names are not targets |
 | Gradient stops / dash array entries | 1,024 / 512 | further stops are ignored; a longer or near-zero dash pattern is drawn solid |

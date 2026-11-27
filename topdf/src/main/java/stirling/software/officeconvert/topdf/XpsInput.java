@@ -23,6 +23,8 @@ import stirling.software.officeconvert.topdf.xps.XpsToPdf;
 
 final class XpsInput {
 
+    private static final String SEQUENCE_TYPE = "application/vnd.ms-package.xps-fixeddocumentsequence+xml";
+
     private XpsInput() {}
 
     static boolean named(Path source) {
@@ -62,9 +64,27 @@ final class XpsInput {
             try (InputStream in = z.getInputStream(rels)) {
                 String text = new String(in.readNBytes(64 << 10), StandardCharsets.UTF_8);
                 return text.contains(XpsToPdf.XPS_REPRESENTATION) || text.contains(XpsToPdf.OXPS_REPRESENTATION);
+            } catch (ZipException damaged) {
+                if (declaresSequence(z)) {
+                    return true;
+                }
+                throw damaged;
             }
         } catch (ZipException e) {
             return XpsToPdf.isRepaired(source);
+        } catch (IOException | RuntimeException e) {
+            return false;
+        }
+    }
+
+    private static boolean declaresSequence(ZipFile z) {
+        ZipEntry types = z.getEntry("[Content_Types].xml");
+        if (types == null) {
+            return false;
+        }
+        try (InputStream in = z.getInputStream(types)) {
+            String text = new String(in.readNBytes(64 << 10), StandardCharsets.UTF_8).toLowerCase(Locale.ROOT);
+            return text.contains(SEQUENCE_TYPE);
         } catch (IOException | RuntimeException e) {
             return false;
         }

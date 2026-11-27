@@ -333,6 +333,45 @@ class XpsToPdfTest {
     }
 
     @Test
+    void malformedPackageRelationshipsFallBackToTheSequenceContentType() throws IOException {
+        Map<String, byte[]> parts = xps(List.of(page(glyphs("Hello", 50, 100, ""))));
+        parts.put("_rels/.rels", utf8("<Relationships xmlns='http://schemas.openxmlformats.org/package/2006/"
+                + "relationships'><Relationship Id='R1' Type='" + XpsToPdf.XPS_REPRESENTATION
+                + "' Target='/FixedDocumentSequence.fdseq' xsi:type='x'/></Relationships>"));
+        Path out = dir.resolve("badrels.pdf");
+        OfficeToPdf.Result r = convert(write("badrels.xps", parts), out);
+        assertEquals(1, r.pages());
+        try (PDDocument pdf = Loader.loadPDF(out.toFile())) {
+            assertTrue(new PDFTextStripper().getText(pdf).contains("Hello"));
+        }
+    }
+
+    @Test
+    void unreadablePackageRelationshipsFallBackToTheSequenceContentType() throws IOException {
+        Map<String, byte[]> parts = xps(List.of(page(glyphs("Hello", 50, 100, ""))));
+        parts.put("_rels/.rels", parts.remove("_rels/.rels"));
+        Path in = write("corrupt.xps", parts);
+        byte[] zip = Files.readAllBytes(in);
+        byte[] name = "_rels/.rels".getBytes(StandardCharsets.US_ASCII);
+        int at = -1;
+        for (int i = 0; i + 30 + name.length < zip.length && at < 0; i++) {
+            if (zip[i] == 'P' && zip[i + 1] == 'K' && zip[i + 2] == 3 && zip[i + 3] == 4
+                    && java.util.Arrays.equals(zip, i + 30, i + 30 + name.length, name, 0, name.length)) {
+                at = i;
+            }
+        }
+        assertTrue(at >= 0);
+        int data = at + 30 + name.length + ((zip[at + 28] & 0xFF) | (zip[at + 29] & 0xFF) << 8);
+        for (int i = 0; i < 4; i++) {
+            zip[data + i] = (byte) 0xFF;
+        }
+        Files.write(in, zip);
+        Path out = dir.resolve("corrupt.pdf");
+        OfficeToPdf.Result r = convert(in, out);
+        assertEquals(1, r.pages());
+    }
+
+    @Test
     void opacityAndClipsApply() throws IOException {
         Path in = write("opacity.xps", xps(List.of(page(
                 "<Canvas Opacity='0.5'><Path Data='M 0,0 L 100,0 100,100 0,100 Z' Fill='#FF000000'/></Canvas>"

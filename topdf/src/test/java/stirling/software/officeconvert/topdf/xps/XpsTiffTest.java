@@ -58,6 +58,32 @@ class XpsTiffTest {
         }
     }
 
+    @Test
+    void hostileHeadersFallBackWithoutDecoding() throws IOException {
+        byte[] huge = tiff(10, 10, 3, 5, 1, pixels(10, 10, 3));
+        ByteBuffer b = ByteBuffer.wrap(huge).order(ByteOrder.LITTLE_ENDIAN);
+        b.putInt(10 + 8, 200_000);
+        b.putInt(10 + 12 + 8, 200_000);
+        byte[] outside = tiff(10, 10, 3, 5, 1, pixels(10, 10, 3));
+        ByteBuffer.wrap(outside).order(ByteOrder.LITTLE_ENDIAN).putInt(10 + 12 * 5 + 8, Integer.MAX_VALUE - 4);
+        byte[] lying = tiff(10, 10, 3, 1, 1, pixels(10, 10, 3));
+        ByteBuffer.wrap(lying).order(ByteOrder.LITTLE_ENDIAN).putInt(10 + 12 * 8 + 8, 5);
+        byte[] garbage = tiff(64, 64, 3, 5, 1, pixels(64, 64, 3));
+        int at = ByteBuffer.wrap(garbage).order(ByteOrder.LITTLE_ENDIAN).getInt(10 + 12 * 5 + 8);
+        for (int i = at + 1; i < garbage.length; i++) {
+            garbage[i] = (byte) 0xFF;
+        }
+        try (PDDocument doc = new PDDocument()) {
+            assertNull(XpsTiff.decode(doc, huge));
+            assertNull(XpsTiff.decode(doc, outside));
+            assertNull(XpsTiff.decode(doc, lying));
+            assertNull(XpsTiff.decode(doc, java.util.Arrays.copyOf(huge, 12)));
+            PDImageXObject partial = XpsTiff.decode(doc, garbage);
+            assertNotNull(partial);
+            assertEquals(64, partial.getImage().getWidth());
+        }
+    }
+
     private static void same(byte[] tiff) throws IOException {
         BufferedImage expected = ImageIO.read(new ByteArrayInputStream(tiff));
         assertNotNull(expected);
