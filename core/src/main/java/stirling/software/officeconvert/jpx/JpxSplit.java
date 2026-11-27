@@ -153,6 +153,9 @@ public final class JpxSplit {
             if (psot == 0) {
                 return true;
             }
+            if (psot < 14 || psot > end - p) {
+                return false;
+            }
             p += (int) psot;
         }
         return true;
@@ -250,6 +253,9 @@ public final class JpxSplit {
         int to = seg[2];
         switch (code) {
             case SIZ -> {
+                if (to - from < 40 + 3 * siz.components()) {
+                    return false;
+                }
                 u16(out, SIZ);
                 u16(out, 38 + 3 * group.length);
                 out.write(data, from + 4, 34);
@@ -260,6 +266,9 @@ public final class JpxSplit {
                 return true;
             }
             case COD -> {
+                if (to - from < 9) {
+                    return false;
+                }
                 byte[] seg2 = java.util.Arrays.copyOfRange(data, from, to);
                 if (dropMct && seg2.length > 8) {
                     seg2[8] = 0;
@@ -268,6 +277,9 @@ public final class JpxSplit {
                 return true;
             }
             case COC, QCC -> {
+                if (to - from < 6) {
+                    return false;
+                }
                 int c = data[from + 4] & 0xFF;
                 if (c < map.length && map[c] >= 0) {
                     byte[] seg2 = java.util.Arrays.copyOfRange(data, from, to);

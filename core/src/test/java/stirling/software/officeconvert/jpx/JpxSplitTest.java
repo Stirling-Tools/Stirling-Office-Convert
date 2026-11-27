@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 
@@ -56,6 +57,30 @@ class JpxSplitTest {
         JpxEncoder.Planes p = JpxEncoderTest.subsampled(160, 90, new int[] {1, 2, 2, 1}, new int[] {1, 2, 2, 1}, 8, 4);
         assertSplit(JpxEncoder.encode(p, JpxEncoder.Options.exact().withOrder(JpxEncoder.Order.RPCL)),
                 new int[][] {{0, 1, 2}, {3}});
+    }
+
+    @Test
+    void damagedCodestreamsAreRefusedOrSplitExactly() throws IOException {
+        byte[] data = JpxEncoder.encode(withAlpha(96, 80, 3),
+                JpxEncoder.Options.rate(2).withTileSize(32).withLayers(2).withCodestream(true));
+        java.util.Random rnd = new java.util.Random(11);
+        int split = 0;
+        for (int i = 0; i < 3000; i++) {
+            byte[] bad = data.clone();
+            for (int k = 0, n = 1 + rnd.nextInt(4); k < n; k++) {
+                int at = rnd.nextInt(Math.min(bad.length, i % 2 == 0 ? 200 : bad.length));
+                bad[at] = (byte) rnd.nextInt(256);
+            }
+            try {
+                byte[][] parts = JpxSplit.split(bad, new int[][] {{0, 1, 2}, {3}});
+                if (parts != null) {
+                    split++;
+                }
+            } catch (IOException e) {
+                continue;
+            }
+        }
+        assertTrue(split > 0);
     }
 
     @Test
