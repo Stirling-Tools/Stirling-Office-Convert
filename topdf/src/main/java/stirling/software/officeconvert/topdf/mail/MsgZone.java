@@ -4,6 +4,7 @@ import java.time.DayOfWeek;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.YearMonth;
 import java.time.ZoneOffset;
 import java.time.temporal.TemporalAdjusters;
 
@@ -92,10 +93,19 @@ final class MsgZone {
     }
 
     private static boolean valid(int[] st) {
-        return st[1] >= 1 && st[1] <= 12 && st[2] <= 6 && st[3] >= 1 && st[3] <= 5 && st[4] < 24 && st[5] < 60;
+        if (st[1] < 1 || st[1] > 12 || st[4] >= 24 || st[5] >= 60) {
+            return false;
+        }
+        if (st[0] != 0) {
+            return st[0] <= 9999 && st[3] >= 1 && st[3] <= YearMonth.of(st[0], st[1]).lengthOfMonth();
+        }
+        return st[2] <= 6 && st[3] >= 1 && st[3] <= 5;
     }
 
     private static LocalDateTime change(int[] st, int year) {
+        if (st[0] != 0) {
+            return LocalDate.of(st[0], st[1], st[3]).atTime(st[4], st[5]);
+        }
         DayOfWeek day = DayOfWeek.of(st[2] == 0 ? 7 : st[2]);
         LocalDate first = LocalDate.of(year, st[1], 1);
         LocalDate date = st[3] >= 5 ? first.with(TemporalAdjusters.lastInMonth(day))

@@ -245,7 +245,7 @@ public final class EmlReader {
                 line = line.substring(1);
             }
             boolean soft = line.endsWith(" ") && !line.equals("-- ");
-            if (para.length() > 0 && q != quote) {
+            if (para.length() > 0 && (q != quote || line.equals("-- "))) {
                 out.append(">".repeat(quote)).append(quote > 0 ? " " : "").append(para).append('\n');
                 para.setLength(0);
             }

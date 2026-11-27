@@ -437,4 +437,17 @@ class MailToPdfTest {
         root.createDocument("__substg1.0_" + id + "001F",
                 new ByteArrayInputStream(value.getBytes(StandardCharsets.UTF_16LE)));
     }
+
+    @Test
+    void aMailStreamedAsHtmlIsStillDrawnAsAMail() throws IOException {
+        byte[] eml = ascii("From: Ana <ana@example.org>\nTo: bob@example.org\nSubject: Streamed\nMIME-Version: 1.0\n"
+                + "Content-Type: text/plain\n\nHello there\n");
+        ByteArrayOutputStream pdf = new ByteArrayOutputStream();
+        OfficeToPdf.convert(new ByteArrayInputStream(eml), OfficeToPdf.Format.HTML, pdf, OfficeToPdf.Options.defaults());
+        try (PDDocument doc = Loader.loadPDF(pdf.toByteArray())) {
+            String text = new PDFTextStripper().getText(doc);
+            assertTrue(text.contains("Hello there"), text);
+            assertFalse(text.contains("MIME-Version"), text);
+        }
+    }
 }

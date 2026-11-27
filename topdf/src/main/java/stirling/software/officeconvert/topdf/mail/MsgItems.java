@@ -116,7 +116,7 @@ final class MsgItems {
         if (startZone == null) {
             startZone = MsgZone.struct(p.binary(APPOINTMENT, 0x8233));
         }
-        if (endZone == null) {
+        if (endZone == null || allDay) {
             endZone = startZone;
         }
         if (allDay && end != null) {
@@ -174,10 +174,11 @@ final class MsgItems {
         field(mail, "Department", p.string(null, 0x3A18));
         field(mail, "Office", p.string(null, 0x3A19));
         field(mail, "File as", p.string(ADDRESS, 0x8005));
-        field(mail, "Business address", address(p.string(ADDRESS, 0x801B), p, 0x3A29, 0x3A27, 0x3A28, 0x3A2A,
-                0x3A26));
-        field(mail, "Home address", address(p.string(ADDRESS, 0x801A), p, 0x3A5D, 0x3A59, 0x3A5C, 0x3A5B, 0x3A5A));
-        field(mail, "Other address", address(p.string(ADDRESS, 0x801C), p, 0x3A63, 0x3A5F, 0x3A62, 0x3A61,
+        field(mail, "Business address", address(p.string(ADDRESS, 0x801B), p, ADDRESS, 0x8045, 0x8046, 0x8047,
+                0x8048, 0x8049));
+        field(mail, "Home address", address(p.string(ADDRESS, 0x801A), p, null, 0x3A5D, 0x3A59, 0x3A5C, 0x3A5B,
+                0x3A5A));
+        field(mail, "Other address", address(p.string(ADDRESS, 0x801C), p, null, 0x3A63, 0x3A5F, 0x3A62, 0x3A61,
                 0x3A60));
         field(mail, "Business phone", p.string(null, 0x3A08));
         field(mail, "Business phone 2", p.string(null, 0x3A1B));
@@ -216,13 +217,14 @@ final class MsgItems {
         return d == null || d.contains(a) ? a : d + " <" + a + ">";
     }
 
-    private static String address(String whole, Props p, int street, int city, int state, int postal, int country) {
+    private static String address(String whole, Props p, String set, int street, int city, int state, int postal,
+            int country) {
         if (whole != null) {
             return whole;
         }
         List<String> parts = new ArrayList<>();
         for (int id : new int[] {street, city, state, postal, country}) {
-            String s = p.string(null, id);
+            String s = p.string(set, id);
             if (s != null) {
                 parts.add(s);
             }

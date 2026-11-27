@@ -52,4 +52,12 @@ class MsgZoneTest {
         assertEquals(ZoneOffset.ofHours(-18), wild.offset(Instant.parse("2026-07-15T12:00:00Z")));
         assertNull(MsgZone.definition(new byte[] {2, 1, 48, 0, 2, 0, (byte) 0xFF, (byte) 0xFF, 0, 0}, 2026));
     }
+
+    @Test
+    void oneTimeTransitionsUseTheirStoredDates() {
+        MsgZone pacific = MsgZone.struct(struct(480, -60, new int[] {2023, 11, 0, 5, 2, 0, 0, 0},
+                new int[] {2023, 3, 0, 12, 2, 0, 0, 0}));
+        assertEquals(ZoneOffset.ofHours(-8), pacific.offset(Instant.parse("2023-01-15T12:00:00Z")));
+        assertEquals(ZoneOffset.ofHours(-7), pacific.offset(Instant.parse("2023-07-15T12:00:00Z")));
+    }
 }

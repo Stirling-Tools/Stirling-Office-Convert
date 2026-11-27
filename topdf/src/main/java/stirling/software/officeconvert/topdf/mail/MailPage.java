@@ -158,7 +158,9 @@ public final class MailPage {
                 i = e - 1;
             } else if ((c == '"' || c == '\'') && i > 0 && html.charAt(i - 1) == '=') {
                 int e = html.indexOf(c, i + 1);
-                if (e > i && e - i < 2_048 && values.size() < 100_000) {
+                if (link(html, i - 1)) {
+                    i = e > i ? e : i;
+                } else if (e > i && e - i < 2_048 && values.size() < 100_000) {
                     String v = html.substring(i + 1, e).toLowerCase(Locale.ROOT).strip();
                     if (v.startsWith("cid:")) {
                         ids.add(v.substring(4));
@@ -169,6 +171,14 @@ public final class MailPage {
                 }
             }
         }
+    }
+
+    private static boolean link(String html, int equals) {
+        int s = equals;
+        while (s > 0 && Character.isLetterOrDigit(html.charAt(s - 1)) && equals - s < 16) {
+            s--;
+        }
+        return html.regionMatches(true, s, "href", 0, 4) && equals - s == 4;
     }
 
     private static boolean referenced(Mail.Attachment a, Set<String> ids, Set<String> values) {

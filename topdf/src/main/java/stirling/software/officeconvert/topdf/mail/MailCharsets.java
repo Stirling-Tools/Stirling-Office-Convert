@@ -122,12 +122,21 @@ public final class MailCharsets {
     public static String metaCharset(byte[] html) {
         int n = Math.min(html.length, 4096);
         String head = new String(html, 0, n, StandardCharsets.ISO_8859_1).toLowerCase(Locale.ROOT);
-        int i = head.indexOf("charset=");
-        if (i < 0) {
+        int s = -1;
+        for (int i = head.indexOf("charset"); i >= 0 && s < 0; i = head.indexOf("charset", i + 7)) {
+            int k = i + 7;
+            while (k < head.length() && Character.isWhitespace(head.charAt(k))) {
+                k++;
+            }
+            if (k < head.length() && head.charAt(k) == '=') {
+                s = k + 1;
+            }
+        }
+        if (s < 0) {
             return null;
         }
-        int s = i + 8;
-        while (s < head.length() && (head.charAt(s) == '"' || head.charAt(s) == '\'' || head.charAt(s) == ' ')) {
+        while (s < head.length() && (head.charAt(s) == '"' || head.charAt(s) == '\''
+                || Character.isWhitespace(head.charAt(s)))) {
             s++;
         }
         int e = s;

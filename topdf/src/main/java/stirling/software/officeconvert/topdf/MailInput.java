@@ -70,9 +70,10 @@ final class MailInput {
             return html(head) && !mailHeaders(head) ? null : Kind.MHTML;
         }
         if (ext.equals("eml") || ext.equals("msg")) {
-            return mailHeaders(head) || !html(head) ? (mhtml(head, false) ? Kind.MHTML : Kind.EML) : null;
+            return mailHeaders(head) || !html(head) ? (mhtml(head, false) && archived(head) ? Kind.MHTML : Kind.EML)
+                    : null;
         }
-        if (ext.equals("html") || ext.equals("htm") || ext.equals("xhtml")) {
+        if ((ext.equals("html") || ext.equals("htm") || ext.equals("xhtml")) && html(head)) {
             return null;
         }
         if (!mailHeaders(head)) {
@@ -161,6 +162,12 @@ final class MailInput {
         }
         return htmlRoot && top.header("To") == null && top.header("Received") == null
                 && top.header("Message-ID") == null && top.header("Cc") == null;
+    }
+
+    private static boolean archived(byte[] head) {
+        Mime.Part top = Mime.parse(head);
+        String from = top.header("From");
+        return top.header("Snapshot-Content-Location") != null || from == null || from.contains("Saved by");
     }
 
     static String extension(Path source) {

@@ -22,7 +22,6 @@ import org.apache.poi.hsmf.datatypes.ByteChunk;
 import org.apache.poi.hsmf.datatypes.Chunk;
 import org.apache.poi.hsmf.datatypes.Chunks;
 import org.apache.poi.hsmf.datatypes.MAPIProperty;
-import org.apache.poi.hsmf.datatypes.PropertyValue;
 import org.apache.poi.hsmf.datatypes.RecipientChunks;
 import org.apache.poi.hsmf.datatypes.StringChunk;
 import org.apache.poi.poifs.filesystem.POIFSFileSystem;
@@ -90,13 +89,16 @@ public final class MsgReader {
         mail.date = date(msg);
         MsgItems.describe(mail, main, names);
         attachments(msg, mail, depth);
-        if (!signed(mail)) {
-            body(msg, main, mail);
+        if (!signed(mail, stringProperty(main, 0x001A))) {
+            body(msg, main, mail, depth);
         }
         return mail;
     }
 
-    private boolean signed(Mail mail) {
+    private boolean signed(Mail mail, String messageClass) {
+        if (messageClass == null || !messageClass.toLowerCase(Locale.ROOT).startsWith("ipm.note.smime")) {
+            return false;
+        }
         for (Mail.Attachment a : mail.attachments) {
             String type = a.type() == null ? "" : a.type().toLowerCase(Locale.ROOT);
             String name = a.name() == null ? "" : a.name().toLowerCase(Locale.ROOT);
@@ -171,11 +173,11 @@ public final class MsgReader {
             String headers = string(msg, main.getMessageHeaders());
             if (headers != null) {
                 Mime.Part h = Mime.parse(headers.getBytes(MailCharsets.WESTERN));
-                String from = h.decodedHeader("From", MailCharsets.WESTERN);
+                String from = h.header("From");
                 if (from != null) {
                     List<String> list = MimeWords.addresses(from);
                     if (!list.isEmpty()) {
-                        return list.get(0);
+                        return MimeWords.decode(list.get(0), MailCharsets.WESTERN);
                     }
                 }
             }
@@ -192,7 +194,10 @@ public final class MsgReader {
     static boolean samePerson(String a, String b) {
         String[] x = person(a);
         String[] y = person(b);
-        return !x[0].isEmpty() && x[0].equals(y[0]) || !x[1].isEmpty() && x[1].equals(y[1]);
+        if (!x[1].isEmpty() && !y[1].isEmpty()) {
+            return x[1].equals(y[1]);
+        }
+        return !x[0].isEmpty() && x[0].equals(y[0]);
     }
 
     private static String[] person(String s) {
@@ -415,7 +420,7 @@ public final class MsgReader {
         }
     }
 
-    private static void body(MAPIMessage msg, Chunks main, Mail mail) {
+    private static void body(MAPIMessage msg, Chunks main, Mail mail, int depth) {
         String html = html(msg, main);
         if (html != null) {
             mail.body.add(new Mail.Html(html));
@@ -434,7 +439,7 @@ public final class MsgReader {
                 mail.body.add(new Mail.Text(text != null ? text : b.content()));
                 return;
             }
-            if (b.kind() == RtfBody.Kind.RTF) {
+            if (b.kind() == RtfBody.Kind.RTF && (depth == 0 || text == null)) {
                 mail.rtf = rtf;
                 return;
             }
@@ -460,19 +465,23 @@ public final class MsgReader {
 
     private static Charset codePage(Chunks main) {
         try {
-            for (var e : main.getProperties().entrySet()) {
-                MAPIProperty p = e.getKey();
-                if ((p.id == 0x3FDE || p.id == 0x3FFD) && !e.getValue().isEmpty()) {
-                    PropertyValue v = e.getValue().get(0);
-                    if (v.getValue() instanceof Number n) {
-                        int page = n.intValue();
-                        return page == 65001 ? StandardCharsets.UTF_8
-                                : MailCharsets.forName(page == 936 ? "gbk" : page == 950 ? "big5"
-                                        : page == 949 ? "ks_c_5601-1987" : page == 932 ? "shift_jis"
-                                        : page == 20127 ? "us-ascii" : page == 28591 ? "iso-8859-1"
-                                        : page == 50220 ? "iso-2022-jp" : page == 51932 ? "euc-jp"
-                                        : page == 20866 ? "koi8-r" : page >= 28592 && page <= 28605
-                                        ? "iso-8859-" + (page - 28590) : "windows-" + page);
+            for (int id : new int[] {0x3FDE, 0x3FFD}) {
+                for (var e : main.getProperties().entrySet()) {
+                    MAPIProperty p = e.getKey();
+                    if (p.id != id || e.getValue().isEmpty()
+                            || !(e.getValue().get(0).getValue() instanceof Number n)) {
+                        continue;
+                    }
+                    int page = n.intValue();
+                    Charset c = page == 65001 ? StandardCharsets.UTF_8
+                            : MailCharsets.forName(page == 936 ? "gbk" : page == 950 ? "big5"
+                                    : page == 949 ? "ks_c_5601-1987" : page == 932 ? "shift_jis"
+                                    : page == 20127 ? "us-ascii" : page == 28591 ? "iso-8859-1"
+                                    : page == 50220 ? "iso-2022-jp" : page == 51932 ? "euc-jp"
+                                    : page == 20866 ? "koi8-r" : page >= 28592 && page <= 28605
+                                    ? "iso-8859-" + (page - 28590) : "windows-" + page);
+                    if (c != null) {
+                        return c;
                     }
                 }
             }

@@ -289,6 +289,7 @@ public final class Mime {
                     while (s < eol && (b[s] == ' ' || b[s] == '\t')) {
                         s++;
                     }
+                    budget--;
                     int n = Math.min(eol - s, budget);
                     value.write(b, s, n);
                     budget -= n;

@@ -31,6 +31,7 @@ public final class RtfBody {
     private Charset bytesCharset;
     private final Map<Integer, Integer> fontPages = new HashMap<>();
     private int defaultPage = 1252;
+    private int defaultFont = -1;
     private int overflow;
 
     private static final class State {
@@ -303,8 +304,13 @@ public final class RtfBody {
         switch (word) {
             case "htmlrtf" -> st.suppressed = !hasParam || param != 0;
             case "ansicpg" -> {
-                if (hasParam && param > 0) {
+                if (hasParam && param > 0 && !st.hidden) {
                     defaultPage = param;
+                }
+            }
+            case "deff" -> {
+                if (hasParam && !st.hidden) {
+                    defaultFont = param;
                 }
             }
             case "f" -> {
@@ -407,7 +413,7 @@ public final class RtfBody {
     }
 
     private void raw(int b, State st) {
-        Charset cs = charset(st.tag ? defaultPage : fontPages.getOrDefault(st.font, defaultPage));
+        Charset cs = charset(st.tag ? defaultPage : fontPages.getOrDefault(st.font >= 0 ? st.font : defaultFont, defaultPage));
         if (bytesCharset != null && !bytesCharset.equals(cs)) {
             flush();
         }

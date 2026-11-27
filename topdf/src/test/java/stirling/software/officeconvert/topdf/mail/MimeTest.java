@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 import org.junit.jupiter.api.Test;
@@ -60,5 +61,34 @@ class MimeTest {
         assertTrue(ids.contains("12"));
         assertTrue(!ids.contains("1"));
         assertTrue(values.contains("logo.png"));
+    }
+
+    @Test
+    void foldedLinesOfOnlySpacesStayWithinTheHeaderLimit() {
+        String hostile = "Subject: x\r\n" + " \r\n".repeat(1_500_000) + "\r\nbody";
+        Mime.Part top = Mime.parse(hostile.getBytes(StandardCharsets.US_ASCII));
+        assertTrue(top.header("Subject").length() <= Mime.MAX_HEADER_BYTES, () -> "" + top.header("Subject").length());
+    }
+
+    @Test
+    void aMetaCharsetMayHaveSpacesAroundItsEqualsSign() {
+        assertEquals("windows-1251", MailCharsets.metaCharset(
+                "<!-- charsets --><meta charset = \"windows-1251\">".getBytes(StandardCharsets.US_ASCII)));
+    }
+
+    @Test
+    void anAttachmentTheBodyOnlyLinksToIsKept() {
+        Mail mail = new Mail();
+        mail.body.add(new Mail.Html("<a href=\"report.pdf\">Download</a><img src=\"logo.png\">"));
+        mail.attachments.add(new Mail.Attachment("report.pdf", "application/octet-stream", 1, new byte[1], null,
+                "report.pdf"));
+        mail.attachments.add(new Mail.Attachment("logo.png", "image/png", 1, new byte[1], null, "logo.png"));
+        MailPage.dropInline(mail);
+        assertEquals(List.of("report.pdf"), mail.attachments.stream().map(Mail.Attachment::name).toList());
+    }
+
+    @Test
+    void aSignatureSeparatorEndsAFlowedParagraph() {
+        assertTrue(EmlReader.unflow("Thanks for the \r\nnotes \r\n-- \r\nAna", false).contains("notes \n-- \nAna"));
     }
 }

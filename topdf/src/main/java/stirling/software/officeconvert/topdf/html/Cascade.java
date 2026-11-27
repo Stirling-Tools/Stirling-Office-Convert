@@ -790,7 +790,7 @@ final class Cascade {
             if (!WORD.matcher(value).matches()) {
                 return null;
             }
-            value = value.replaceAll("[:/.@]", ".");
+            value = value.replace(".", "\\.").replace(":", "\\:");
             m.appendReplacement(out, Matcher.quoteReplacement("[" + m.group(1).strip() + "~=(^|\\s)" + value + "(\\s|$)]"));
         }
         m.appendTail(out);

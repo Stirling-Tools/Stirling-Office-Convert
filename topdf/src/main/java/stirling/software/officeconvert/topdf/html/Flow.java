@@ -298,8 +298,8 @@ final class Flow {
             return false;
         }
         Map<String, String> d = ctx.declared(e, look);
-        if (later && (!d.getOrDefault("clear", "none").strip().equalsIgnoreCase("none")
-                || Set.of("table", "hr", "pre").contains(e.normalName()))) {
+        if (!d.getOrDefault("clear", "none").strip().equalsIgnoreCase("none")
+                || later && Set.of("table", "hr", "pre").contains(e.normalName())) {
             return false;
         }
         return d.getOrDefault("float", "none").strip().equalsIgnoreCase("none")
@@ -1938,8 +1938,15 @@ final class Flow {
         if (pic == null) {
             Inline.FormControl missing = missingPicture(e, d, look, room);
             if (missing != null) {
+                boolean alone = forceInline == 0 && d.getOrDefault("display", "").strip().equalsIgnoreCase("block");
+                if (alone) {
+                    flush();
+                }
                 inline(missing, look);
                 lastSpace = false;
+                if (alone) {
+                    flush();
+                }
                 return;
             }
             String alt = e.attr("alt").strip();

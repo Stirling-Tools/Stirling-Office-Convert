@@ -111,7 +111,7 @@ public final class MailRtf {
                 String word = word(b, i);
                 if (word.isEmpty() || word.equals("pard") || word.equals("plain") || word.equals("sectd")
                         || word.equals("par") || word.equals("ltrpar") || word.equals("rtlpar")
-                        || word.equals("trowd") || word.startsWith("pn") || word.equals("s")) {
+                        || word.equals("trowd") || word.startsWith("pn") || word.equals("s") || word.equals("u")) {
                     return i;
                 }
                 i = controlEnd(b, i);
