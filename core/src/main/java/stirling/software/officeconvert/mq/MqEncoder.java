@@ -37,6 +37,8 @@ public final class MqEncoder {
 
     private static final byte[] ON_LPS = new byte[94];
 
+    private static final int[] PACKED = new int[94];
+
     static {
         for (int i = 0; i < 47; i++) {
             boolean flip = i == 0 || i == 6 || i == 14;
@@ -45,6 +47,7 @@ public final class MqEncoder {
                 Q[st] = QE[i];
                 ON_MPS[st] = (byte) (NMPS[i] << 1 | mps);
                 ON_LPS[st] = (byte) (NLPS[i] << 1 | (flip ? 1 - mps : mps));
+                PACKED[st] = QE[i] | (ON_MPS[st] & 0xFF) << 16 | (ON_LPS[st] & 0xFF) << 24;
             }
         }
     }
@@ -76,33 +79,41 @@ public final class MqEncoder {
     public void encode(Contexts contexts, int context, int bit) {
         byte[] state = contexts.state;
         int st = state[context];
-        int qe = Q[st];
-        a -= qe;
+        int e = PACKED[st];
+        int qe = e & 0xFFFF;
+        int na = a - qe;
         if (bit == (st & 1)) {
-            if ((a & 0x8000) == 0) {
-                if (a < qe) {
-                    a = qe;
-                } else {
-                    c += qe;
-                }
-                state[context] = ON_MPS[st];
-                renormalise();
+            if ((na & 0x8000) != 0) {
+                a = na;
+                c += qe;
+                return;
+            }
+            if (na < qe) {
+                na = qe;
             } else {
                 c += qe;
             }
+            state[context] = (byte) (e >>> 16);
         } else {
-            if (a < qe) {
+            if (na < qe) {
                 c += qe;
             } else {
-                a = qe;
+                na = qe;
             }
-            state[context] = ON_LPS[st];
-            renormalise();
+            state[context] = (byte) (e >>> 24);
         }
+        a = na;
+        renormalise();
     }
 
     private void renormalise() {
         int n = Integer.numberOfLeadingZeros(a) - 16;
+        if (n < ct) {
+            a <<= n;
+            c <<= n;
+            ct -= n;
+            return;
+        }
         while (n > 0) {
             int k = Math.min(n, ct);
             a <<= k;

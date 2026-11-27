@@ -110,13 +110,27 @@ class JpxEncoderTest {
     }
 
     @Test
-    void anInterruptedThreadStopsEncoding() {
+    void threadsDoNotChangeTheOutput() throws IOException {
+        JpxEncoder.Planes p = photo(700, 450, 3, 8, 21);
+        for (JpxEncoder.Options o : new JpxEncoder.Options[] {JpxEncoder.Options.exact(),
+            JpxEncoder.Options.rate(1).withTileSize(256), JpxEncoder.Options.quality(38).withBlockSize(32)}) {
+            byte[] one = JpxEncoder.encode(p, o.withThreads(1));
+            assertArrayEquals(one, JpxEncoder.encode(p, o.withThreads(4)));
+            assertArrayEquals(one, JpxEncoder.encode(p, o));
+        }
+    }
+
+    @Test
+    void anInterruptedThreadStopsEncodingOnEveryThreadCount() {
         JpxEncoder.Planes p = photo(512, 512, 3, 8, 9);
-        Thread.currentThread().interrupt();
-        try {
-            assertThrows(java.io.InterruptedIOException.class, () -> JpxEncoder.encode(p, JpxEncoder.Options.exact()));
-        } finally {
-            Thread.interrupted();
+        for (int threads : new int[] {1, 4}) {
+            Thread.currentThread().interrupt();
+            try {
+                assertThrows(java.io.InterruptedIOException.class,
+                        () -> JpxEncoder.encode(p, JpxEncoder.Options.exact().withThreads(threads)));
+            } finally {
+                Thread.interrupted();
+            }
         }
     }
 
@@ -126,6 +140,7 @@ class JpxEncoderTest {
         assertThrows(IllegalArgumentException.class, () -> JpxEncoder.Options.exact().withLayers(0));
         assertThrows(IllegalArgumentException.class, () -> JpxEncoder.Options.exact().withBlockSize(128));
         assertThrows(IllegalArgumentException.class, () -> JpxEncoder.Options.rate(-1));
+        assertThrows(IllegalArgumentException.class, () -> JpxEncoder.Options.exact().withThreads(-1));
         assertThrows(IllegalArgumentException.class, () -> new JpxEncoder.Planes(10, 10, new int[][] {new int[50]},
                 new int[] {8}, null, JpxEncoder.Colour.GREY, -1));
         assertThrows(IllegalArgumentException.class, () -> new JpxEncoder.Planes(10, 10, new int[][] {new int[100]},

@@ -14,6 +14,8 @@ final class EncodeJob {
 
     private static final double FINENESS = 0.5;
 
+    private static final double RATE_FINENESS = 2;
+
     private static final double MAX_FINENESS = 4;
 
     private static final double PSNR_HEADROOM = 6;
@@ -54,6 +56,10 @@ final class EncodeJob {
 
     private double[] slopes;
 
+    private double fineness;
+
+    private boolean saturated;
+
     EncodeJob(JpxEncoder.Planes planes, JpxEncoder.Options options) {
         this.planes = planes;
         this.options = options;
@@ -72,6 +78,7 @@ final class EncodeJob {
         blockLog = Integer.numberOfTrailingZeros(options.blockSize());
         order = options.order().ordinal();
         mct = colourTransform();
+        fineness = fineness();
     }
 
     private boolean colourTransform() {
@@ -98,7 +105,13 @@ final class EncodeJob {
 
     byte[] run() throws IOException {
         prepare();
-        return emit(options.psnr(), options.bitsPerPixel());
+        byte[] out = emit(options.psnr(), options.bitsPerPixel());
+        if (saturated && !reversible && fineness > FINENESS) {
+            fineness = FINENESS;
+            prepare();
+            out = emit(options.psnr(), options.bitsPerPixel());
+        }
+        return out;
     }
 
     void prepare() throws IOException {
@@ -108,15 +121,15 @@ final class EncodeJob {
             depths[c] = planes.depth(c);
             weights[c] = mct && c < 3 ? (reversible ? Quantiser.RCT_WEIGHTS[c] : Quantiser.ICT_WEIGHTS[c]) : 1;
         }
-        quant = new Quantiser(reversible, levels, depths, weights, fineness());
+        blocks.clear();
+        quant = new Quantiser(reversible, levels, depths, weights, fineness);
         int tilesWide = Math.ceilDiv(width, tileW);
         int tilesHigh = Math.ceilDiv(height, tileH);
         if ((long) tilesWide * tilesHigh > 65535) {
             throw new IOException("A JPEG 2000 image can have at most 65,535 tiles");
         }
         tiles = new TileCoder[tilesWide * tilesHigh];
-        BlockEncoder coder = new BlockEncoder();
-        int[] scratch = new int[1 << (2 * blockLog)];
+        BlockPool pool = new BlockPool(options.threads(), 1 << (2 * blockLog));
         for (int t = 0; t < tiles.length; t++) {
             int tx = t % tilesWide;
             int ty = t / tilesWide;
@@ -130,11 +143,11 @@ final class EncodeJob {
                 if (reversible) {
                     int[] a = integers(tc, c);
                     Fdwt.reversible(a, tc.x1 - tc.x0, boxes);
-                    tc.codeReversible(c, a, quant, coder, scratch, options.layers() > 1);
+                    tc.codeReversible(c, a, quant, pool, options.layers() > 1);
                 } else {
                     float[] a = floats(tc, c);
                     Fdwt.irreversible(a, tc.x1 - tc.x0, boxes);
-                    tc.codeIrreversible(c, a, quant, coder, scratch);
+                    tc.codeIrreversible(c, a, quant, pool);
                 }
             }
             collect(tc);
@@ -153,7 +166,7 @@ final class EncodeJob {
 
     private double fineness() {
         if (options.psnr() <= 0) {
-            return FINENESS;
+            return RATE_FINENESS;
         }
         double mse = 255.0 * 255.0 / Math.pow(10, (options.psnr() + PSNR_HEADROOM) / 10);
         return Math.clamp(Math.sqrt(mse) * FINENESS, FINENESS, MAX_FINENESS);
@@ -243,7 +256,9 @@ final class EncodeJob {
             pick = Math.max(pick, qualityIndex(slopes, psnr));
         }
         if (bitsPerPixel > 0) {
-            pick = Math.max(pick, rateIndex(slopes, bitsPerPixel));
+            int rate = rateIndex(slopes, bitsPerPixel);
+            saturated = rate < 0 && psnr <= 0;
+            pick = Math.max(pick, rate);
         }
         select(slopes, pick);
     }

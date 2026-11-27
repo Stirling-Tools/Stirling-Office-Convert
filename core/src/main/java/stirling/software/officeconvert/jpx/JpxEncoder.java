@@ -152,7 +152,7 @@ public final class JpxEncoder {
     }
 
     public record Options(boolean lossless, double bitsPerPixel, double psnr, int levels, int layers, int tileSize,
-            int blockSize, Order order, boolean codestream) {
+            int blockSize, Order order, boolean codestream, int threads) {
 
         public Options {
             Objects.requireNonNull(order, "order");
@@ -176,52 +176,64 @@ public final class JpxEncoder {
             if (blockSize < 4 || blockSize > 64 || Integer.bitCount(blockSize) != 1) {
                 throw new IllegalArgumentException("Code-blocks are a power of two from 4 to 64, was " + blockSize);
             }
+            if (threads < 0) {
+                throw new IllegalArgumentException("Threads are zero (automatic) or more, was " + threads);
+            }
         }
 
         public static Options exact() {
-            return new Options(true, 0, 0, 5, 1, 0, 64, Order.LRCP, false);
+            return new Options(true, 0, 0, 5, 1, 0, 64, Order.LRCP, false, 0);
         }
 
         public static Options rate(double bitsPerPixel) {
-            return new Options(false, bitsPerPixel, 0, 5, 1, 0, 64, Order.LRCP, false);
+            return new Options(false, bitsPerPixel, 0, 5, 1, 0, 64, Order.LRCP, false, 0);
         }
 
         public static Options quality(double psnr) {
-            return new Options(false, 0, psnr, 5, 1, 0, 64, Order.LRCP, false);
+            return new Options(false, 0, psnr, 5, 1, 0, 64, Order.LRCP, false, 0);
         }
 
         public Options withRate(double bpp) {
-            return new Options(lossless, bpp, psnr, levels, layers, tileSize, blockSize, order, codestream);
+            return new Options(lossless, bpp, psnr, levels, layers, tileSize, blockSize, order, codestream, threads);
         }
 
         public Options withQuality(double decibels) {
             return new Options(lossless, bitsPerPixel, decibels, levels, layers, tileSize, blockSize, order,
-                    codestream);
+                    codestream, threads);
         }
 
         public Options withLevels(int n) {
-            return new Options(lossless, bitsPerPixel, psnr, n, layers, tileSize, blockSize, order, codestream);
+            return new Options(lossless, bitsPerPixel, psnr, n, layers, tileSize, blockSize, order, codestream,
+                    threads);
         }
 
         public Options withLayers(int n) {
-            return new Options(lossless, bitsPerPixel, psnr, levels, n, tileSize, blockSize, order, codestream);
+            return new Options(lossless, bitsPerPixel, psnr, levels, n, tileSize, blockSize, order, codestream,
+                    threads);
         }
 
         public Options withTileSize(int size) {
-            return new Options(lossless, bitsPerPixel, psnr, levels, layers, size, blockSize, order, codestream);
+            return new Options(lossless, bitsPerPixel, psnr, levels, layers, size, blockSize, order, codestream,
+                    threads);
         }
 
         public Options withBlockSize(int size) {
-            return new Options(lossless, bitsPerPixel, psnr, levels, layers, tileSize, size, order, codestream);
+            return new Options(lossless, bitsPerPixel, psnr, levels, layers, tileSize, size, order, codestream,
+                    threads);
         }
 
         public Options withOrder(Order progression) {
             return new Options(lossless, bitsPerPixel, psnr, levels, layers, tileSize, blockSize, progression,
-                    codestream);
+                    codestream, threads);
         }
 
         public Options withCodestream(boolean bare) {
-            return new Options(lossless, bitsPerPixel, psnr, levels, layers, tileSize, blockSize, order, bare);
+            return new Options(lossless, bitsPerPixel, psnr, levels, layers, tileSize, blockSize, order, bare, threads);
+        }
+
+        public Options withThreads(int n) {
+            return new Options(lossless, bitsPerPixel, psnr, levels, layers, tileSize, blockSize, order, codestream,
+                    n);
         }
     }
 

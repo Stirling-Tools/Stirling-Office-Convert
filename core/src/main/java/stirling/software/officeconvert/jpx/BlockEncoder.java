@@ -59,13 +59,17 @@ final class BlockEncoder {
         this.fraction = fraction;
         int max = 0;
         double initial = 0;
-        for (int i = 0; i < w * h; i++) {
-            int v = values[i];
-            int m = Math.abs(v);
-            data[i] = m;
-            negative[i] = v < 0;
-            max |= m;
-            initial += (double) m * m;
+        for (int y = 0; y < h; y++) {
+            int at = (y & ~3) * w + (y & 3);
+            for (int x = 0; x < w; x++) {
+                int v = values[y * w + x];
+                int m = Math.abs(v);
+                int i = at + 4 * x;
+                data[i] = m;
+                negative[i] = v < 0;
+                max |= m;
+                initial += (double) m * m;
+            }
         }
         int planes = 32 - Integer.numberOfLeadingZeros(max >> fraction);
         if (planes == 0) {
@@ -102,7 +106,7 @@ final class BlockEncoder {
             total += gain;
             gains[pass] = total;
             mq.mark();
-                pass++;
+            pass++;
         }
         byte[] bytes = mq.flush();
         int[] lengths = mq.truncations(bytes, bytes.length);
@@ -114,18 +118,40 @@ final class BlockEncoder {
         return shift == 0 ? 0 : 1 << (shift - 1);
     }
 
+    private boolean noNeighbours(int fi, int rows) {
+        int any = 0;
+        for (int k = 0; k < rows; k++) {
+            int f = flags[fi + k * fw];
+            any |= (f & SIG) != 0 ? 0 : f & NEIGHBOURS;
+        }
+        return any == 0;
+    }
+
+    private boolean noneSignificant(int fi, int rows) {
+        int any = 0;
+        for (int k = 0; k < rows; k++) {
+            any |= flags[fi + k * fw];
+        }
+        return (any & SIG) == 0;
+    }
+
     private void significance(int shift) {
         double half = half(shift);
         for (int y0 = 0; y0 < h; y0 += 4) {
             int yEnd = Math.min(y0 + 4, h);
+            int base = y0 * w;
             for (int x = 0; x < w; x++) {
+                int top = (y0 + 1) * fw + x + 1;
+                if (noNeighbours(top, yEnd - y0)) {
+                    continue;
+                }
                 for (int y = y0; y < yEnd; y++) {
                     int fi = (y + 1) * fw + x + 1;
                     int f = flags[fi];
                     if ((f & SIG) != 0 || (f & NEIGHBOURS) == 0) {
                         continue;
                     }
-                    int i = y * w + x;
+                    int i = base + 4 * x + y - y0;
                     int m = data[i];
                     int bit = m >> shift & 1;
                     mq.encode(cx, Contexts.zero(orient, f), bit);
@@ -149,14 +175,18 @@ final class BlockEncoder {
         double up = 1 << shift;
         for (int y0 = 0; y0 < h; y0 += 4) {
             int yEnd = Math.min(y0 + 4, h);
+            int base = y0 * w;
             for (int x = 0; x < w; x++) {
+                if (noneSignificant((y0 + 1) * fw + x + 1, yEnd - y0)) {
+                    continue;
+                }
                 for (int y = y0; y < yEnd; y++) {
                     int fi = (y + 1) * fw + x + 1;
                     int f = flags[fi];
                     if ((f & (SIG | VISIT)) != SIG) {
                         continue;
                     }
-                    int m = data[y * w + x];
+                    int m = data[base + 4 * x + y - y0];
                     int bit = m >> shift & 1;
                     int ctx = (f & REFINED) != 0 ? 16 : (f & NEIGHBOURS) != 0 ? 15 : 14;
                     mq.encode(cx, ctx, bit);
@@ -175,12 +205,14 @@ final class BlockEncoder {
         double half = half(shift);
         for (int y0 = 0; y0 < h; y0 += 4) {
             int yEnd = Math.min(y0 + 4, h);
+            int base = y0 * w;
             for (int x = 0; x < w; x++) {
                 int start = y0;
+                int col = base + 4 * x;
                 if (yEnd - y0 == 4 && runnable(x, y0)) {
                     int r = -1;
                     for (int k = 0; k < 4; k++) {
-                        if ((data[(y0 + k) * w + x] >> shift & 1) != 0) {
+                        if ((data[col + k] >> shift & 1) != 0) {
                             r = k;
                             break;
                         }
@@ -194,7 +226,7 @@ final class BlockEncoder {
                     mq.encode(cx, Mq.UNIFORM, r & 1);
                     int y = y0 + r;
                     int fi = (y + 1) * fw + x + 1;
-                    int i = y * w + x;
+                    int i = col + r;
                     int m = data[i];
                     sign(flags[fi], negative[i]);
                     becomeSignificant(fi, negative[i]);
@@ -211,7 +243,7 @@ final class BlockEncoder {
                         flags[fi] = f & ~VISIT;
                         continue;
                     }
-                    int i = y * w + x;
+                    int i = col + y - y0;
                     int m = data[i];
                     int bit = m >> shift & 1;
                     mq.encode(cx, Contexts.zero(orient, f), bit);

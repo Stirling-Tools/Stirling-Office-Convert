@@ -320,9 +320,11 @@ wavelet, irreversible colour transform), with the code-block passes chosen by ra
 size or reach the PSNR. Options set the decomposition levels (0 to 12), quality layers (1 to 64), tile size (0 picks
 one: the whole image up to 16 million pixels, else 1,024), code-block size and progression order (LRCP, RLCP, RPCL,
 PCRL, CPRL). `encodeAsClose` encodes a picture at least as close to it, in PSNR and SSIM, as a reference such as a
-decoded JPEG, or returns null when that takes the given number of bytes or more. Encoding runs on the calling
-thread, holds the samples, the coded data and one tile component of coefficients at a time, and stops on
-interruption.
+decoded JPEG, or returns null when that takes the given number of bytes or more. Code-blocks are coded on the
+calling thread and, when there is more than one processor, on the fork-join pool the caller runs in (the common pool
+otherwise), at most one thread per processor; `withThreads(1)` keeps it to the calling thread, and the output is the
+same either way. Encoding holds the samples, the coded data and one tile component of coefficients at a time, and
+stops when the calling thread is interrupted.
 
 The library depends on `org.apache.pdfbox:pdfbox:3.0.8` and `commons-logging`, with `org.apache.pdfbox:jbig2-imageio`
 at runtime for JBIG2 pictures, and runs on Java 25 or later.

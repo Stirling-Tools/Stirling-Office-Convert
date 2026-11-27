@@ -1,6 +1,8 @@
 package stirling.software.officeconvert.jpx;
 
 import java.io.InterruptedIOException;
+import java.util.ArrayList;
+import java.util.List;
 
 final class TileCoder {
 
@@ -178,11 +180,12 @@ final class TileCoder {
         return boxes;
     }
 
-    void codeReversible(int c, int[] coefficients, Quantiser q, BlockEncoder coder, int[] scratch, boolean measure)
+    void codeReversible(int c, int[] coefficients, Quantiser q, BlockPool pool, boolean measure)
             throws InterruptedIOException {
         Component comp = components[c];
         int stride = comp.x1 - comp.x0;
         Resolution[] res = comp.resolutions;
+        List<BlockPool.Job> jobs = new ArrayList<>();
         for (int r = 0; r < res.length; r++) {
             Resolution resolution = res[r];
             for (Blocks[] precinct : resolution.precincts) {
@@ -193,28 +196,31 @@ final class TileCoder {
                     int oy = r > 0 && (orient & 2) != 0 ? res[r - 1].y1 - res[r - 1].y0 : 0;
                     double weight = q.weight(c, r, orient);
                     for (int k = 0; k < blocks.coded.length; k++) {
-                        interrupted();
-                        int w = blocks.x1[k] - blocks.x0[k];
-                        int h = blocks.y1[k] - blocks.y0[k];
-                        int at = (oy + blocks.y0[k] - band[1]) * stride + ox + blocks.x0[k] - band[0];
-                        for (int y = 0; y < h; y++) {
-                            System.arraycopy(coefficients, at + y * stride, scratch, y * w, w);
-                        }
-                        EncodedBlock e = coder.encode(scratch, w, h, orient, 0, measure);
-                        e.weigh(weight);
-                        q.planes(c, r, orient, e.planes);
-                        blocks.coded[k] = e;
+                        int b = k;
+                        jobs.add((coder, scratch) -> {
+                            int w = blocks.x1[b] - blocks.x0[b];
+                            int h = blocks.y1[b] - blocks.y0[b];
+                            int at = (oy + blocks.y0[b] - band[1]) * stride + ox + blocks.x0[b] - band[0];
+                            for (int y = 0; y < h; y++) {
+                                System.arraycopy(coefficients, at + y * stride, scratch, y * w, w);
+                            }
+                            EncodedBlock e = coder.encode(scratch, w, h, orient, 0, measure);
+                            e.weigh(weight);
+                            blocks.coded[b] = e;
+                        });
                     }
                 }
             }
         }
+        pool.run(jobs);
+        settle(c, q);
     }
 
-    void codeIrreversible(int c, float[] coefficients, Quantiser q, BlockEncoder coder, int[] scratch)
-            throws InterruptedIOException {
+    void codeIrreversible(int c, float[] coefficients, Quantiser q, BlockPool pool) throws InterruptedIOException {
         Component comp = components[c];
         int stride = comp.x1 - comp.x0;
         Resolution[] res = comp.resolutions;
+        List<BlockPool.Job> jobs = new ArrayList<>();
         for (int r = 0; r < res.length; r++) {
             Resolution resolution = res[r];
             for (Blocks[] precinct : resolution.precincts) {
@@ -226,43 +232,54 @@ final class TileCoder {
                     double weight = q.weight(c, r, orient);
                     double step = q.step(c, r, orient);
                     for (int k = 0; k < blocks.coded.length; k++) {
-                        interrupted();
-                        int w = blocks.x1[k] - blocks.x0[k];
-                        int h = blocks.y1[k] - blocks.y0[k];
-                        int at = (oy + blocks.y0[k] - band[1]) * stride + ox + blocks.x0[k] - band[0];
-                        float max = 0;
-                        for (int y = 0; y < h; y++) {
-                            int s = at + y * stride;
-                            for (int x = 0; x < w; x++) {
-                                max = Math.max(max, Math.abs(coefficients[s + x]));
+                        int b = k;
+                        jobs.add((coder, scratch) -> {
+                            int w = blocks.x1[b] - blocks.x0[b];
+                            int h = blocks.y1[b] - blocks.y0[b];
+                            int at = (oy + blocks.y0[b] - band[1]) * stride + ox + blocks.x0[b] - band[0];
+                            float max = 0;
+                            for (int y = 0; y < h; y++) {
+                                int s = at + y * stride;
+                                for (int x = 0; x < w; x++) {
+                                    max = Math.max(max, Math.abs(coefficients[s + x]));
+                                }
                             }
-                        }
-                        double top = max / step;
-                        int bits = top < 1 ? 0 : Math.getExponent(top) + 1;
-                        int fraction = Math.clamp(30 - bits, 1, 8);
-                        double scale = Math.scalb(1.0, fraction) / step;
-                        for (int y = 0; y < h; y++) {
-                            int s = at + y * stride;
-                            int d = y * w;
-                            for (int x = 0; x < w; x++) {
-                                float v = coefficients[s + x];
-                                int m = (int) Math.min(Integer.MAX_VALUE >> 1, Math.abs(v) * scale);
-                                scratch[d + x] = v < 0 ? -m : m;
+                            double top = max / step;
+                            int bits = top < 1 ? 0 : Math.getExponent(top) + 1;
+                            int fraction = Math.clamp(30 - bits, 1, 8);
+                            double scale = Math.scalb(1.0, fraction) / step;
+                            for (int y = 0; y < h; y++) {
+                                int s = at + y * stride;
+                                int d = y * w;
+                                for (int x = 0; x < w; x++) {
+                                    float v = coefficients[s + x];
+                                    int m = (int) Math.min(Integer.MAX_VALUE >> 1, Math.abs(v) * scale);
+                                    scratch[d + x] = v < 0 ? -m : m;
+                                }
                             }
-                        }
-                        EncodedBlock e = coder.encode(scratch, w, h, orient, fraction, true);
-                        e.weigh(weight * Math.scalb(1.0, -2 * fraction));
-                        q.planes(c, r, orient, e.planes);
-                        blocks.coded[k] = e;
+                            EncodedBlock e = coder.encode(scratch, w, h, orient, fraction, true);
+                            e.weigh(weight * Math.scalb(1.0, -2 * fraction));
+                            blocks.coded[b] = e;
+                        });
                     }
                 }
             }
         }
+        pool.run(jobs);
+        settle(c, q);
     }
 
-    private static void interrupted() throws InterruptedIOException {
-        if (Thread.currentThread().isInterrupted()) {
-            throw new InterruptedIOException("JPEG 2000 encoding interrupted");
+    private void settle(int c, Quantiser q) {
+        Resolution[] res = components[c].resolutions;
+        for (int r = 0; r < res.length; r++) {
+            for (Blocks[] precinct : res[r].precincts) {
+                for (Blocks blocks : precinct) {
+                    int orient = res[r].orients[blocks.band];
+                    for (EncodedBlock e : blocks.coded) {
+                        q.planes(c, r, orient, e.planes);
+                    }
+                }
+            }
         }
     }
 }
