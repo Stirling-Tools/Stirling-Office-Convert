@@ -79,19 +79,20 @@ final class Composer {
         };
     }
 
-    static COSStream draw(Source src, PsdDocument doc, Layers layers, PDDocument pdf, List<String> warnings)
-            throws IOException {
+    static COSStream draw(Source src, PsdDocument doc, Layers layers, PDDocument pdf, List<String> warnings,
+            boolean[] omitted) throws IOException {
         Composer c = new Composer(src, doc);
         c.patternBlocks = layers.patterns;
         Node root = c.build(layers.root, 0);
         try {
-            return c.render(root, pdf, warnings);
+            return c.render(root, pdf, warnings, omitted);
         } finally {
             c.close(root);
         }
     }
 
-    private COSStream render(Node root, PDDocument pdf, List<String> warnings) throws IOException {
+    private COSStream render(Node root, PDDocument pdf, List<String> warnings, boolean[] omitted)
+            throws IOException {
         Composer c = this;
         c.top = root;
         c.cacheRows(root, false);
@@ -138,6 +139,7 @@ final class Composer {
             if (c.damaged) {
                 warnings.add("Part of the PSD document's layer data is damaged or missing and was left blank");
             }
+            omitted[0] = !c.effects.isEmpty() || !c.skipped.isEmpty() || c.damaged;
             warnings.add("The PSD document holds no merged picture, so its layers were composited; it may"
                     + " differ from how the authoring app shows it");
             return image;
@@ -270,12 +272,10 @@ final class Composer {
             if (scratch.length < lb) {
                 scratch = new byte[lb];
             }
-            while (next < (long) row - top) {
-                if ((next & 255) == 0) {
-                    PsdPage.checkpoint();
-                }
-                rows.next(scratch);
-                next++;
+            long skip = (long) row - top - next;
+            if (skip > 0) {
+                rows.skip(skip, scratch);
+                next = (int) (next + skip);
             }
             rows.next(scratch);
             next++;
@@ -1182,6 +1182,14 @@ final class Composer {
     private void effects(Node node, long[] budget) throws IOException {
         if (node != top && node.layer.hidden) {
             return;
+        }
+        for (Node c : node.clipped) {
+            if (!c.layer.hidden && c.layer.stroke != null) {
+                effects.add("stroke");
+            }
+            if (!c.layer.hidden && c.layer.shadow != null) {
+                effects.add("drop shadow");
+            }
         }
         if (node instanceof Group g) {
             for (Node c : g.children) {

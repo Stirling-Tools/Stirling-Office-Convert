@@ -19,6 +19,10 @@ final class Layers {
 
     private long kept;
 
+    private boolean light;
+
+    private long lightBytes;
+
     private boolean overKept;
 
     static final int SIG_8BIM = 0x3842494D;
@@ -124,6 +128,10 @@ final class Layers {
         root.blend = Blend.PASS_THROUGH;
     }
 
+    boolean damaged() {
+        return damaged;
+    }
+
     boolean drawable() {
         return count > 0 && !root.children.isEmpty();
     }
@@ -144,7 +152,16 @@ final class Layers {
     }
 
     static Layers read(Source src, PsdDocument doc) throws IOException {
+        return read(src, doc, false);
+    }
+
+    static Layers estimate(Source src, PsdDocument doc) throws IOException {
+        return read(src, doc, true);
+    }
+
+    private static Layers read(Source src, PsdDocument doc, boolean light) throws IOException {
         Layers layers = new Layers();
+        layers.light = light;
         if (doc.layerEnd <= doc.layerStart) {
             return layers;
         }
@@ -236,6 +253,7 @@ final class Layers {
             l.channels.clear();
             l.channels.addAll(placed);
         }
+        blobs += lightBytes;
         if (data > end + 64) {
             damaged = true;
         }
@@ -450,13 +468,11 @@ final class Layers {
         } else if (key == tag("knko") && len >= 1) {
             l.knockout = c.u8();
         } else if (key == tag("vstk") && len > 4 && len <= Adjustments.MAX_BYTES && keep(len)) {
-            byte[] d = new byte[(int) len];
-            c.fully(d);
-            l.vectorStroke = Descriptor.read(d, 4);
+            byte[] d = payload(c, len);
+            l.vectorStroke = light ? null : Descriptor.read(d, 4);
         } else if ((key == tag("vmsk") || key == tag("vsms")) && len >= 8 && len <= VectorMask.MAX_BYTES && keep(len)) {
             l.vectorMask = true;
-            l.vector = new byte[(int) len];
-            c.fully(l.vector);
+            l.vector = payload(c, len);
         } else if (key == tag("lfx2") || key == tag("lmfx") || key == tag("lfxs")) {
             l.modernEffects = true;
             Effects.Found found = Effects.scan(c, len, l.effects);
@@ -476,39 +492,44 @@ final class Layers {
                 l.solid = Effects.solidColor(c, rest);
             } else if (type == tag("GdFl") && l.gradient == null && rest <= Adjustments.MAX_BYTES && keep(rest)) {
                 l.fill = true;
-                l.gradient = new byte[(int) rest];
-                c.fully(l.gradient);
+                l.gradient = payload(c, rest);
             } else if (type == tag("PtFl") && l.pattern == null && rest <= Adjustments.MAX_BYTES && keep(rest)) {
                 l.fill = true;
-                l.pattern = new byte[(int) rest];
-                c.fully(l.pattern);
+                l.pattern = payload(c, rest);
             }
         } else if (key == tag("SoCo")) {
             l.fill = true;
             l.solid = Effects.solidColor(c, len);
         } else if (key == tag("GdFl") && len <= Adjustments.MAX_BYTES && keep(len)) {
             l.fill = true;
-            l.gradient = new byte[(int) len];
-            c.fully(l.gradient);
+            l.gradient = payload(c, len);
         } else if (key == tag("PtFl") && len <= Adjustments.MAX_BYTES && keep(len)) {
             l.fill = true;
-            l.pattern = new byte[(int) len];
-            c.fully(l.pattern);
+            l.pattern = payload(c, len);
         } else if (key == tag("GdFl") || key == tag("PtFl")) {
             l.fill = true;
         } else if (key == tag("vowv")) {
             l.strokeApart = true;
         } else if (key == tag("CgEd") && len <= Adjustments.MAX_BYTES && keep(len)) {
-            l.generator = new byte[(int) len];
-            c.fully(l.generator);
+            l.generator = payload(c, len);
         } else if (ADJUSTMENTS.contains(key)) {
             l.adjustment = new String(new byte[] {(byte) (key >> 24), (byte) (key >> 16), (byte) (key >> 8),
                 (byte) key}, StandardCharsets.ISO_8859_1);
             if (len <= Adjustments.MAX_BYTES && keep(len)) {
-                l.adjustData = new byte[(int) len];
-                c.fully(l.adjustData);
+                l.adjustData = payload(c, len);
             }
         }
+    }
+
+    private byte[] payload(Source.Cursor c, long len) throws IOException {
+        if (light) {
+            c.skip(len);
+            lightBytes += len;
+            return new byte[0];
+        }
+        byte[] d = new byte[(int) len];
+        c.fully(d);
+        return d;
     }
 
     private boolean keep(long len) {

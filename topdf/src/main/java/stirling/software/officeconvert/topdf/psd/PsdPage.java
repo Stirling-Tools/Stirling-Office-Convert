@@ -43,7 +43,7 @@ public final class PsdPage {
     public static long estimate(Path file) throws IOException {
         try (Source src = new Source(file)) {
             PsdDocument doc = PsdDocument.read(src);
-            Layers layers = Layers.read(src, doc);
+            Layers layers = Layers.estimate(src, doc);
             return Admission.BASE_BYTES + layers.footprint(doc);
         }
     }
@@ -65,10 +65,12 @@ public final class PsdPage {
                         + " composite its " + layers.count + " layers (" + doc.width + " x " + doc.height
                         + " pixels); save it with Maximize Compatibility on");
             }
-            COSStream image = compose ? Composer.draw(src, doc, layers, pdf, warnings)
-                    : merged(src, doc, layers, pdf, warnings);
+            boolean[] omitted = {false};
+            COSStream image = compose ? Composer.draw(src, doc, layers, pdf, warnings, omitted)
+                    : merged(src, doc, layers, pdf, warnings, omitted);
+            lost = omitted[0] || compose && layers.damaged();
             if (!doc.realMerged && !compose) {
-                lost = layers.count > 0;
+                lost |= layers.count > 0;
                 warnings.add("The PSD document was saved without a merged picture and has no layers that can be"
                         + " drawn; the page may be blank. Save it with Maximize Compatibility on");
             }
@@ -86,8 +88,8 @@ public final class PsdPage {
         return layers.mergedAlpha ? first : -1;
     }
 
-    private static COSStream merged(Source src, PsdDocument doc, Layers layers, PDDocument pdf, List<String> warnings)
-            throws IOException {
+    private static COSStream merged(Source src, PsdDocument doc, Layers layers, PDDocument pdf, List<String> warnings,
+            boolean[] omitted) throws IOException {
         int alpha = alphaChannel(doc, layers);
         Plan plan = Plan.of(doc, alpha);
         warnings.addAll(plan.warnings);
@@ -160,6 +162,7 @@ public final class PsdPage {
                 damaged |= r.damaged;
             }
             if (damaged) {
+                omitted[0] = true;
                 warnings.add("Part of the PSD document's picture data is damaged or missing and was left blank");
             }
             return image;

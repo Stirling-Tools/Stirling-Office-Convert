@@ -28,8 +28,11 @@ abstract class Rows {
 
     void close() {}
 
-    void skip(int rows, byte[] scratch) throws IOException {
-        for (int i = 0; i < rows; i++) {
+    void skip(long rows, byte[] scratch) throws IOException {
+        for (long i = 0; i < rows; i++) {
+            if ((i & 255) == 0) {
+                PsdPage.checkpoint();
+            }
             next(scratch);
         }
     }
@@ -43,6 +46,16 @@ abstract class Rows {
                     Arrays.fill(row, n, rowBytes, (byte) 0);
                     damaged = true;
                 }
+            }
+
+            @Override
+            void skip(long rows, byte[] scratch) throws IOException {
+                long want = rows * rowBytes;
+                if (want > data.remaining()) {
+                    want = data.remaining();
+                    damaged = true;
+                }
+                data.skip(want);
             }
         };
     }
@@ -102,6 +115,22 @@ abstract class Rows {
                     data.seek(Math.min(data.end(), start + count));
                 }
             }
+
+            @Override
+            void skip(long rows, byte[] scratch) throws IOException {
+                long sum = 0;
+                for (long i = 0; i < rows; i++) {
+                    if ((i & 0xFFFF) == 0) {
+                        PsdPage.checkpoint();
+                    }
+                    if (counts.remaining() < (big ? 4 : 2)) {
+                        damaged = true;
+                        break;
+                    }
+                    sum += big ? counts.u32() : counts.u16();
+                }
+                data.seek(Math.min(data.end(), data.position() + sum));
+            }
         };
     }
 
@@ -144,6 +173,25 @@ abstract class Rows {
                 }
                 if (predicted) {
                     undoPrediction(row, planes, rowBytes, depth, width);
+                }
+            }
+
+            @Override
+            void skip(long rows, byte[] scratch) throws IOException {
+                for (long i = 0; i < rows; i++) {
+                    if ((i & 255) == 0) {
+                        PsdPage.checkpoint();
+                    }
+                    int n;
+                    try {
+                        n = in.readNBytes(scratch, 0, rowBytes);
+                    } catch (IOException e) {
+                        n = 0;
+                    }
+                    if (n < rowBytes) {
+                        damaged = true;
+                        return;
+                    }
                 }
             }
         };
