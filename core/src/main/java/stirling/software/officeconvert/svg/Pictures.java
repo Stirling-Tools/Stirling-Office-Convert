@@ -66,7 +66,7 @@ final class Pictures {
                 bytes = in.readNBytes(MAX_JPEG_BYTES + 1);
             }
             if (bytes.length > MAX_JPEG_BYTES || bytes.length < 4 || (bytes[0] & 0xFF) != 0xFF || (bytes[1] & 0xFF) != 0xD8
-                    || adobeTransform(bytes)) {
+                    || fourComponent(bytes)) {
                 return null;
             }
             return new Encoded("image/jpeg", bytes);
@@ -85,7 +85,7 @@ final class Pictures {
         return true;
     }
 
-    private static boolean adobeTransform(byte[] b) {
+    private static boolean fourComponent(byte[] b) {
         int i = 2;
         while (i + 4 < b.length && (b[i] & 0xFF) == 0xFF) {
             int marker = b[i + 1] & 0xFF;
