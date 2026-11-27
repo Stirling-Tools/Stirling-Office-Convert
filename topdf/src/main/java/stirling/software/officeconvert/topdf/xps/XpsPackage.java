@@ -10,6 +10,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -226,7 +227,7 @@ final class XpsPackage implements Closeable {
         if ("FixedDocumentSequence".equals(root.getLocalName())) {
             for (Element ref : XpsXml.children(root, "DocumentReference")) {
                 String target = source(startPart, XpsXml.attr(ref, "Source"));
-                if (target != null && docs.size() < MAX_DOCUMENTS) {
+                if (target != null && docs.size() < MAX_DOCUMENTS && !docs.contains(target)) {
                     docs.add(target);
                 }
             }
@@ -237,6 +238,7 @@ final class XpsPackage implements Closeable {
                     + ", not a fixed document sequence");
         }
         int lost = 0;
+        Set<String> usedPages = new HashSet<>();
         for (String doc : docs) {
             OfficeZip.checkNotInterrupted();
             Element fixed;
@@ -259,6 +261,9 @@ final class XpsPackage implements Closeable {
                 String page = source(doc, XpsXml.attr(content, "Source"));
                 if (page == null || !exists(page)) {
                     lost++;
+                    continue;
+                }
+                if (!usedPages.add(OfficeZip.canonical(page).toLowerCase(Locale.ROOT))) {
                     continue;
                 }
                 Set<String> targets = new LinkedHashSet<>();

@@ -457,7 +457,8 @@ final class XpsRenderer {
     }
 
     private AffineTransform transform(Element e, String name, Scope scope) {
-        String v = XpsXml.attr(e, name);
+        Element own = property(e, name);
+        String v = own == null ? XpsXml.attr(e, name) : null;
         Element t = null;
         if (v != null) {
             String key = XpsXml.staticResource(v);
@@ -466,7 +467,7 @@ final class XpsRenderer {
             }
             t = scope == null ? null : scope.find(key);
         } else {
-            t = property(e, name);
+            t = own;
         }
         if (t == null || !"MatrixTransform".equals(t.getLocalName())) {
             return null;
@@ -482,7 +483,8 @@ final class XpsRenderer {
     };
 
     private XpsGeometry geometry(Element e, String name, Scope scope) throws IOException {
-        String v = XpsXml.attr(e, name);
+        Element own = property(e, name);
+        String v = own == null ? XpsXml.attr(e, name) : null;
         Element g;
         if (v != null) {
             String key = XpsXml.staticResource(v);
@@ -500,7 +502,7 @@ final class XpsRenderer {
             }
             g = scope == null ? null : scope.find(key);
         } else {
-            g = property(e, name);
+            g = own;
         }
         if (g == null || !"PathGeometry".equals(g.getLocalName())) {
             return null;
@@ -521,7 +523,8 @@ final class XpsRenderer {
     record Brush(String kind, XpsColor color, Element element, double opacity, Scope scope) {}
 
     private Brush brush(Element e, String name, Scope scope) {
-        String v = XpsXml.attr(e, name);
+        Element own = property(e, name);
+        String v = own == null ? XpsXml.attr(e, name) : null;
         Element b;
         if (v != null) {
             String key = XpsXml.staticResource(v);
@@ -531,7 +534,7 @@ final class XpsRenderer {
             }
             b = scope == null ? null : scope.find(key);
         } else {
-            b = property(e, name);
+            b = own;
         }
         if (b == null) {
             return null;
@@ -1731,25 +1734,32 @@ final class XpsRenderer {
             unicode = unicode.substring(2);
         }
         String indices = XpsXml.attr(e, "Indices");
-        boolean rtl = (int) XpsXml.number(XpsXml.attr(e, "BidiLevel"), 0) % 2 == 1;
         boolean sideways = "true".equalsIgnoreCase(e.getAttribute("IsSideways").strip());
+        boolean rtl = !sideways && (int) XpsXml.number(XpsXml.attr(e, "BidiLevel"), 0) % 2 == 1;
         double ox = XpsXml.number(XpsXml.attr(e, "OriginX"), 0);
         double oy = XpsXml.number(XpsXml.attr(e, "OriginY"), 0);
-        List<Placed> placed = layout(font, unicode, indices, em, ox, oy, rtl, sideways);
+        String sim = e.getAttribute("StyleSimulations").strip();
+        boolean bold = sim.equals("BoldSimulation") || sim.equals("BoldItalicSimulation");
+        List<Placed> placed = layout(font, unicode, indices, em, ox, oy, rtl, sideways, bold);
         if (placed.isEmpty()) {
             return;
         }
-        String sim = e.getAttribute("StyleSimulations").strip();
-        boolean bold = sim.equals("BoldSimulation") || sim.equals("BoldItalicSimulation");
         boolean italic = sim.equals("ItalicSimulation") || sim.equals("BoldItalicSimulation");
-        boolean consistent = !rtl && !sideways;
+        boolean consistent = !rtl && !sideways && !font.substitute;
+        double baseline = placed.get(0).y();
         for (Placed p : placed) {
-            consistent &= font.map(p.gid(), p.text());
+            consistent &= font.map(p.gid(), p.text()) && Math.abs(p.y() - baseline) < 1e-6;
         }
         XpsOps ops = ctx.ops;
+        AffineTransform runTransform = transform(e, "RenderTransform", scope);
+        AffineTransform full = new AffineTransform(ops.ctm);
+        if (runTransform != null) {
+            full.concatenate(runTransform);
+        }
+        consistent &= Math.abs(full.getShearX()) < 1e-9 && Math.abs(full.getShearY()) < 1e-9;
         ops.q();
         try {
-            ops.cm(transform(e, "RenderTransform", scope));
+            ops.cm(runTransform);
             if (!clip(e, scope, ctx)) {
                 return;
             }
@@ -1891,7 +1901,7 @@ final class XpsRenderer {
     }
 
     private List<Placed> layout(XpsFonts.Font font, String unicode, String indices, double em, double ox, double oy,
-            boolean rtl, boolean sideways) {
+            boolean rtl, boolean sideways, boolean bold) {
         List<Placed> out = new ArrayList<>();
         int[] cps = unicode.codePoints().limit(MAX_GLYPHS_PER_RUN).toArray();
         int[] unitStart = new int[cps.length + 1];
@@ -1969,7 +1979,7 @@ final class XpsRenderer {
             if (gid < 0 || gid >= font.glyphs || font.substitute) {
                 gid = firstCp >= 0 ? font.glyph(firstCp) : 0;
             }
-            double natural = sideways ? font.verticalAdvance(gid) : font.advance(gid);
+            double natural = (sideways ? font.verticalAdvance(gid) : font.advance(gid)) + (bold ? BOLD_STROKE : 0);
             double adv = fields.length > 1 && !fields[1].isBlank() ? XpsXml.number(fields[1], natural * 100) / 100
                     : natural;
             double u = fields.length > 2 && !fields[2].isBlank() ? XpsXml.number(fields[2], 0) / 100 : 0;
@@ -1978,7 +1988,7 @@ final class XpsRenderer {
             double y;
             if (sideways) {
                 double drawPen = rtl ? pen - adv * em : pen;
-                x = drawPen + (rtl ? -u : u) * em + font.ascent * em;
+                x = drawPen + (rtl ? -u : u) * em + font.sideAscent * em;
                 y = oy - v * em + font.advance(gid) * em / 2;
             } else if (rtl) {
                 pen -= adv * em;

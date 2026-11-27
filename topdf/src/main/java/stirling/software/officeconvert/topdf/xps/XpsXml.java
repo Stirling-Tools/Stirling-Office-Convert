@@ -264,7 +264,8 @@ final class XpsXml {
         if (v.length < 6) {
             return null;
         }
-        return new AffineTransform(v[0], v[1], v[2], v[3], v[4], v[5]);
+        return new AffineTransform((float) v[0], (float) v[1], (float) v[2], (float) v[3], (float) v[4],
+                (float) v[5]);
     }
 
     static String staticResource(String value) {

@@ -99,18 +99,26 @@ final class XpsOps {
         if (t == null || t.isIdentity()) {
             return;
         }
-        num(t.getScaleX()).num(t.getShearY()).num(t.getShearX()).num(t.getScaleY()).num(t.getTranslateX())
-                .num(t.getTranslateY()).op("cm\n");
+        precise(t.getScaleX()).precise(t.getShearY()).precise(t.getShearX()).precise(t.getScaleY())
+                .precise(t.getTranslateX()).precise(t.getTranslateY()).op("cm\n");
         ctm.concatenate(t);
     }
 
     XpsOps num(double v) throws IOException {
+        return num(v, 10_000, 4);
+    }
+
+    XpsOps precise(double v) throws IOException {
+        return num(v, 10_000_000, 7);
+    }
+
+    private XpsOps num(double v, int unit, int places) throws IOException {
         if (!Double.isFinite(v)) {
             v = 0;
         }
         v = Math.max(-1e9, Math.min(1e9, v));
-        long scaled = Math.round(v * 10_000);
-        if (len + 24 > buf.length) {
+        long scaled = Math.round(v * unit);
+        if (len + 32 > buf.length) {
             flush();
         }
         byte[] b = buf;
@@ -119,12 +127,12 @@ final class XpsOps {
             b[at++] = '-';
             scaled = -scaled;
         }
-        long whole = scaled / 10_000;
-        int frac = (int) (scaled % 10_000);
+        long whole = scaled / unit;
+        int frac = (int) (scaled % unit);
         at = digits(b, at, whole);
         if (frac != 0) {
             b[at++] = '.';
-            for (int div = 1000; div > 0 && frac != 0; div /= 10) {
+            for (int div = unit / 10; div > 0 && frac != 0; div /= 10) {
                 b[at++] = (byte) ('0' + frac / div);
                 frac %= div;
             }

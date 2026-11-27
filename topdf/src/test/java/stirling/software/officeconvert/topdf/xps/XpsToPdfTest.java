@@ -372,6 +372,20 @@ class XpsToPdfTest {
     }
 
     @Test
+    void rectangleSubpathsKeepTheirWinding() throws IOException {
+        Path in = write("winding.xps", xps(List.of(page(
+                "<Path Fill='#FF000000' Data='F1 M 0,0 L 200,0 200,200 0,200 Z M 50,50 V 150 H 150 V 50 Z'/>"
+                + "<Path Fill='#FF000000' Data='F1 M 300,0 L 500,0 500,200 300,200 Z M 350,50 H 450 V 150 H 350 Z'/>"))));
+        Path out = dir.resolve("winding.pdf");
+        convert(in, out);
+        try (PDDocument pdf = Loader.loadPDF(out.toFile())) {
+            assertTrue(pixel(pdf, 0, 100, 100).getRed() > 200);
+            assertTrue(pixel(pdf, 0, 20, 100).getRed() < 60);
+            assertTrue(pixel(pdf, 0, 400, 100).getRed() < 60);
+        }
+    }
+
+    @Test
     void opacityAndClipsApply() throws IOException {
         Path in = write("opacity.xps", xps(List.of(page(
                 "<Canvas Opacity='0.5'><Path Data='M 0,0 L 100,0 100,100 0,100 Z' Fill='#FF000000'/></Canvas>"

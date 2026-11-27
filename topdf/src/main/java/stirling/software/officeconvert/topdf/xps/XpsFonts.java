@@ -79,7 +79,7 @@ final class XpsFonts {
         }
         fallbackTried = true;
         try {
-            FontFace face = library.find("Arial", false, false);
+            FontFace face = library.find("Times New Roman", false, false);
             EmbeddableFont font = EmbeddableFont.open(face);
             opened.add(font);
             if (!font.trueTypeOutlines()) {
@@ -133,6 +133,10 @@ final class XpsFonts {
 
         final float descent;
 
+        final float sideAscent;
+
+        final float sideDescent;
+
         private final int[] advances;
 
         private final int[] vertical;
@@ -163,6 +167,14 @@ final class XpsFonts {
             }
             this.ascent = a / unitsPerEm;
             this.descent = d / unitsPerEm;
+            float sa = hhea == null ? a : hhea.getAscender();
+            float sd = hhea == null ? d : hhea.getDescender();
+            if (os2 != null && os2.getTypoAscender() - os2.getTypoDescender() > 0) {
+                sa = os2.getTypoAscender();
+                sd = os2.getTypoDescender();
+            }
+            this.sideAscent = sa / unitsPerEm;
+            this.sideDescent = sd / unitsPerEm;
             this.advances = new int[glyphs];
             var hmtx = ttf.getHorizontalMetrics();
             for (int g = 0; g < glyphs; g++) {
@@ -206,7 +218,7 @@ final class XpsFonts {
             if (vertical != null && gid >= 0 && gid < glyphs && vertical[gid] > 0) {
                 return vertical[gid] / unitsPerEm;
             }
-            return ascent - descent;
+            return sideAscent - Math.min(0, sideDescent);
         }
 
         int glyph(int codePoint) {
