@@ -177,6 +177,24 @@ public final class FontLibrary {
         return new FontLibrary(all, substitutions, widthScales);
     }
 
+    public static FontFace documentFont(byte[] data) {
+        Objects.requireNonNull(data, "data");
+        if (data.length > MAX_DOCUMENT_FONT_BYTES) {
+            return null;
+        }
+        for (FontEntry e : FontScanner.scan(data.clone())) {
+            if (!e.usable()) {
+                continue;
+            }
+            try {
+                return new FontFace(e.program(), e.family(), false, false, null);
+            } catch (IOException | RuntimeException x) {
+                continue;
+            }
+        }
+        return null;
+    }
+
     public static List<Path> systemFontDirs() {
         List<Path> dirs = new ArrayList<>();
         String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);

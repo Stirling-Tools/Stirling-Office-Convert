@@ -31,6 +31,11 @@ public final class DecodedPicture {
         return new DecodedPicture(kind, Objects.requireNonNull(image, "image"), null, naturalWidth, naturalHeight);
     }
 
+    public static DecodedPicture of(PDImageXObject image) {
+        Objects.requireNonNull(image, "image");
+        return new DecodedPicture(PictureDecoder.Kind.UNKNOWN, image, null, image.getWidth(), image.getHeight());
+    }
+
     static DecodedPicture vector(PictureDecoder.Kind kind, PDFormXObject form, float naturalWidth,
             float naturalHeight) {
         return new DecodedPicture(kind, null, Objects.requireNonNull(form, "form"), naturalWidth, naturalHeight);

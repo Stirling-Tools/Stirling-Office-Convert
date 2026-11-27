@@ -164,6 +164,17 @@ misses a drawn form. Images are charged wherever they are listed.
 | ODS repeated rows and columns | 8–192 MB of work | truncated with a warning |
 | Spreadsheet cells / merged ranges | 4 M / 100,000 | truncated |
 | Spreadsheet data read before admission | 256 MB | the rest is charged conservatively |
+| OFD pages / objects per page / block nesting | 100,000 / 1,000,000 / 32 | later pages and objects are left out; deeper blocks are skipped |
+| OFD XML part / picture or font file | 64 MB / 64 MB (fonts 32 MB) | the part is left out with a note; the page is blank |
+| OFD path commands / clip path text | 200,000 / 200,000 characters | the path is cut short; the clip area is ignored |
+| OFD characters per text object / glyph mappings | 100,000 / 100,000 | the rest is skipped |
+| OFD seal: DER depth / nodes / nested seal documents | 24 / 100,000 / 200 per document | the seal appearance is left out with a note |
+| OFD JBIG2 picture | 100 M pixels, 10,000 segments | the picture is left out with a note |
+| UOF file | 256 MB | refused |
+| UOF rewritten package text | 32 MB + 16 × the file size, at most 256 M characters | refused as too large to convert |
+| UOF paragraphs and tables / nesting | 2,000,000 / 40 | the rest is skipped |
+| UOF pictures (base64) | 32 MB each, 256 MB in all | the picture is left out |
+| UOF slides / shapes / sheets / cells | 5,000 / 200,000 / 1,000 / 1,000,000 | the rest is left out |
 
 The library changes this JVM-wide state, which also affects other code in the same JVM:
 

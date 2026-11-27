@@ -71,18 +71,18 @@ public final class OfficeToPdf {
             String ext = extension(file);
             return switch (ext) {
                 case "docx", "docm", "dotx", "dotm", "doc", "dot", "rtf", "odt", "ott", "fodt", "odm", "xml", "sxw",
-                        "stw", "pages", "pub" -> DOCX;
+                        "stw", "pages", "pub", "ofd", "wps", "wpt", "uot", "uof" -> DOCX;
                 case "txt", "text", "log", "asc" -> TEXT;
                 case "pptx", "pptm", "ppsx", "ppsm", "potx", "potm", "odp", "otp", "fodp", "odg", "otg", "fodg", "sxi",
                         "sti", "sxd", "std", "key", "vsdx", "vsdm", "vssx", "vssm", "vstx", "vstm", "vsd", "vss", "vst", "vsw" -> PPTX;
                 case "xlsx", "xlsm", "xltx", "xltm", "xls", "xlt", "xlsb", "ods", "ots", "fods", "sxc", "stc", "slk",
-                        "sylk", "dif", "dbf", "numbers", "wk1", "wks", "wk3", "wk4", "123" -> XLSX;
+                        "sylk", "dif", "dbf", "numbers", "wk1", "wks", "wk3", "wk4", "123", "et", "ett", "uos" -> XLSX;
                 case "csv" -> CSV;
                 case "tsv", "tab" -> TSV;
                 case "html", "htm", "xhtml", "zip", "htmlz", "mobi", "azw3", "azw", "prc", "pdb", "fb2", "fbz" -> HTML;
                 case "epub" -> EPUB;
                 case "json" -> JSON;
-                case "ppt", "pps", "pot" -> PPT;
+                case "ppt", "pps", "pot", "dps", "dpt", "uop" -> PPT;
                 default -> {
                     String reason = UnsupportedFormats.byExtension(ext);
                     throw new IllegalArgumentException(reason != null ? reason : "Not an Office document: "
@@ -108,6 +108,7 @@ public final class OfficeToPdf {
                 case "mobi", "azw3", "azw", "prc", "fb2", "fbz", "htmlz" -> true;
                 case "slk", "sylk", "dif", "dbf", "pages", "numbers", "key", "wk1", "wks", "wk3", "wk4", "123" -> true;
                 case "pub", "vsd", "vss", "vst", "vsw" -> true;
+                case "ofd", "wps", "wpt", "et", "ett", "dps", "dpt", "uof", "uot", "uos", "uop" -> true;
                 default -> false;
             };
         }
@@ -420,6 +421,14 @@ public final class OfficeToPdf {
         if (drawing != null) {
             return drawing;
         }
+        Long uof = UofInput.estimate(in);
+        if (uof != null) {
+            return uof;
+        }
+        Long ofd = OfdInput.estimate(in);
+        if (ofd != null) {
+            return ofd;
+        }
         Long iwork = IWorkInput.estimate(in);
         if (iwork != null) {
             return iwork;
@@ -590,6 +599,14 @@ public final class OfficeToPdf {
         Result word = LegacyWord.render(source, sink, options, renderer);
         if (word != null) {
             return word;
+        }
+        Result uof = UofInput.render(source, sink, options, renderer);
+        if (uof != null) {
+            return uof;
+        }
+        Result ofd = OfdInput.render(source, sink, options);
+        if (ofd != null) {
+            return ofd;
         }
         Result iwork = IWorkInput.render(source, sink, options);
         if (iwork != null) {
