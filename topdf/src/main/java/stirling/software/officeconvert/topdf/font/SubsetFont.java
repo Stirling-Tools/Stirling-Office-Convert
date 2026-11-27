@@ -4,6 +4,7 @@ import java.awt.geom.GeneralPath;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.io.OutputStreamWriter;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
@@ -186,9 +187,9 @@ final class SubsetFont {
         if (table == null) {
             throw new IOException("The font has no CFF table");
         }
-        byte[] outlines = blank ? null
-                : source != null ? FontScanner.table(source, "CFF ", FontProgram.MAX_WHOLE_BYTES)
-                        : ttf.getTableBytes(table);
+        ByteBuffer outlines = blank ? null
+                : source != null ? FontScanner.mappedTable(source, "CFF ", FontProgram.MAX_WHOLE_BYTES)
+                        : ByteBuffer.wrap(ttf.getTableBytes(table));
         int count = ttf.getNumberOfGlyphs();
         TreeMap<Integer, Integer> cidToGid = new TreeMap<>();
         cidToGid.put(0, 0);

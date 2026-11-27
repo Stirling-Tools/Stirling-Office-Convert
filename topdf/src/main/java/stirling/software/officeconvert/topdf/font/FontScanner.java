@@ -4,9 +4,11 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -127,6 +129,32 @@ final class FontScanner {
                 throw new IOException("the " + tag.strip() + " table is too large");
             }
             return src.slice(t[0], (int) t[1]).bytes;
+        }
+    }
+
+    static ByteBuffer mappedTable(FontEntry entry, String tag, long maxBytes) throws IOException {
+        long[] t;
+        try (Source src = entry.file() != null ? Source.of(entry.file()) : Source.of(entry.data())) {
+            t = tables(src, entry.offset()).get(tag);
+        }
+        if (t == null) {
+            throw new IOException("the font has no " + tag.strip() + " table");
+        }
+        if (t[1] > maxBytes) {
+            throw new IOException("the " + tag.strip() + " table is too large");
+        }
+        if (entry.file() == null) {
+            byte[] data = entry.data();
+            if (t[0] < 0 || t[1] < 0 || t[0] + t[1] > data.length) {
+                throw new IOException("Font data out of range");
+            }
+            return ByteBuffer.wrap(data, (int) t[0], (int) t[1]).slice();
+        }
+        try (FileChannel channel = FileChannel.open(entry.file(), StandardOpenOption.READ)) {
+            if (t[0] < 0 || t[1] < 0 || t[0] + t[1] > channel.size()) {
+                throw new IOException("Font data out of range");
+            }
+            return channel.map(FileChannel.MapMode.READ_ONLY, t[0], t[1]);
         }
     }
 

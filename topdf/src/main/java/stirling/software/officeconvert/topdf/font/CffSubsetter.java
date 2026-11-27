@@ -5,6 +5,7 @@ import java.awt.geom.PathIterator;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -100,7 +101,9 @@ final class CffSubsetter {
 
     private record Call(int length, int fd, int subr) {}
 
-    private final byte[] in;
+    private final ByteBuffer in;
+
+    private final byte[] backing;
 
     private final Pages pages;
 
@@ -140,13 +143,15 @@ final class CffSubsetter {
 
     private CFFFont parsed;
 
-    private CffSubsetter(byte[] in) {
+    private CffSubsetter(ByteBuffer in) {
         this.in = in;
+        this.backing = null;
         this.pages = null;
     }
 
     private CffSubsetter(int length, Filler filler) {
-        this.in = new byte[length];
+        this.backing = new byte[length];
+        this.in = ByteBuffer.wrap(backing);
         this.pages = new Pages(filler);
     }
 
@@ -187,11 +192,15 @@ final class CffSubsetter {
 
     private void need(long from, long to) {
         if (pages != null && to > from) {
-            pages.need(in, from, to);
+            pages.need(backing, from, to);
         }
     }
 
     static byte[] subset(byte[] cff, String name, int[] cids, int[] glyphs) throws IOException {
+        return subset(ByteBuffer.wrap(cff), name, cids, glyphs);
+    }
+
+    static byte[] subset(ByteBuffer cff, String name, int[] cids, int[] glyphs) throws IOException {
         try {
             return new CffSubsetter(cff).write(name, cids, glyphs);
         } catch (RuntimeException e) {
@@ -201,7 +210,7 @@ final class CffSubsetter {
 
     static void check(byte[] cff) throws IOException {
         try {
-            new CffSubsetter(cff).verify();
+            new CffSubsetter(ByteBuffer.wrap(cff)).verify();
         } catch (RuntimeException e) {
             throw new IOException("the CFF outlines could not be read: " + e, e);
         }
@@ -243,10 +252,10 @@ final class CffSubsetter {
 
     private void read() throws IOException {
         need(0, 4);
-        if (in.length < 4 || (in[0] & 0xFF) != 1) {
+        if (in.limit() < 4 || (in.get(0) & 0xFF) != 1) {
             throw new IOException("the CFF version is not 1");
         }
-        Index names = index(in[2] & 0xFF);
+        Index names = index(in.get(2) & 0xFF);
         Index tops = index(names.end());
         strings = index(tops.end());
         global = index(strings.end());
@@ -298,7 +307,7 @@ final class CffSubsetter {
                 locals += fds[f].subrs == null ? 0 : fds[f].subrs.end() - fds[f].subrs.base();
             }
         }
-        if (locals > in.length) {
+        if (locals > in.limit()) {
             throw new IOException("the font dictionaries share their subroutines");
         }
     }
@@ -498,7 +507,7 @@ final class CffSubsetter {
         }
         int size = p.numbers()[0];
         int at = p.numbers()[1];
-        if (size < 0 || at < 0 || at + size > in.length) {
+        if (size < 0 || at < 0 || at + size > in.limit()) {
             throw new IllegalArgumentException("bad Private DICT");
         }
         if (size > MAX_PRIVATE_BYTES) {
@@ -514,11 +523,11 @@ final class CffSubsetter {
     private int[] fdSelect(int select, int count) {
         int[] fd = new int[count];
         need(select, select + 3L);
-        int format = in[select] & 0xFF;
+        int format = in.get(select) & 0xFF;
         if (format == 0) {
             need(select, select + 1L + count);
             for (int g = 0; g < count; g++) {
-                fd[g] = in[select + 1 + g] & 0xFF;
+                fd[g] = in.get(select + 1 + g) & 0xFF;
             }
             return fd;
         }
@@ -536,7 +545,7 @@ final class CffSubsetter {
                 throw new IllegalArgumentException("the FDSelect ranges are out of order");
             }
             Arrays.fill(fd, Math.min(first, count), Math.min(Math.max(first, next), count),
-                    in[select + 5 + 3 * r] & 0xFF);
+                    in.get(select + 5 + 3 * r) & 0xFF);
             previous = first;
         }
         return fd;
@@ -575,20 +584,20 @@ final class CffSubsetter {
         for (Map.Entry<Integer, Call> e : calls.subMap(start, end).entrySet()) {
             int pos = e.getKey();
             Call call = e.getValue();
-            out.write(in, at, pos - at);
+            copy(out, at, pos - at);
             Fd fd = call.fd() < 0 ? null : fds[call.fd()];
             int rank = fd == null ? globalRenumbered[call.subr()] : fd.renumbered[call.subr()];
             CffCodec.writeShortInt(out, rank - CffCodec.subrBias(fd == null ? globalCount : fd.renumberedCount));
             at = pos + call.length();
         }
-        out.write(in, at, end - at);
+        copy(out, at, end - at);
         return out.toByteArray();
     }
 
     private byte[] flat(int glyph) {
         try {
             if (parsed == null) {
-                parsed = new CFFParser().parse(new RandomAccessReadBuffer(in)).get(0);
+                parsed = new CFFParser().parse(new RandomAccessReadBuffer(bytes(0, in.limit()))).get(0);
             }
             Type2CharString outline;
             Object nominal;
@@ -715,18 +724,18 @@ final class CffSubsetter {
                     fail();
                     return;
                 }
-                int b = in[i] & 0xFF;
+                int b = in.get(i) & 0xFF;
                 if (b == 28) {
-                    push((short) ((in[i + 1] & 0xFF) << 8 | in[i + 2] & 0xFF), i, 3);
+                    push((short) ((in.get(i + 1) & 0xFF) << 8 | in.get(i + 2) & 0xFF), i, 3);
                     i += 3;
                 } else if (b >= 32 && b <= 246) {
                     push(b - 139, i, 1);
                     i++;
                 } else if (b >= 247 && b <= 254) {
-                    push(CffCodec.twoByteInt(b, in[i + 1] & 0xFF), i, 2);
+                    push(CffCodec.twoByteInt(b, in.get(i + 1) & 0xFF), i, 2);
                     i += 2;
                 } else if (b == 255) {
-                    push((short) ((in[i + 1] & 0xFF) << 8 | in[i + 2] & 0xFF), -1, 5);
+                    push((short) ((in.get(i + 1) & 0xFF) << 8 | in.get(i + 2) & 0xFF), -1, 5);
                     i += 5;
                 } else {
                     i = operator(i, b, end, depth);
@@ -820,7 +829,7 @@ final class CffSubsetter {
         if (count == 0) {
             return new Index(0, at + 2, new int[] {0}, at + 2);
         }
-        int offSize = in[at + 2] & 0xFF;
+        int offSize = in.get(at + 2) & 0xFF;
         if (offSize < 1 || offSize > 4) {
             throw new IllegalArgumentException("bad INDEX offset size " + offSize);
         }
@@ -830,7 +839,7 @@ final class CffSubsetter {
         for (int i = 0; i <= count; i++) {
             int v = 0;
             for (int k = 0; k < offSize; k++) {
-                v = v << 8 | in[p++] & 0xFF;
+                v = v << 8 | in.get(p++) & 0xFF;
             }
             offsets[i] = v - 1;
             if (offsets[i] < 0 || i > 0 && offsets[i] < offsets[i - 1]) {
@@ -838,7 +847,7 @@ final class CffSubsetter {
             }
         }
         int base = p;
-        if (base + offsets[count] > in.length) {
+        if (base + offsets[count] > in.limit()) {
             throw new IllegalArgumentException("the INDEX runs past the CFF");
         }
         return new Index(count, base, offsets, base + offsets[count]);
@@ -858,10 +867,14 @@ final class CffSubsetter {
         int[] p = {start};
         int from = start;
         List<Integer> nums = new ArrayList<>();
+        byte[] whole = in.hasArray() && in.arrayOffset() == 0 ? in.array() : null;
+        int base = whole == null ? start : 0;
+        byte[] d = whole != null ? whole : bytes(start, end);
+        int[] q = {0};
         while (p[0] < end) {
-            int b = in[p[0]] & 0xFF;
+            int b = in.get(p[0]) & 0xFF;
             if (b <= 21) {
-                int op = b == 12 ? 1200 + (in[p[0] + 1] & 0xFF) : b;
+                int op = b == 12 ? 1200 + (in.get(p[0] + 1) & 0xFF) : b;
                 byte[] operands = slice(from, p[0]);
                 p[0] += b == 12 ? 2 : 1;
                 int[] n = new int[nums.size()];
@@ -872,7 +885,9 @@ final class CffSubsetter {
                 nums.clear();
                 from = p[0];
             } else {
-                nums.add(CffCodec.dictOperand(in, p, end));
+                q[0] = p[0] - base;
+                nums.add(CffCodec.dictOperand(d, q, end - base));
+                p[0] = q[0] + base;
             }
         }
         return out;
@@ -896,21 +911,33 @@ final class CffSubsetter {
     }
 
     private int u16(int at) {
-        return (in[at] & 0xFF) << 8 | in[at + 1] & 0xFF;
+        return (in.get(at) & 0xFF) << 8 | in.get(at + 1) & 0xFF;
     }
 
     private void grow(long bytes) {
         written += bytes;
-        if (written > 2L * in.length + MAX_EXTRA_BYTES) {
+        if (written > 2L * in.limit() + MAX_EXTRA_BYTES) {
             throw new IllegalArgumentException("the subset CFF would be too large");
         }
     }
 
     private byte[] slice(int start, int end) {
         grow(end - start);
+        return bytes(start, end);
+    }
+
+    private byte[] bytes(int start, int end) {
         byte[] b = new byte[end - start];
-        System.arraycopy(in, start, b, 0, b.length);
+        in.get(start, b);
         return b;
+    }
+
+    private void copy(ByteArrayOutputStream out, int at, int length) {
+        if (in.hasArray()) {
+            out.write(in.array(), in.arrayOffset() + at, length);
+        } else {
+            out.writeBytes(bytes(at, at + length));
+        }
     }
 
     private static void u16(ByteArrayOutputStream out, int v) {
