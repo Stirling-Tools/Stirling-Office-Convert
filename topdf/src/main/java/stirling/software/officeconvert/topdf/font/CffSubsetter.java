@@ -109,7 +109,7 @@ final class CffSubsetter {
 
     private final BitSet usedGlobal = new BitSet();
 
-    private final BitSet operands = new BitSet();
+    private final BitSet operands;
 
     private boolean allGlobal;
 
@@ -147,12 +147,14 @@ final class CffSubsetter {
         this.in = in;
         this.backing = null;
         this.pages = null;
+        this.operands = new BitSet(in.limit());
     }
 
     private CffSubsetter(int length, Filler filler) {
         this.backing = new byte[length];
         this.in = ByteBuffer.wrap(backing);
         this.pages = new Pages(filler);
+        this.operands = new BitSet(length);
     }
 
     interface Filler {
@@ -209,8 +211,12 @@ final class CffSubsetter {
     }
 
     static void check(byte[] cff) throws IOException {
+        check(ByteBuffer.wrap(cff));
+    }
+
+    static void check(ByteBuffer cff) throws IOException {
         try {
-            new CffSubsetter(ByteBuffer.wrap(cff)).verify();
+            new CffSubsetter(cff).verify();
         } catch (RuntimeException e) {
             throw new IOException("the CFF outlines could not be read: " + e, e);
         }
