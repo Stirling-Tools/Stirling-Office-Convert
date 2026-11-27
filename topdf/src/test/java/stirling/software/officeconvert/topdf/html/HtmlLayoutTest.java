@@ -1085,4 +1085,14 @@ class HtmlLayoutTest {
             assertEquals(22.5f, tops.get(i) - tops.get(i - 1), 0.6f, tops.toString());
         }
     }
+
+    @Test
+    void fontSizesBetweenHalfPointsKeepTheirSize() throws IOException {
+        Laid l = lay("<p style=\"font-family:TestSans;font-size:9.35pt\">exactsizeexactsize</p>"
+                + "<p style=\"font-family:TestSans;font-size:9.5pt\">exactsizeexactsize</p>", testFonts());
+        List<Word> both = l.words().stream().filter(w -> w.text().equals("exactsizeexactsize")).toList();
+        assertEquals(2, both.size(), l.words().toString());
+        float ratio = (both.get(0).right() - both.get(0).left()) / (both.get(1).right() - both.get(1).left());
+        assertEquals(9.35f / 9.5f, ratio, 0.004f);
+    }
 }
