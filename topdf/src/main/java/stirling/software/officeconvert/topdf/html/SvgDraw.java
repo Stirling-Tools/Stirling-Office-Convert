@@ -88,6 +88,8 @@ final class SvgDraw {
     private AffineTransform rootView;
     int feImages;
 
+    final java.util.Set<Element> activeFilters = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+
     record Paint(int rgb, float alpha, Element server, boolean none, String fallback, AffineTransform space,
             Rectangle2D box) {
         static final Paint NONE = new Paint(0, 0, null, true, null);
@@ -1614,6 +1616,19 @@ final class SvgDraw {
             if (a <= 0) {
                 return;
             }
+        }
+        if (stroke && server != null && a < 1 && width > 0 && dashes(s) == null) {
+            String cap = SvgDoc.lower(s.get("stroke-linecap"));
+            String join = SvgDoc.lower(s.get("stroke-linejoin"));
+            float limit = number(s.get("stroke-miterlimit"), 4);
+            java.awt.BasicStroke outline = new java.awt.BasicStroke(width,
+                    cap.equals("round") ? java.awt.BasicStroke.CAP_ROUND
+                            : cap.equals("square") ? java.awt.BasicStroke.CAP_SQUARE : java.awt.BasicStroke.CAP_BUTT,
+                    join.equals("round") ? java.awt.BasicStroke.JOIN_ROUND
+                            : join.equals("bevel") ? java.awt.BasicStroke.JOIN_BEVEL : java.awt.BasicStroke.JOIN_MITER,
+                    limit >= 1 ? Math.min(limit, 1000) : 4);
+            p = new Path2D.Double(outline.createStrokedShape(p), null);
+            stroke = false;
         }
         cs.saveGraphicsState();
         try {

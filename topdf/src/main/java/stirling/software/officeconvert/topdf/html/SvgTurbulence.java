@@ -175,7 +175,8 @@ final class SvgTurbulence {
         if (fx < 0 || fy < 0) {
             return out;
         }
-        int octaves = (int) Math.min(MAX_OCTAVES, Math.max(0, SvgDraw.number(SvgDoc.attr(p, "numOctaves"), 1)));
+        float requested = SvgDraw.number(SvgDoc.attr(p, "numOctaves"), 1);
+        int octaves = (int) Math.min(MAX_OCTAVES, requested < 0 ? 1 : requested);
         long seed = (long) SvgDraw.number(SvgDoc.attr(p, "seed"), 0);
         boolean fractal = SvgDoc.lower(SvgDoc.attr(p, "type")).equals("fractalnoise");
         boolean stitch = SvgDoc.lower(SvgDoc.attr(p, "stitchTiles")).equals("stitch");

@@ -212,6 +212,26 @@ final class SvgFilter {
             content.draw();
             return;
         }
+        List<Element> mine = new ArrayList<>();
+        for (Step st : steps) {
+            if (st.element() != null) {
+                if (d.feImages > 0 && d.activeFilters.contains(st.element())) {
+                    content.draw();
+                    return;
+                }
+                mine.add(st.element());
+            }
+        }
+        d.activeFilters.addAll(mine);
+        try {
+            applySteps(d, steps, e, s, bbox, content);
+        } finally {
+            mine.forEach(d.activeFilters::remove);
+        }
+    }
+
+    private static void applySteps(SvgDraw d, List<Step> steps, Element e, SvgStyle s, Rectangle2D bbox,
+            SvgDraw.Content content) throws IOException {
         Rectangle2D region = null;
         for (Step st : steps) {
             Rectangle2D r = st.element() != null ? region(d, st.element(), bbox) : functionRegion(bbox, st, s);
