@@ -162,10 +162,19 @@ final class TextFit {
     }
 
     static void trimEnd(List<Inline> inlines) {
+        trimEnd(inlines, false);
+    }
+
+    static void trimEnd(List<Inline> inlines, boolean keepEarlierBreaks) {
+        boolean broken = false;
         while (!inlines.isEmpty()) {
             Inline last = inlines.getLast();
             if (last instanceof Inline.Break) {
+                if (broken && keepEarlierBreaks) {
+                    return;
+                }
                 inlines.removeLast();
+                broken = true;
                 continue;
             }
             if (last instanceof Inline.Text t) {

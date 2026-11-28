@@ -873,6 +873,15 @@ class HtmlLayoutTest {
     }
 
     @Test
+    void onlyTheLastBreakAtTheEndOfABlockIsDropped() throws IOException {
+        Laid l = lay("""
+                <!doctype html><html><body style="margin:0"><div>One<br><br></div><div>Two<br></div><div>Three</div>
+                </body></html>""");
+        float twoToThree = l.word("Three").top() - l.word("Two").top();
+        assertEquals(2 * twoToThree, l.word("Two").top() - l.word("One").top(), 1.5f, l.words().toString());
+    }
+
+    @Test
     void thePageColourReachesThePageMarginsWhateverTheBodyMargin() throws IOException {
         Laid l = lay("<html><body bgcolor=\"#ffff00\" style=\"margin:40px\"><p>Hi</p></body></html>");
         int x = Math.round(HtmlDocument.PAGE_MARGIN) + 3;

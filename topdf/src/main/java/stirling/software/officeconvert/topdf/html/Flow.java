@@ -1907,7 +1907,7 @@ final class Flow {
             right.clear();
         }
         boolean blankLine = !p.inlines.isEmpty();
-        TextFit.trimEnd(p.inlines);
+        TextFit.trimEnd(p.inlines, true);
         if (p.inlines.isEmpty() && blankLine) {
             // <p><br></p> still takes a line
             p.inlines.add(new Inline.Text("\u00a0", blockLook.run(), null, -1));

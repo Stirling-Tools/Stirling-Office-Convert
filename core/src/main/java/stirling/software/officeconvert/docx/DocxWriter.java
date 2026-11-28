@@ -188,7 +188,8 @@ public final class DocxWriter implements DocSink, Closeable {
         }
         entry("word/styles.xml", StylesPart.xml(styleSheet));
         Map<String, String> embeds = embedFonts();
-        entry("word/settings.xml", PackageParts.settings(hf, hasFootnotes(), styleSheet.hyphenation, !embeds.isEmpty()));
+        entry("word/settings.xml", PackageParts.settings(hf, hasFootnotes(), styleSheet.hyphenation, !embeds.isEmpty(),
+                ctx.exactSizes));
         entry("word/fontTable.xml", PackageParts.fontTable(ctx.fonts, embeds));
         for (Object[] m : mediaFiles) {
             ZipParts.picture(zip, "word/media/" + m[0], m[1] instanceof byte[] b ? b : spill.read((SpillFile.Block) m[1]));
