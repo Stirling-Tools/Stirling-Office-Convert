@@ -4,6 +4,16 @@ final class Blend {
 
     static final int PASS_THROUGH = Layers.tag("pass");
 
+    static float neutral(int mode) {
+        if (mode == LINEAR_BURN || mode == COLOR_BURN) {
+            return 1;
+        }
+        if (mode == LINEAR_DODGE || mode == COLOR_DODGE) {
+            return 0;
+        }
+        return -1;
+    }
+
     static final int NORMAL = Layers.tag("norm");
 
     static final int DISSOLVE = Layers.tag("diss");

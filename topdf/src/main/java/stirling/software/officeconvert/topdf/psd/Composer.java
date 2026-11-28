@@ -1718,10 +1718,19 @@ final class Composer {
             float layerOpacity, float[] conceal, float[] clip) {
         float[] src = buffer();
         float[] tint = solid(color);
+        float neutral = rgb || doc.mode == PsdDocument.GRAY ? Blend.neutral(blend) : -1;
+        boolean pull = neutral >= 0;
         for (int x = 0; x < width; x++) {
             int at = x * stride;
             System.arraycopy(tint, 0, src, at, n);
-            src[at + n] = fx.at(raster, x, y) * opacity * (conceal == null ? 1 : 1 - conceal[x]);
+            float a = fx.at(raster, x, y) * opacity * (conceal == null ? 1 : 1 - conceal[x]);
+            if (pull && a > 0 && dest[at + n] >= 1) {
+                for (int i = 0; i < n; i++) {
+                    src[at + i] = neutral + a * (tint[i] - neutral);
+                }
+                a = 1;
+            }
+            src[at + n] = a;
         }
         composite(dest, src, blend, layerOpacity, clip);
         release(src);

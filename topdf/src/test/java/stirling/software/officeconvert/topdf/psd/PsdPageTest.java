@@ -721,6 +721,28 @@ class PsdPageTest {
     }
 
     @Test
+    void aLinearBurnEffectScalesItsColourTowardWhiteInsteadOfFadingTheResult() throws IOException {
+        PsdFixture f = new PsdFixture(3, 1);
+        f.hasMerged = false;
+        f.flat(255).flat(255).flat(255);
+        f.layers.add(new PsdFixture.Layer().rect(0, 0, 1, 3).fill(-1, 255).fill(0, 77).fill(1, 77).fill(2, 77));
+        Desc shadow = new Desc("DrSh").bool("enab", true).bool("present", true).en("Md  ", "BlnM", "linearBurn")
+                .obj("Clr ", rgb(0, 0, 0)).unit("Opct", "#Prc", 50).bool("uglg", false).unit("lagl", "#Ang", 180)
+                .unit("Dstn", "#Pxl", 1).unit("blur", "#Pxl", 0).unit("Ckmt", "#Prc", 0);
+        byte[] d = new Desc("null").bool("masterFXSwitch", true).obj("DrSh", shadow).bytes(true);
+        byte[] fx = new byte[d.length + 4];
+        System.arraycopy(d, 0, fx, 4, d.length);
+        f.layers.add(new PsdFixture.Layer().rect(0, 0, 1, 1).fill(-1, 255).fill(0, 77).fill(1, 77).fill(2, 77)
+                .block("lfx2", fx));
+        convert(f, "burn.psd");
+        try (PDDocument pdf = open("burn.psd")) {
+            byte[] s = samples(image(pdf.getPage(0)));
+            assertArrayEquals(new int[] {0, 0, 0}, ints(s, 3));
+            assertArrayEquals(new int[] {77, 77, 77}, ints(s, 6));
+        }
+    }
+
+    @Test
     void aRestrictedChannelKeepsWhatIsBelowTheLayer() throws IOException {
         PsdFixture f = new PsdFixture(2, 1);
         f.hasMerged = false;
