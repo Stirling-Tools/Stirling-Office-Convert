@@ -917,6 +917,14 @@ class HtmlLayoutTest {
     }
 
     @Test
+    void aRuleTakesItsMarginsAndTwoPixelsOfBorder() throws IOException {
+        Laid l = lay("""
+                <!doctype html><html><body><div>Above</div><div>Next</div><hr><div>Below</div></body></html>""");
+        float line = l.word("Next").top() - l.word("Above").top();
+        assertEquals(line + 6 + 1.5f + 6, l.word("Below").top() - l.word("Next").top(), 1f, l.words().toString());
+    }
+
+    @Test
     void thePageColourReachesThePageMarginsWhateverTheBodyMargin() throws IOException {
         Laid l = lay("<html><body bgcolor=\"#ffff00\" style=\"margin:40px\"><p>Hi</p></body></html>");
         int x = Math.round(HtmlDocument.PAGE_MARGIN) + 3;

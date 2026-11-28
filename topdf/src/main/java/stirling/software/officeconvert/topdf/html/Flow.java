@@ -2166,8 +2166,9 @@ final class Flow {
         p.indentRight = frame.right();
         p.spaceBefore = Math.min(pendingSpace, 400);
         p.lineRule = Paragraph.LineRule.EXACT;
-        p.lineHeight = 2;
+        p.lineHeight = 0.75f;
         p.borderBottom = 0.75f;
+        p.borderBottomSpace = 0;
         Integer c = Css.color(d.getOrDefault("border-top-color", d.getOrDefault("color", d.get("background-color"))));
         p.borderBottomRgb = c == null || c < 0 ? 0xA0A0A0 : c;
         p.inlines.add(new Inline.Text("\u00a0", look.run().withSize(1), null, -1));
