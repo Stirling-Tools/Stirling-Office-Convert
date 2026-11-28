@@ -209,6 +209,22 @@ class UofPackageTest {
     }
 
     @Test
+    void anUnsizedPictureInACellIsNoWiderThanTheCell() throws IOException {
+        ByteArrayOutputStream wide = new ByteArrayOutputStream();
+        ImageIO.write(new BufferedImage(500, 250, BufferedImage.TYPE_INT_RGB), "png", wide);
+        String picture = Base64.getMimeEncoder().encodeToString(wide.toByteArray());
+        String anchor = "<字:句><字:锚点><字:图形 字:图形引用=\"g1\"/></字:锚点></字:句>";
+        String xml = HEAD + "vnd.uof.text\"><uof:对象集><uof:其他对象 uof:标识符=\"img1\" uof:公共类型=\"png\">"
+                + "<uof:数据>" + picture + "</uof:数据></uof:其他对象><图:图形 图:标识符=\"g1\" 图:其他对象=\"img1\"/>"
+                + "</uof:对象集><uof:文字处理><字:主体><字:段落>" + anchor + "</字:段落><字:文字表><字:行><字:单元格>"
+                + "<字:段落>" + anchor + "</字:段落></字:单元格><字:单元格><字:段落>" + run("B", "")
+                + "</字:段落></字:单元格></字:行></字:文字表></字:主体></uof:文字处理></uof:UOF>";
+        String doc = entry(rewrite("wide.uot", xml, UofPackage.Kind.TEXT), "word/document.xml");
+        assertTrue(doc.contains("cx=\"" + 500 * 9525 + "\" cy=\"" + 250 * 9525 + "\""), doc);
+        assertTrue(doc.contains("cx=\"" + (8306 / 2 - 216) * 635 + "\""), doc);
+    }
+
+    @Test
     void picturesInNotesGetTheirOwnRelationships() throws IOException {
         String picture = Base64.getMimeEncoder().encodeToString(png());
         String xml = HEAD + "vnd.uof.text\"><uof:对象集><uof:其他对象 uof:标识符=\"img1\" uof:公共类型=\"png\">"

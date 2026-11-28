@@ -107,7 +107,7 @@ final class UofObjects {
         return n / 4 * 3 + (rest == 0 ? 0 : rest - 1);
     }
 
-    long[] size(Element anchor, Shape shape) {
+    long[] size(Element anchor, Shape shape, long maxWidth) {
         Element p = Uof.kid(anchor, "锚点属性");
         long w = units.twips(Uof.text(Uof.kid(p, "宽度")));
         long h = units.twips(Uof.text(Uof.kid(p, "高度")));
@@ -132,9 +132,10 @@ final class UofObjects {
         }
         double cx = pw * 9525.0;
         double cy = ph * 9525.0;
-        if (cx > MAX_WIDTH_EMU) {
-            cy = cy * MAX_WIDTH_EMU / cx;
-            cx = MAX_WIDTH_EMU;
+        long most = Math.max(EMU_PER_TWIP, Math.min(maxWidth, MAX_WIDTH_EMU));
+        if (cx > most) {
+            cy = cy * most / cx;
+            cx = most;
         }
         return new long[] {Math.round(cx), Math.max(1, Math.min(Math.round(cy), 20L * MAX_WIDTH_EMU))};
     }

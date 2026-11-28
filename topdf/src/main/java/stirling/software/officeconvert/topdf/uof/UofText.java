@@ -66,6 +66,8 @@ final class UofText {
 
     private long textWidth = 8306;
 
+    private int cellDepth;
+
     private UofText(Element root, UofParts parts) {
         this.root = root;
         this.parts = parts;
@@ -440,7 +442,7 @@ final class UofText {
         if (shape.picture() != null) {
             String rel = parts.media(shape.picture(), shape.format());
             if (rel != null) {
-                long[] size = objects.size(a, shape);
+                long[] size = objects.size(a, shape, cellDepth > 0 ? textWidth * UofObjects.EMU_PER_TWIP : Long.MAX_VALUE);
                 b.append("<w:r>").append(UofParts.inlinePicture(rel, size[0], size[1], ++drawings)).append("</w:r>");
             }
         }
@@ -906,6 +908,7 @@ final class UofText {
                     inner += widths[i];
                 }
                 textWidth = Math.max(720, inner - 216);
+                cellDepth++;
                 try {
                     for (Element k : Uof.kids(c)) {
                         switch (Uof.name(k)) {
@@ -919,6 +922,7 @@ final class UofText {
                     }
                 } finally {
                     textWidth = outer;
+                    cellDepth--;
                 }
                 if (b.length() == before) {
                     b.append("<w:p/>");
