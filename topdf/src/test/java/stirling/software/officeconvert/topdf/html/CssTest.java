@@ -41,6 +41,20 @@ class CssTest {
     }
 
     @Test
+    void logicalMarginAndPaddingShorthandsSplitIntoTheirSides() {
+        Map<String, String> d = Css.declarations("margin-inline:15px auto;margin-block:10px;padding-block:1px 2px;"
+                + "padding-inline:3px;margin-block-end:4px");
+        assertEquals("15px", d.get("margin-inline-start"));
+        assertEquals("auto", d.get("margin-inline-end"));
+        assertEquals("10px", d.get("margin-top"));
+        assertEquals("4px", d.get("margin-bottom"));
+        assertEquals("1px", d.get("padding-top"));
+        assertEquals("2px", d.get("padding-bottom"));
+        assertEquals("3px", d.get("padding-inline-start"));
+        assertEquals("3px", d.get("padding-inline-end"));
+    }
+
+    @Test
     void presentationalColoursFollowTheLegacyParsingRules() {
         assertEquals("#3dffff", Presentation.legacyColor("3D#ffffff"));
         assertEquals("#ffffff", Presentation.legacyColor("ffffff"));

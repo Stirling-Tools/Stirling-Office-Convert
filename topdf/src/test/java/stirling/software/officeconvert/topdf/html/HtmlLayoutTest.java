@@ -835,6 +835,15 @@ class HtmlLayoutTest {
     }
 
     @Test
+    void gridItemsThatEachSpanEveryColumnStack() throws IOException {
+        Laid l = lay("""
+                <!doctype html><html><body><div style="display:grid;grid-template-columns:1fr 1fr">
+                <div style="grid-column:1/3">Upper</div><div style="grid-column:1/-1">Lower</div></div></body></html>""");
+        assertEquals(l.word("Upper").left(), l.word("Lower").left(), 1f, l.words().toString());
+        assertTrue(l.word("Lower").top() > l.word("Upper").top() + 5, l.words().toString());
+    }
+
+    @Test
     void thePageColourReachesThePageMarginsWhateverTheBodyMargin() throws IOException {
         Laid l = lay("<html><body bgcolor=\"#ffff00\" style=\"margin:40px\"><p>Hi</p></body></html>");
         int x = Math.round(HtmlDocument.PAGE_MARGIN) + 3;

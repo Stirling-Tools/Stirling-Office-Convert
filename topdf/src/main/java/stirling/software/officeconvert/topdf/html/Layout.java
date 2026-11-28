@@ -67,7 +67,7 @@ final class Layout {
         if (grid && columns < 2) {
             return areas(items, d.get("grid-template-areas"), look, room, ctx, gap);
         }
-        if (columns < 2) {
+        if (columns < 2 || grid && spanAll(items, columns, look, ctx)) {
             return null;
         }
         boolean wraps = d.getOrDefault("flex-wrap", "nowrap").strip().toLowerCase(Locale.ROOT).startsWith("wrap");
@@ -96,6 +96,59 @@ final class Layout {
             }
         }
         return null;
+    }
+
+    private static boolean spanAll(List<Element> items, int columns, Look look, HtmlContext ctx) {
+        for (Element item : items) {
+            Map<String, String> d = ctx.declared(item, look);
+            String placed = d.get("grid-column");
+            if (placed == null && d.get("grid-column-start") != null) {
+                placed = d.get("grid-column-start") + "/" + d.getOrDefault("grid-column-end", "auto");
+            }
+            if (placed == null || columnSpan(placed, columns) < columns) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    static int columnSpan(String placed, int columns) {
+        String[] parts = placed.strip().toLowerCase(Locale.ROOT).split("\\s*/\\s*");
+        if (parts.length == 1) {
+            return spanOf(parts[0]);
+        }
+        if (parts.length != 2) {
+            return 1;
+        }
+        if (parts[1].startsWith("span")) {
+            return spanOf(parts[1]);
+        }
+        Integer start = line(parts[0], columns);
+        Integer end = line(parts[1], columns);
+        if (start == null || end == null) {
+            return 1;
+        }
+        return Math.abs(end - start);
+    }
+
+    private static int spanOf(String v) {
+        if (!v.startsWith("span")) {
+            return 1;
+        }
+        try {
+            return Math.max(1, Integer.parseInt(v.substring(4).strip()));
+        } catch (NumberFormatException ex) {
+            return 1;
+        }
+    }
+
+    private static Integer line(String v, int columns) {
+        try {
+            int n = Integer.parseInt(v.strip());
+            return n < 0 ? columns + 2 + n : n == 0 ? null : n;
+        } catch (NumberFormatException ex) {
+            return null;
+        }
     }
 
     // The visible children, with display: contents wrappers replaced by their own children as browsers do
