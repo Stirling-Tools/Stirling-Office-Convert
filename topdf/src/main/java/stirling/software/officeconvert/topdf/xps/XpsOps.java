@@ -155,22 +155,21 @@ final class XpsOps {
                 return;
             }
         }
-        if (2 * (boxCount + 1) > slots) {
-            grow();
-        }
-        int slot = slot(x0, x1);
-        if (slotGeneration[slot] == generation) {
-            int i = 4 * slotBox[slot];
-            if (boxes[i + 3] == y0) {
-                boxes[i + 3] = y1;
+        if (slots > 0) {
+            int found = slot(x0, x1);
+            if (slotGeneration[found] == generation && boxes[4 * slotBox[found] + 3] == y0) {
+                boxes[4 * slotBox[found] + 3] = y1;
                 return;
             }
         }
         if (boxCount == MAX_BOXES) {
             flushBoxes();
             System.arraycopy(rgb, 0, boxRgb, 0, 3);
-            slot = slot(x0, x1);
         }
+        if (2 * (boxCount + 1) > slots) {
+            grow();
+        }
+        int slot = slot(x0, x1);
         int i = 4 * boxCount;
         if (i + 4 > boxes.length) {
             boxes = Arrays.copyOf(boxes, Math.min(4 * MAX_BOXES, Math.max(256, boxes.length * 2)));
