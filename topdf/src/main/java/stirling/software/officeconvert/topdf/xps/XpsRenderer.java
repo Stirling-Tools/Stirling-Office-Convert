@@ -456,8 +456,13 @@ final class XpsRenderer {
         }
     }
 
+    private final Map<String, Map<String, String>> propertyNames = new HashMap<>();
+
     private Element property(Element e, String name) {
-        Element holder = child(e, e.getLocalName() + "." + name);
+        String owner = e.getLocalName();
+        String full = propertyNames.computeIfAbsent(owner, k -> new HashMap<>())
+                .computeIfAbsent(name, k -> owner + "." + k);
+        Element holder = child(e, full);
         return holder == null ? null : XpsXml.firstElement(holder);
     }
 

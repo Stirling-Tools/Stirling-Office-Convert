@@ -39,6 +39,8 @@ final class XpsOps {
 
     private final Deque<AffineTransform> saved = new ArrayDeque<>();
 
+    private boolean shared;
+
     private float[] fill;
 
     private COSName fillSpace;
@@ -81,7 +83,8 @@ final class XpsOps {
     }
 
     void q() throws IOException {
-        saved.push(new AffineTransform(ctm));
+        saved.push(ctm);
+        shared = true;
         op("q\n");
     }
 
@@ -90,6 +93,7 @@ final class XpsOps {
             return;
         }
         ctm = saved.pop();
+        shared = true;
         fill = null;
         strokeColor = null;
         op("Q\n");
@@ -101,6 +105,10 @@ final class XpsOps {
         }
         precise(t.getScaleX()).precise(t.getShearY()).precise(t.getShearX()).precise(t.getScaleY())
                 .precise(t.getTranslateX()).precise(t.getTranslateY()).op("cm\n");
+        if (shared) {
+            ctm = new AffineTransform(ctm);
+            shared = false;
+        }
         ctm.concatenate(t);
     }
 

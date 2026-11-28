@@ -35,8 +35,13 @@ final class XpsGeometry {
     private int total;
 
     private XpsGeometry(boolean evenOdd, Budget budget, boolean separate) {
-        this.fill = new Path2D.Double(evenOdd ? Path2D.WIND_EVEN_ODD : Path2D.WIND_NON_ZERO);
-        this.stroke = separate ? new Path2D.Double(evenOdd ? Path2D.WIND_EVEN_ODD : Path2D.WIND_NON_ZERO) : fill;
+        this(evenOdd, budget, separate, 20);
+    }
+
+    private XpsGeometry(boolean evenOdd, Budget budget, boolean separate, int capacity) {
+        int rule = evenOdd ? Path2D.WIND_EVEN_ODD : Path2D.WIND_NON_ZERO;
+        this.fill = new Path2D.Double(rule, capacity);
+        this.stroke = separate ? new Path2D.Double(rule, capacity) : fill;
         this.budget = budget;
         this.separate = separate;
     }
@@ -62,7 +67,7 @@ final class XpsGeometry {
             double rule = p.number();
             evenOdd = rule == 0;
         }
-        XpsGeometry g = new XpsGeometry(evenOdd, budget, false);
+        XpsGeometry g = new XpsGeometry(evenOdd, budget, false, Math.max(4, Math.min(1 << 16, data.length() / 12)));
         g.parse(p);
         g.flush();
         return g;
