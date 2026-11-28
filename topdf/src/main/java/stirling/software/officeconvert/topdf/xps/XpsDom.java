@@ -3,6 +3,8 @@ package stirling.software.officeconvert.topdf.xps;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InterruptedIOException;
+import java.util.HashMap;
+import java.util.Map;
 
 import javax.xml.stream.XMLStreamConstants;
 import javax.xml.stream.XMLStreamException;
@@ -19,6 +21,7 @@ final class XpsDom {
         try {
             XpsElement root = null;
             XpsElement at = null;
+            Map<String, String> values = new HashMap<>();
             while (r.hasNext()) {
                 int event = r.next();
                 if (event == XMLStreamConstants.START_ELEMENT) {
@@ -38,7 +41,7 @@ final class XpsDom {
                         for (int i = 0; i < na; i++) {
                             triples[3 * i] = blank(r.getAttributeNamespace(i));
                             triples[3 * i + 1] = r.getAttributeLocalName(i);
-                            triples[3 * i + 2] = r.getAttributeValue(i);
+                            triples[3 * i + 2] = shared(values, r.getAttributeValue(i));
                         }
                         e.attributes(triples);
                     }
@@ -67,6 +70,20 @@ final class XpsDom {
             } catch (XMLStreamException ignored) {
             }
         }
+    }
+
+    private static String shared(Map<String, String> values, String v) {
+        if (v == null || v.length() > 24) {
+            return v;
+        }
+        String known = values.get(v);
+        if (known != null) {
+            return known;
+        }
+        if (values.size() < 4096) {
+            values.put(v, v);
+        }
+        return v;
     }
 
     private static String blank(String s) {

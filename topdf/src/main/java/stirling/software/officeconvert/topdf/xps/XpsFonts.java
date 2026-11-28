@@ -341,12 +341,13 @@ final class XpsFonts {
         if (obfuscated || !looksLikeFont(data)) {
             byte[] key = guidKey(part);
             if (key != null && data.length >= 32) {
-                byte[] copy = data.clone();
                 for (int i = 0; i < 32; i++) {
-                    copy[i] ^= key[i % 16];
+                    data[i] ^= key[i % 16];
                 }
-                if (looksLikeFont(copy) || obfuscated) {
-                    data = copy;
+                if (!looksLikeFont(data) && !obfuscated) {
+                    for (int i = 0; i < 32; i++) {
+                        data[i] ^= key[i % 16];
+                    }
                 }
             }
         }
