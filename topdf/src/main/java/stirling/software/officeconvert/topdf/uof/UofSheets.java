@@ -56,17 +56,27 @@ final class UofSheets {
         String unit = Uof.text(Uof.path(root, "电子表格", "公用处理规则", "度量单位")).strip();
         this.units = UofUnits.of(unit);
         this.fonts = UofText.fonts(root);
+        String normal = null;
         for (Element s : Uof.kids(Uof.kid(root, "式样集"), "单元格式样")) {
             String id = Uof.attr(s, "标识符");
             if (id != null) {
                 cellStyles.putIfAbsent(id, s);
+                String name = String.valueOf(Uof.attr(s, "名称"));
+                if (normal == null && (name.equals("Normal") || name.equals("常规")) || id.equals("Default")) {
+                    normal = id;
+                }
             }
         }
-        fontXml.add("<font><sz val=\"11\"/><name val=\"宋体\"/></font>");
-        fillXml.add("<fill><patternFill patternType=\"none\"/></fill>");
-        fillXml.add("<fill><patternFill patternType=\"gray125\"/></fill>");
-        borderXml.add("<border><left/><right/><top/><bottom/><diagonal/></border>");
-        xfXml.add("<xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\"/>");
+        Element base = normal == null ? null : cellStyles.get(normal);
+        index(fontXml, font(Uof.kid(base, "字体格式")));
+        index(fillXml, "<fill><patternFill patternType=\"none\"/></fill>");
+        index(fillXml, "<fill><patternFill patternType=\"gray125\"/></fill>");
+        index(borderXml, "<border><left/><right/><top/><bottom/><diagonal/></border>");
+        index(xfXml, base == null ? "<xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\"/>"
+                : xml(base, null));
+        if (base != null) {
+            xfIndex.put(normal + '\u0000' + null, 0);
+        }
     }
 
     static void write(Element root, UofParts parts) throws IOException {
@@ -506,6 +516,12 @@ final class UofSheets {
             xfIndex.put(key, 0);
             return 0;
         }
+        int id = index(xfXml, xml(s, extra));
+        xfIndex.put(key, id);
+        return id;
+    }
+
+    private String xml(Element s, String extra) {
         int font = s == null ? 0 : index(fontXml, font(Uof.kid(s, "字体格式")));
         String fill = s == null ? null : fill(Uof.kid(s, "填充"));
         int fillId = fill == null ? 0 : index(fillXml, fill);
@@ -521,9 +537,7 @@ final class UofSheets {
         } else {
             x.append("/>");
         }
-        int id = index(xfXml, x.toString());
-        xfIndex.put(key, id);
-        return id;
+        return x.toString();
     }
 
     private final Map<List<String>, Map<String, Integer>> indexes = new IdentityHashMap<>();

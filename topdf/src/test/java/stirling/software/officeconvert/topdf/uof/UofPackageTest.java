@@ -289,6 +289,25 @@ class UofPackageTest {
     }
 
     @Test
+    void emptyCellsInTheDefaultStyleDoNotWidenThePrintedArea() throws IOException {
+        String blanks = "<表:单元格 表:式样引用=\"Default\"/>".repeat(120);
+        StringBuilder rows = new StringBuilder();
+        for (int r = 0; r < 3; r++) {
+            rows.append("<表:行><表:单元格 表:式样引用=\"Default\"><表:数据 表:数据类型=\"text\"><字:句><字:文本串>Row ")
+                    .append(r).append("</字:文本串></字:句></表:数据></表:单元格>").append(blanks).append("</表:行>");
+        }
+        String xml = HEAD + "vnd.uof.spreadsheet\"><uof:式样集><uof:单元格式样 表:标识符=\"Default\" 表:名称=\"Normal\">"
+                + "<表:对齐格式><表:垂直对齐方式>center</表:垂直对齐方式></表:对齐格式></uof:单元格式样></uof:式样集>"
+                + "<uof:电子表格><表:主体><表:工作表 表:名称=\"S\"><表:工作表内容>" + rows
+                + "</表:工作表内容></表:工作表></表:主体></uof:电子表格></uof:UOF>";
+        Path pdf = convert("blanks.uos", xml);
+        try (PDDocument doc = Loader.loadPDF(pdf.toFile())) {
+            assertEquals(1, doc.getNumberOfPages());
+        }
+        assertTrue(text(pdf).contains("Row 2"));
+    }
+
+    @Test
     void numberingLevelsAreCountedFromZero() throws IOException {
         String xml = HEAD + "vnd.uof.text\"><uof:式样集><uof:自动编号集><字:自动编号 字:标识符=\"L1\"><字:级别 字:级别值=\"1\">"
                 + "<字:项目符号>◆</字:项目符号></字:级别></字:自动编号></uof:自动编号集></uof:式样集><uof:文字处理><字:主体>"
