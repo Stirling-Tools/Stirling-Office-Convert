@@ -78,6 +78,8 @@ final class PageSvg extends PDFGraphicsStreamEngine {
 
     static final int MAX_PATH_SEGMENTS = 2_000_000;
 
+    private static final Set<String> GENERATED = Set.of("Circle", "Highlight", "Ink", "Popup", "Square",
+            "Squiggly", "StrikeOut", "Text", "Underline");
     private static final COSName MATTE = COSName.getPDFName("Matte");
     private static final AffineTransform FLIP = new AffineTransform(1, 0, 0, -1, 0, 0);
 
@@ -1683,6 +1685,12 @@ final class PageSvg extends PDFGraphicsStreamEngine {
             try {
                 var appearance = a.getAppearance();
                 if (appearance == null || appearance.getNormalAppearance() == null) {
+                    if (!GENERATED.contains(a.getSubtype())) {
+                        if (a instanceof PDAnnotationLink link) {
+                            link(link);
+                        }
+                        continue;
+                    }
                     a.constructAppearances(document);
                 }
                 showAnnotation(a);

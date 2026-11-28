@@ -309,6 +309,21 @@ class PdfToSvgTest {
     }
 
     @Test
+    void aLinkWithoutAnAppearanceKeepsItsTargetButDrawsNoBorder() throws Exception {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try (PDDocument doc = drawing(1)) {
+            PDPage page = doc.getPage(0);
+            link(page, 0, uri("https://example.com/kept"));
+            PDAnnotationLink l = (PDAnnotationLink) page.getAnnotations().get(0);
+            l.getCOSObject().setItem(COSName.BORDER, array(0, 0, 40));
+            PdfToSvg.writePage(doc, 0, out, PdfToSvg.Options.defaults());
+        }
+        String svg = out.toString(StandardCharsets.UTF_8);
+        assertTrue(svg.contains("https://example.com/kept"));
+        assertFalse(svg.contains("stroke-width=\"40\""), svg);
+    }
+
+    @Test
     void activeContentAndOutsideReferencesNeverReachTheSvg() throws Exception {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         try (PDDocument doc = drawing(1)) {

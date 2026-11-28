@@ -29,9 +29,10 @@ final class SvgLighting {
         for (float v : k) {
             sum += v;
         }
-        float divisor = SvgDraw.number(SvgDoc.attr(p, "divisor"), sum == 0 ? 1 : sum);
+        boolean zero = Math.abs(sum) < 1e-6f;
+        float divisor = SvgDraw.number(SvgDoc.attr(p, "divisor"), zero ? 1 : sum);
         if (divisor == 0) {
-            divisor = sum == 0 ? 1 : sum;
+            divisor = zero ? 1 : sum;
         }
         float bias = SvgDraw.number(SvgDoc.attr(p, "bias"), 0);
         int tx = SvgDoc.has(p, "targetX") ? (int) SvgDraw.number(SvgDoc.attr(p, "targetX"), -1) : ox / 2;

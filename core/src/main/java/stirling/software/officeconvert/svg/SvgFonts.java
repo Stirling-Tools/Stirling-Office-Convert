@@ -86,7 +86,7 @@ final class SvgFonts {
             if (!embedded) {
                 return !(font instanceof PDType3Font);
             }
-            if (web == null) {
+            if (web == null || shaped(codePoint)) {
                 return false;
             }
             long key = ((long) code << 32) | (codePoint & 0xFFFFFFFFL);
@@ -148,6 +148,12 @@ final class SvgFonts {
                 return program;
             }
         }
+    }
+
+    static boolean shaped(int cp) {
+        int type = Character.getType(cp);
+        return type == Character.NON_SPACING_MARK || type == Character.ENCLOSING_MARK
+                || type == Character.COMBINING_SPACING_MARK || type == Character.FORMAT;
     }
 
     Face face(PDFont font) {
