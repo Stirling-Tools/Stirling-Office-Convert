@@ -37,6 +37,26 @@ final class TileDecoder {
             return a;
         }
 
+        byte[] bytes(int c, int n) {
+            if (buffers.get(-1 - c) instanceof byte[] a && a.length == n) {
+                Arrays.fill(a, (byte) 0);
+                return a;
+            }
+            byte[] a = new byte[n];
+            buffers.put(-1 - c, a);
+            return a;
+        }
+
+        short[] shorts(int c, int n) {
+            if (buffers.get(-1 - c) instanceof short[] a && a.length == n) {
+                Arrays.fill(a, (short) 0);
+                return a;
+            }
+            short[] a = new short[n];
+            buffers.put(-1 - c, a);
+            return a;
+        }
+
         float[] floats(int c, int n) {
             if (buffers.get(c) instanceof float[] a && a.length == n) {
                 Arrays.fill(a, 0);

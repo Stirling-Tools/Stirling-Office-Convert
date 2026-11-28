@@ -23,7 +23,7 @@ public final class JpxDecoder {
             reduce = 0;
         }
         JpxRaster raster = new JpxRaster(cs.siz, reduce, options.maxSamples(),
-                ImageComposer.bands(boxes, cs.siz.components()));
+                ImageComposer.bands(boxes, cs.siz.components()), scratch);
         TileDecoder decoder = new TileDecoder(cs, raster, reduce, options.maxSamples(), scratch);
         Rectangle region = options.region();
         for (int t = 0; t < cs.tiles.length; t++) {

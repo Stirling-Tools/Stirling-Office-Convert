@@ -24,7 +24,33 @@ final class Similarity {
         return k;
     }
 
+    interface Rows {
+
+        int count();
+
+        void row(int c, int y, int[] out);
+    }
+
+    static Rows of(int[][] planes, int w) {
+        return new Rows() {
+            @Override
+            public int count() {
+                return planes.length;
+            }
+
+            @Override
+            public void row(int c, int y, int[] out) {
+                System.arraycopy(planes[c], y * w, out, 0, w);
+            }
+        };
+    }
+
     static double ssim(int[][] a, int[][] b, int w, int h, int depth) {
+        return ssim(of(a, w), of(b, w), w, h, depth);
+    }
+
+    static double ssim(Rows a, Rows b, int w, int h, int depth) {
+        int[][] rows = new int[Math.max(a.count(), b.count())][w];
         float[][][] ring = new float[5][TAPS][w];
         int[] cached = new int[TAPS];
         Arrays.fill(cached, -1);
@@ -41,7 +67,7 @@ final class Similarity {
                 int src = reflect(row + k, h);
                 int slot = src % TAPS;
                 if (cached[slot] != src) {
-                    horizontal(a, b, src, w, x, y, ring, slot);
+                    horizontal(a, b, rows, src, w, x, y, ring, slot);
                     cached[slot] = src;
                 }
             }
@@ -71,10 +97,10 @@ final class Similarity {
         return sum / ((double) w * h);
     }
 
-    private static void horizontal(int[][] a, int[][] b, int row, int w, float[] x, float[] y, float[][][] ring,
-            int slot) {
-        luma(a, row, w, x);
-        luma(b, row, w, y);
+    private static void horizontal(Rows a, Rows b, int[][] rows, int row, int w, float[] x, float[] y,
+            float[][][] ring, int slot) {
+        luma(a, rows, row, w, x);
+        luma(b, rows, row, w, y);
         for (int k = 1; k <= RADIUS; k++) {
             x[RADIUS - k] = x[RADIUS + reflect(-k, w)];
             y[RADIUS - k] = y[RADIUS + reflect(-k, w)];
@@ -106,15 +132,22 @@ final class Similarity {
         }
     }
 
-    private static void luma(int[][] p, int row, int w, float[] out) {
-        int at = row * w;
-        if (p.length >= 3) {
+    private static void luma(Rows p, int[][] rows, int row, int w, float[] out) {
+        if (p.count() >= 3) {
+            p.row(0, row, rows[0]);
+            p.row(1, row, rows[1]);
+            p.row(2, row, rows[2]);
+            int[] r = rows[0];
+            int[] g = rows[1];
+            int[] b = rows[2];
             for (int i = 0; i < w; i++) {
-                out[RADIUS + i] = 0.299f * p[0][at + i] + 0.587f * p[1][at + i] + 0.114f * p[2][at + i];
+                out[RADIUS + i] = 0.299f * r[i] + 0.587f * g[i] + 0.114f * b[i];
             }
         } else {
+            p.row(0, row, rows[0]);
+            int[] v = rows[0];
             for (int i = 0; i < w; i++) {
-                out[RADIUS + i] = p[0][at + i];
+                out[RADIUS + i] = v[i];
             }
         }
     }

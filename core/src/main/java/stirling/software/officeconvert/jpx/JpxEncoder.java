@@ -211,6 +211,56 @@ public final class JpxEncoder {
             return sum / luma;
         }
 
+        double psnr(Similarity.Rows other) {
+            double se = 0;
+            long total = 0;
+            for (int c = 0; c < samples.length; c++) {
+                int w = width(c);
+                int h = height(c);
+                int[] a = samples[c];
+                int[] b = new int[w];
+                for (int y = 0; y < h; y++) {
+                    other.row(c, y, b);
+                    int at = y * w;
+                    for (int x = 0; x < w; x++) {
+                        double d = a[at + x] - b[x];
+                        se += d * d;
+                    }
+                }
+                total += (long) w * h;
+            }
+            if (se == 0) {
+                return Double.POSITIVE_INFINITY;
+            }
+            double peak = (1 << depths[0]) - 1;
+            return 10 * Math.log10(peak * peak * total / se);
+        }
+
+        double ssim(Similarity.Rows other) {
+            int luma = samples.length >= 3 ? 3 : 1;
+            if (uniform(luma)) {
+                return Similarity.ssim(Similarity.of(samples, width(0)), other, width(0), height(0), depths[0]);
+            }
+            double sum = 0;
+            for (int c = 0; c < luma; c++) {
+                int only = c;
+                Similarity.Rows one = new Similarity.Rows() {
+                    @Override
+                    public int count() {
+                        return 1;
+                    }
+
+                    @Override
+                    public void row(int ignored, int y, int[] out) {
+                        other.row(only, y, out);
+                    }
+                };
+                sum += Similarity.ssim(Similarity.of(new int[][] {samples[c]}, width(c)), one, width(c), height(c),
+                        depths[0]);
+            }
+            return sum / luma;
+        }
+
         int sample(int c, int i) {
             return samples[c][i];
         }
@@ -357,7 +407,6 @@ public final class JpxEncoder {
         double ssim = source.ssim(reference);
         EncodeJob job = new EncodeJob(source, Options.quality(Math.max(psnr, MIN_PSNR)));
         job.prepare();
-        int[][] buffers = new int[source.count()][];
         TileDecoder.Scratch scratch = new TileDecoder.Scratch();
         byte[] best = null;
         double failed = Double.NEGATIVE_INFINITY;
@@ -368,7 +417,7 @@ public final class JpxEncoder {
             byte[] data = job.emit(target, 0);
             boolean close = false;
             if (data.length < maxBytes) {
-                Planes back = decoded(data, source, buffers, scratch);
+                Similarity.Rows back = decoded(data, source, scratch);
                 double p = source.psnr(back);
                 double s = source.ssim(back);
                 close = p >= psnr && s >= ssim;
@@ -396,31 +445,31 @@ public final class JpxEncoder {
         return best;
     }
 
-    private static Planes decoded(byte[] data, Planes like, int[][] s, TileDecoder.Scratch scratch)
+    private static Similarity.Rows decoded(byte[] data, Planes like, TileDecoder.Scratch scratch)
             throws IOException {
         JpxRaster r = JpxDecoder.decode(data, JpxOptions.defaults(), scratch).raster();
         int n = r.components();
         if (n != like.count()) {
             throw new IOException("The JPEG 2000 copy decodes to " + n + " components");
         }
+        int[] shift = new int[n];
         for (int c = 0; c < n; c++) {
-            int w = like.width(c);
-            int h = like.height(c);
-            if (r.width(c) != w || r.height(c) != h) {
+            if (r.width(c) != like.width(c) || r.height(c) != like.height(c)) {
                 throw new IOException("The JPEG 2000 copy decodes to a different grid");
             }
-            int shift = r.signed(c) ? 1 << (r.depth(c) - 1) : 0;
-            if (s[c] == null) {
-                s[c] = new int[w * h];
-            }
-            for (int y = 0; y < h; y++) {
-                for (int x = 0; x < w; x++) {
-                    s[c][y * w + x] = r.sample(c, x, y) - shift;
-                }
-            }
+            shift[c] = r.signed(c) ? 1 << (r.depth(c) - 1) : 0;
         }
-        return new Planes(like.width, like.height, s, like.depths, like.signed, like.colour, like.alpha, like.dx,
-                like.dy);
+        return new Similarity.Rows() {
+            @Override
+            public int count() {
+                return n;
+            }
+
+            @Override
+            public void row(int c, int y, int[] out) {
+                r.row(c, y, out, shift[c]);
+            }
+        };
     }
 
     public static Planes planes(BufferedImage image) {
