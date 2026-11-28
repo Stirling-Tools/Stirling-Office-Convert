@@ -141,6 +141,14 @@ final class VectorMask {
         return new VectorMask(line, false, width, height);
     }
 
+    java.awt.geom.Rectangle2D whole() {
+        return area.getBounds2D();
+    }
+
+    boolean inside(double x, double y) {
+        return area.contains(x, y) != invert;
+    }
+
     java.awt.geom.Rectangle2D shape() {
         return area.getBounds2D().createIntersection(new Rectangle(0, 0, width, height));
     }

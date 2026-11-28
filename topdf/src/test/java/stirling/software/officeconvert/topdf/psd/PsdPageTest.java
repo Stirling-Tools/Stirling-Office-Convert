@@ -801,6 +801,105 @@ class PsdPageTest {
     }
 
     @Test
+    void anOutsideStrokeOnAGradientShapeFollowsThePathNotTheGradientTransparency() throws IOException {
+        PsdFixture f = new PsdFixture(8, 8);
+        f.hasMerged = false;
+        f.flat(255).flat(255).flat(255);
+        f.layers.add(new PsdFixture.Layer().rect(0, 0, 8, 8).fill(-1, 255).fill(0, 255).fill(1, 255).fill(2, 255));
+        PsdFixture.Layer shape = new PsdFixture.Layer().rect(2, 2, 6, 6).fill(0, 0).fill(1, 0).fill(2, 0);
+        byte[] alpha = new byte[16];
+        for (int y = 0; y < 4; y++) {
+            alpha[y * 4] = (byte) 255;
+            alpha[y * 4 + 1] = (byte) 255;
+        }
+        shape.channels.put(-1, alpha);
+        shape.block("vmsk", square(2 / 8.0, 2 / 8.0, 6 / 8.0, 6 / 8.0)).block("GdFl", gradient())
+                .block("lfx2", effects("FrFX", 1));
+        f.layers.add(shape);
+        convert(f, "gradient-shape-stroke.psd");
+        try (PDDocument pdf = open("gradient-shape-stroke.psd")) {
+            byte[] s = samples(image(pdf.getPage(0)));
+            assertArrayEquals(new int[] {0, 0, 0}, ints(s, (4 * 8 + 6) * 3));
+            assertArrayEquals(new int[] {255, 255, 255}, ints(s, (4 * 8 + 5) * 3));
+        }
+    }
+
+    @Test
+    void anOutsideStrokeShowsThroughTheTranslucentPartOfALayer() throws IOException {
+        PsdFixture f = new PsdFixture(10, 10);
+        f.hasMerged = false;
+        f.flat(255).flat(255).flat(255);
+        f.layers.add(new PsdFixture.Layer().rect(0, 0, 10, 10).fill(-1, 255).fill(0, 255).fill(1, 255).fill(2, 255));
+        Desc stroke = new Desc("FrFX").bool("enab", true).en("Styl", "FStl", "OutF").en("PntT", "FrFl", "SClr")
+                .unit("Opct", "#Prc", 100).unit("Sz  ", "#Pxl", 1).obj("Clr ", rgb(255, 0, 0));
+        byte[] d = new Desc("null").bool("masterFXSwitch", true).obj("FrFX", stroke).bytes(true);
+        byte[] fx = new byte[d.length + 4];
+        System.arraycopy(d, 0, fx, 4, d.length);
+        PsdFixture.Layer half = new PsdFixture.Layer().rect(1, 1, 9, 9).fill(0, 0).fill(1, 0).fill(2, 0);
+        byte[] alpha = new byte[64];
+        for (int i = 0; i < 64; i++) {
+            alpha[i] = (byte) (i % 8 < 5 ? 128 : 255);
+        }
+        half.channels.put(-1, alpha);
+        f.layers.add(half.block("lfx2", fx));
+        convert(f, "translucent-outside-stroke.psd");
+        try (PDDocument pdf = open("translucent-outside-stroke.psd")) {
+            byte[] s = samples(image(pdf.getPage(0)));
+            int[] inside = ints(s, (5 * 10 + 3) * 3);
+            assertEquals(127, inside[0], 3);
+            assertEquals(64, inside[1], 3);
+            assertArrayEquals(new int[] {255, 0, 0}, ints(s, (5 * 10) * 3));
+        }
+    }
+
+    @Test
+    void anInsideStrokeFollowsAShapeThatRunsPastTheCanvas() throws IOException {
+        PsdFixture f = new PsdFixture(8, 8);
+        f.hasMerged = false;
+        f.flat(255).flat(255).flat(255);
+        f.layers.add(new PsdFixture.Layer().rect(0, 0, 8, 8).fill(-1, 255).fill(0, 255).fill(1, 255).fill(2, 255));
+        f.layers.add(new PsdFixture.Layer().rect(0, 0, 0, 0)
+                .block("SoCo", new Desc("null").obj("Clr ", rgb(255, 0, 0)).bytes(true))
+                .block("vmsk", square(-2 / 8.0, -2 / 8.0, 10 / 8.0, 10 / 8.0)).block("lfx2", inside(3, 0, 0, 0)));
+        convert(f, "beyond.psd");
+        try (PDDocument pdf = open("beyond.psd")) {
+            byte[] s = samples(image(pdf.getPage(0)));
+            assertArrayEquals(new int[] {0, 0, 0}, ints(s, (4 * 8) * 3));
+            assertArrayEquals(new int[] {255, 0, 0}, ints(s, (4 * 8 + 4) * 3));
+        }
+    }
+
+    @Test
+    void anInsideStrokeAlsoCoversFaintEdgePixels() throws IOException {
+        PsdFixture f = new PsdFixture(8, 8);
+        f.hasMerged = false;
+        f.flat(255).flat(255).flat(255);
+        f.layers.add(new PsdFixture.Layer().rect(0, 0, 8, 8).fill(-1, 255).fill(0, 255).fill(1, 255).fill(2, 255));
+        PsdFixture.Layer box = new PsdFixture.Layer().rect(2, 2, 6, 6).fill(0, 0).fill(1, 0).fill(2, 0);
+        byte[] alpha = new byte[16];
+        for (int i = 0; i < 16; i++) {
+            alpha[i] = (byte) (i % 4 == 0 ? 100 : 255);
+        }
+        box.channels.put(-1, alpha);
+        f.layers.add(box.block("lfx2", inside(1, 0, 0, 255)));
+        convert(f, "faint-edge.psd");
+        try (PDDocument pdf = open("faint-edge.psd")) {
+            byte[] s = samples(image(pdf.getPage(0)));
+            int[] edge = ints(s, (4 * 8 + 2) * 3);
+            assertTrue(edge[2] > edge[0] + 50, java.util.Arrays.toString(edge));
+        }
+    }
+
+    private static byte[] inside(double size, double r, double g, double b) {
+        Desc stroke = new Desc("FrFX").bool("enab", true).en("Styl", "FStl", "InsF").en("PntT", "FrFl", "SClr")
+                .unit("Opct", "#Prc", 100).unit("Sz  ", "#Pxl", size).obj("Clr ", rgb(r, g, b));
+        byte[] d = new Desc("null").bool("masterFXSwitch", true).obj("FrFX", stroke).bytes(true);
+        byte[] fx = new byte[d.length + 4];
+        System.arraycopy(d, 0, fx, 4, d.length);
+        return fx;
+    }
+
+    @Test
     void aRestrictedChannelKeepsWhatIsBelowTheLayer() throws IOException {
         PsdFixture f = new PsdFixture(2, 1);
         f.hasMerged = false;

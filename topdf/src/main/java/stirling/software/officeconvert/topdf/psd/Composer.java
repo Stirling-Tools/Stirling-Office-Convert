@@ -27,6 +27,8 @@ final class Composer {
 
     private final boolean rgb;
 
+    private boolean shapeOnly;
+
     private byte[] scratch = new byte[64];
 
     private final Set<String> effects = new LinkedHashSet<>();
@@ -1128,7 +1130,8 @@ final class Composer {
     }
 
     private float[] mask(Node node) throws IOException {
-        if (node.masks.isEmpty() && (node.vector == null || node.vectorBaked)) {
+        boolean baked = node.vectorBaked && !shapeOnly;
+        if (node.masks.isEmpty() && (node.vector == null || baked)) {
             return null;
         }
         if (maskRow == null) {
@@ -1144,7 +1147,7 @@ final class Composer {
                 m[x] *= 1 - p.density * (1 - tmp[x]);
             }
         }
-        if (node.vector != null && !node.vectorBaked) {
+        if (node.vector != null && !baked) {
             node.vector.row(y, tmp);
             for (int x = 0; x < width; x++) {
                 m[x] *= 1 - node.vectorDensity * (1 - tmp[x]);
@@ -1189,7 +1192,11 @@ final class Composer {
             for (int i = 0; i < n; i++) {
                 p.color[i].read(out, i, stride, 0);
             }
-            if (p.transparency != null) {
+            if (shapeOnly && l.fill && l.vectorMask) {
+                for (int x = 0; x < width; x++) {
+                    out[x * stride + n] = 1;
+                }
+            } else if (p.transparency != null) {
                 p.transparency.read(out, n, stride, 0);
             } else {
                 for (int x = 0; x < width; x++) {
@@ -1199,6 +1206,11 @@ final class Composer {
         } else if (p.gradient != null) {
             double[] b = bounds(p);
             p.gradient.row(y, width, b[0], b[1], b[2], b[3], out, stride, n);
+            if (shapeOnly && l.vectorMask) {
+                for (int x = 0; x < width; x++) {
+                    out[x * stride + n] = 1;
+                }
+            }
         } else if (p.pattern != null) {
             p.pattern.row(y, width, p.patternPlace[0], p.patternPlace[1], p.patternPlace[2], out, stride, n);
         } else if (p.solid != null) {
@@ -1473,10 +1485,20 @@ final class Composer {
             x1 = (int) Math.ceil(b.getMaxX());
             y1 = (int) Math.ceil(b.getMaxY());
         }
-        x0 = Math.max(0, x0 - e);
-        y0 = Math.max(0, y0 - e);
-        x1 = Math.min(width, x1 + e);
-        y1 = Math.min(doc.height, y1 + e);
+        VectorMask beyond = node instanceof Pixels bp && bp.vector != null
+                && bp.layer.masks.isEmpty() ? bp.vector : null;
+        if (beyond != null) {
+            java.awt.geom.Rectangle2D all = beyond.whole();
+            x0 = Math.max(-e, Math.min(x0, (int) Math.floor(all.getMinX())) - e);
+            y0 = Math.max(-e, Math.min(y0, (int) Math.floor(all.getMinY())) - e);
+            x1 = Math.min(width + e, Math.max(x1, (int) Math.ceil(all.getMaxX())) + e);
+            y1 = Math.min(doc.height + e, Math.max(y1, (int) Math.ceil(all.getMaxY())) + e);
+        } else {
+            x0 = Math.max(0, x0 - e);
+            y0 = Math.max(0, y0 - e);
+            x1 = Math.min(width, x1 + e);
+            y1 = Math.min(doc.height, y1 + e);
+        }
         long area = (long) Math.max(0, x1 - x0) * Math.max(0, y1 - y0);
         if (area == 0 || area > LayerEffects.MAX_PIXELS || area > budget[0]) {
             if (l.stroke != null || !l.strokes.isEmpty()) {
@@ -1525,25 +1547,40 @@ final class Composer {
         Effects.Overlay overlay = l.overlay;
         l.fillOpacity = 255;
         l.overlay = null;
+        boolean whole = l.fill && l.vectorMask && l.solid == null && !(node instanceof Group);
+        shapeOnly = whole;
         try {
             for (int yy = y0; yy < y1; yy++) {
                 if ((yy & 63) == 0) {
                     PsdPage.checkpoint();
                 }
-                y = yy;
-                float[] shape = coverage(copy, row);
-                System.arraycopy(shape, x0, alpha, (yy - y0) * w, w);
-                releaseShape(shape);
+                int at = (yy - y0) * w;
+                if (yy >= 0 && yy < doc.height) {
+                    y = yy;
+                    float[] shape = coverage(copy, row);
+                    int from = Math.max(0, x0);
+                    int to = Math.min(width, x1);
+                    System.arraycopy(shape, from, alpha, at + from - x0, Math.max(0, to - from));
+                    releaseShape(shape);
+                }
+                if (beyond != null) {
+                    for (int xx = x0; xx < x1; xx++) {
+                        if (xx < 0 || xx >= width || yy < 0 || yy >= doc.height) {
+                            alpha[at + xx - x0] = beyond.inside(xx + 0.5, yy + 0.5) ? 1 : 0;
+                        }
+                    }
+                }
             }
         } finally {
             saved.fillOpacity = fill;
             saved.overlay = overlay;
+            shapeOnly = false;
             y = 0;
             close(copy);
         }
         node.fx = LayerEffects.build(alpha, x0, y0, w, h, l.stroke, l.shadow, l.bevel, l.glow, l.innerShadow,
                 l.innerGlow, l.satin, l.strokes, doc.globalAngle,
-                l.fillOpacity >= 255);
+                l.fillOpacity >= 255 && !whole);
     }
 
     private static boolean extent(Group g, int[] b) {

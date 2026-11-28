@@ -135,12 +135,27 @@ final class LayerEffects {
         byte[] s = null;
         if (stroke.size() > 0) {
             float peak = 0;
-            for (float a : alpha) {
+            long covered = 0;
+            long partial = 0;
+            float floor = 0.5f / 255;
+            for (int i = 0; i < alpha.length; i++) {
+                float a = alpha[i];
                 peak = Math.max(peak, a);
+                if (a > floor) {
+                    covered++;
+                    int x = i % width;
+                    if (a < 0.98f && x > 0 && x < width - 1 && i >= width && i < alpha.length - width
+                            && alpha[i - 1] > floor && alpha[i + 1] > floor && alpha[i - width] > floor
+                            && alpha[i + width] > floor) {
+                        partial++;
+                    }
+                }
             }
+            boolean outside = stroke.position().equals("OutF");
+            boolean soft = outside && peak >= 0.999f && partial * 4 > covered;
             float interior = peak >= 0.999f && opaque ? 1 : 0;
             float[] shape = alpha;
-            if (peak < 0.999f) {
+            if (peak < 0.999f || soft) {
                 shape = new float[alpha.length];
                 for (int i = 0; i < alpha.length; i++) {
                     shape[i] = alpha[i] > 0.5f / 255 ? 1 : 0;
@@ -153,10 +168,11 @@ final class LayerEffects {
             for (int i = 0; i < s.length; i++) {
                 float v;
                 switch (stroke.position()) {
-                    case "InsF" -> v = shape[i] >= 0.5f ? clamp(size + 1 - dIn[i]) * shape[i] : 0;
+                    case "InsF" -> v = clamp(size + 1 - dIn[i]) * shape[i];
                     case "CtrF" -> v = shape[i] >= 0.5f ? clamp(size / 2 + 1 - dIn[i])
                             : clamp(size / 2 + 1 - dOut[i]);
-                    default -> v = shape[i] >= 0.5f ? interior : Math.max(shape[i], clamp(size + 1 - dOut[i]));
+                    default -> v = soft ? clamp(size + 1 - dOut[i]) * (1 - alpha[i])
+                            : shape[i] >= 0.5f ? interior : Math.max(shape[i], clamp(size + 1 - dOut[i]));
                 }
                 s[i] = (byte) Math.round(v * 255);
             }
