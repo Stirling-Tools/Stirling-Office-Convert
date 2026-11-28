@@ -1595,7 +1595,17 @@ final class SvgDraw {
     }
 
     void stroke(Path2D p, Paint paint, float alpha, Rectangle2D bbox, SvgStyle s, float width) throws IOException {
-        paintWith(p, paint, alpha, bbox, s, true, width);
+        if (dashedLength > 0 || dashes(s) == null) {
+            paintWith(p, paint, alpha, bbox, s, true, width);
+            return;
+        }
+        double saved = dashedLength;
+        dashedLength = pathLength(p);
+        try {
+            paintWith(p, paint, alpha, bbox, s, true, width);
+        } finally {
+            dashedLength = saved;
+        }
     }
 
     private void paintWith(Path2D p, Paint paint, float alpha, Rectangle2D bbox, SvgStyle s, boolean stroke,
@@ -2601,6 +2611,10 @@ final class SvgDraw {
         if (pic == null) {
             return;
         }
+        charge((long) Math.max(0, pic.pixelWidth()) * Math.max(0, pic.pixelHeight()));
+        if (spent()) {
+            return;
+        }
         String rendering = SvgDoc.lower(s.get("image-rendering"));
         if (!pic.vector() && pic.image() != null) {
             pic.image().setInterpolate(!rendering.equals("optimizespeed") && !rendering.equals("pixelated")
@@ -2640,6 +2654,10 @@ final class SvgDraw {
             return;
         }
         if (pic == null || !(w > 0) || !(h > 0)) {
+            return;
+        }
+        charge((long) Math.max(0, pic.pixelWidth()) * Math.max(0, pic.pixelHeight()));
+        if (spent()) {
             return;
         }
         float nw = pic.pixelWidth() > 0 ? pic.pixelWidth() : pic.naturalWidth();

@@ -708,7 +708,7 @@ final class SvgFilter {
                 }
                 double[] k = scales(toPixel);
                 boolean dilate = SvgDoc.lower(SvgDoc.attr(p, "operator")).equals("dilate");
-                return morphology(in1, (int) Math.round(rx * bw * k[0]), (int) Math.round(ry * bh * k[1]), dilate);
+                return morphology(in1, pixels(rx * bw * k[0], in1.w), pixels(ry * bh * k[1], in1.h), dilate);
             }
             case "fetile":
                 return tile(in1, in1.area == null ? null : in1.area.getBounds2D());
@@ -793,8 +793,7 @@ final class SvgFilter {
         switch (st.kind()) {
             case "blur": {
                 float r = a.isEmpty() ? 0 : SvgDraw.length(a.get(0), s.fontSize, 0, 0);
-                Img lin = toLinear(in);
-                return srgbInPlace(blur(lin, r * k[0], r * k[1]));
+                return blur(in, r * k[0], r * k[1]);
             }
             case "drop-shadow": {
                 List<Float> nums = new ArrayList<>();
@@ -810,8 +809,8 @@ final class SvgFilter {
                 float dx = nums.size() > 0 ? nums.get(0) : 0;
                 float dy = nums.size() > 1 ? nums.get(1) : 0;
                 float sd = nums.size() > 2 ? nums.get(2) : 0;
-                Img lin = toLinear(in);
-                Img flood = flood(in.w, in.h, colour == null ? "currentcolor" : colour, 1, true, s.color);
+                Img lin = in;
+                Img flood = flood(in.w, in.h, colour == null ? "currentcolor" : colour, 1, false, s.color);
                 Img alpha = new Img(in.w, in.h);
                 for (int i = 0; i < alpha.p.length; i += 4) {
                     float al = lin.p[i + 3];
@@ -821,7 +820,7 @@ final class SvgFilter {
                 }
                 Point2D o = toPixel.deltaTransform(new Point2D.Double(dx, dy), null);
                 Img shadow = offset(blur(alpha, sd * k[0], sd * k[1]), o.getX(), o.getY());
-                return srgbInPlace(composite(lin, shadow, "over", 0, 0, 0, 0));
+                return composite(lin, shadow, "over", 0, 0, 0, 0);
             }
             default: {
                 float amount = a.isEmpty() ? (st.kind().equals("hue-rotate") ? 0 : 1) : amountOf(a.get(0), st.kind());
@@ -880,10 +879,21 @@ final class SvgFilter {
         return Math.max(0, SvgDraw.number(t, 1));
     }
 
+    private static int pixels(double v, int size) {
+        if (v != v) {
+            return 0;
+        }
+        long bound = (long) size + 1;
+        return (int) Math.max(-bound, Math.min(bound, Math.round(v)));
+    }
+
     private static float angle(String v) {
         String t = v.strip().toLowerCase(Locale.ROOT);
         if (t.endsWith("deg")) {
             return SvgDraw.number(t.substring(0, t.length() - 3), 0);
+        }
+        if (t.endsWith("grad")) {
+            return SvgDraw.number(t.substring(0, t.length() - 4), 0) * 0.9f;
         }
         if (t.endsWith("rad")) {
             return (float) Math.toDegrees(SvgDraw.number(t.substring(0, t.length() - 3), 0));
@@ -1070,8 +1080,8 @@ final class SvgFilter {
 
     static Img offset(Img in, double dx, double dy) {
         Img out = new Img(in.w, in.h);
-        int ox = (int) Math.round(dx);
-        int oy = (int) Math.round(dy);
+        int ox = pixels(dx, in.w);
+        int oy = pixels(dy, in.h);
         for (int y = 0; y < in.h; y++) {
             int sy = y - oy;
             if (sy < 0 || sy >= in.h) {

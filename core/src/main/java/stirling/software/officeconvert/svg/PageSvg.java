@@ -818,8 +818,10 @@ final class PageSvg extends PDFGraphicsStreamEngine {
     private void nested(Nested content) throws IOException {
         GeneralPath saved = new GeneralPath(path);
         int savedRule = clipRule;
+        GeneralPath savedTextClip = textClip;
         path.reset();
         clipRule = -1;
+        textClip = null;
         try {
             content.run();
         } finally {
@@ -827,6 +829,7 @@ final class PageSvg extends PDFGraphicsStreamEngine {
             path.append(saved, false);
             path.setWindingRule(saved.getWindingRule());
             clipRule = savedRule;
+            textClip = savedTextClip;
         }
     }
 
@@ -1225,6 +1228,17 @@ final class PageSvg extends PDFGraphicsStreamEngine {
             }
         }
         if (enc == null) {
+            if (!stencil && image instanceof PDImageXObject masked && masked.getSoftMask() != null) {
+                PDImageXObject sm = masked.getSoftMask();
+                long composite = (long) Math.max(w, sm.getWidth()) * Math.max(h, sm.getHeight());
+                long extra = composite - (long) w * h;
+                if (extra > 0) {
+                    if (imagePixels + extra > MAX_PAGE_IMAGE_PIXELS) {
+                        return null;
+                    }
+                    imagePixels += extra;
+                }
+            }
             BufferedImage img;
             if (stencil) {
                 img = fitted.getStencilImage(new Color(fill));

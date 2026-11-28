@@ -70,6 +70,7 @@ public final class PdfToSvg {
             int[] range = PdfFiles.pageRange(doc.getNumberOfPages(), options.firstPage(), options.lastPage());
             String name = target.getFileName().toString();
             if (name.toLowerCase(Locale.ROOT).endsWith(".zip")) {
+                refuseUnwritable(options, target);
                 return PdfFiles.writeThenMove(target, ".office-convert-", part -> {
                     try (OutputStream os = new BufferedOutputStream(Files.newOutputStream(part), 1 << 16)) {
                         return writeZip(doc, os, options);
@@ -77,6 +78,7 @@ public final class PdfToSvg {
                 });
             }
             if (range[0] == range[1]) {
+                refuseUnwritable(options, target);
                 return PdfFiles.writeThenMove(target, ".office-convert-", part -> {
                     try (OutputStream os = new BufferedOutputStream(Files.newOutputStream(part), 1 << 16)) {
                         return writePage(doc, range[0], os, options);
@@ -88,10 +90,7 @@ public final class PdfToSvg {
             List<Path> files = new ArrayList<>();
             for (int i = range[0]; i <= range[1]; i++) {
                 Path page = target.resolveSibling(stem + "-" + (i + 1) + ".svg");
-                if (options.writable() != null && !options.writable().test(page)) {
-                    throw new FileAlreadyExistsException(page.toString(), null,
-                            "already exists or is an input; give --overwrite to replace an output");
-                }
+                refuseUnwritable(options, page);
                 files.add(page);
             }
             Result total = new Result(0, 0, 0, 0);
@@ -111,6 +110,13 @@ public final class PdfToSvg {
                 pages.close();
             }
             return total;
+        }
+    }
+
+    private static void refuseUnwritable(Options options, Path file) throws FileAlreadyExistsException {
+        if (options.writable() != null && !options.writable().test(file)) {
+            throw new FileAlreadyExistsException(file.toString(), null,
+                    "already exists or is an input; give --overwrite to replace an output");
         }
     }
 

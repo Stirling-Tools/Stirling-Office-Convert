@@ -282,6 +282,21 @@ class PdfToSvgTest {
     }
 
     @Test
+    void aRefusedSingleTargetIsLeftAlone() throws Exception {
+        Path pdf = dir.resolve("one.pdf");
+        try (PDDocument doc = drawing(1)) {
+            doc.save(pdf.toFile());
+        }
+        Files.writeString(dir.resolve("one.svg"), "mine");
+        Files.writeString(dir.resolve("one.zip"), "mine");
+        PdfToSvg.Options options = PdfToSvg.Options.defaults().writable(p -> !Files.exists(p));
+        assertThrows(FileAlreadyExistsException.class, () -> PdfToSvg.convert(pdf, dir.resolve("one.svg"), options));
+        assertThrows(FileAlreadyExistsException.class, () -> PdfToSvg.convert(pdf, dir.resolve("one.zip"), options));
+        assertEquals("mine", Files.readString(dir.resolve("one.svg")));
+        assertEquals("mine", Files.readString(dir.resolve("one.zip")));
+    }
+
+    @Test
     void anExistingPageFileStopsTheRunBeforeAnyPageIsWritten() throws Exception {
         Path pdf = dir.resolve("in.pdf");
         try (PDDocument doc = drawing(2)) {

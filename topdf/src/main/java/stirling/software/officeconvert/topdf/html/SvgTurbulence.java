@@ -81,13 +81,13 @@ final class SvgTurbulence {
 
     private double noise(int channel, double vx, double vy, int[] stitch) {
         double t = vx + N;
-        int bx0 = ((int) t) & BM;
-        int bx1 = (bx0 + 1) & BM;
+        int bx0 = (int) t;
+        int bx1 = bx0 + 1;
         double rx0 = t - (int) t;
         double rx1 = rx0 - 1;
         t = vy + N;
-        int by0 = ((int) t) & BM;
-        int by1 = (by0 + 1) & BM;
+        int by0 = (int) t;
+        int by1 = by0 + 1;
         double ry0 = t - (int) t;
         double ry1 = ry0 - 1;
         if (stitch != null) {
