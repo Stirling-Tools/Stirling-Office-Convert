@@ -58,7 +58,7 @@ final class XpsOps {
 
     private final float[] boxRgb = new float[3];
 
-    private static final int SLOTS = 2 * MAX_BOXES;
+    private int slots;
 
     private double[] slotX0;
 
@@ -148,11 +148,15 @@ final class XpsOps {
         if (boxCount == 0) {
             System.arraycopy(rgb, 0, boxRgb, 0, 3);
         }
-        if (slotBox == null) {
-            slotX0 = new double[SLOTS];
-            slotX1 = new double[SLOTS];
-            slotBox = new int[SLOTS];
-            slotGeneration = new int[SLOTS];
+        if (boxCount > 0) {
+            int last = 4 * (boxCount - 1);
+            if (boxes[last] == x0 && boxes[last + 2] == x1 && boxes[last + 3] == y0) {
+                boxes[last + 3] = y1;
+                return;
+            }
+        }
+        if (2 * (boxCount + 1) > slots) {
+            grow();
         }
         int slot = slot(x0, x1);
         if (slotGeneration[slot] == generation) {
@@ -182,6 +186,23 @@ final class XpsOps {
         boxCount++;
     }
 
+    private void grow() {
+        slots = Math.max(64, 2 * slots);
+        slotX0 = new double[slots];
+        slotX1 = new double[slots];
+        slotBox = new int[slots];
+        slotGeneration = new int[slots];
+        for (int b = 0; b < boxCount; b++) {
+            double x0 = boxes[4 * b];
+            double x1 = boxes[4 * b + 2];
+            int s = slot(x0, x1);
+            slotX0[s] = x0;
+            slotX1[s] = x1;
+            slotBox[s] = b;
+            slotGeneration[s] = generation;
+        }
+    }
+
     private int slot(double x0, double x1) {
         long h = Double.doubleToLongBits(x0) * 31 + Double.doubleToLongBits(x1);
         h ^= h >>> 33;
@@ -189,9 +210,9 @@ final class XpsOps {
         h ^= h >>> 33;
         h *= 0xc4ceb9fe1a85ec53L;
         h ^= h >>> 33;
-        int s = (int) h & (SLOTS - 1);
+        int s = (int) h & (slots - 1);
         while (slotGeneration[s] == generation && (slotX0[s] != x0 || slotX1[s] != x1)) {
-            s = (s + 1) & (SLOTS - 1);
+            s = (s + 1) & (slots - 1);
         }
         return s;
     }

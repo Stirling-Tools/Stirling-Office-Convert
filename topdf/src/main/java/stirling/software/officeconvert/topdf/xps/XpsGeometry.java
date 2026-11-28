@@ -58,6 +58,101 @@ final class XpsGeometry {
         return fill.getCurrentPoint() == null && (!separate || stroke.getCurrentPoint() == null);
     }
 
+    static int rectangle(String data, double[] out) {
+        if (data.length() > 200) {
+            return -1;
+        }
+        Parser p = new Parser(data);
+        int n = 0;
+        int segments = 0;
+        char command = 0;
+        boolean closed = false;
+        double cx = 0;
+        double cy = 0;
+        try {
+            p.skipSpace();
+            if (!p.atEnd() && p.peek() == 'F') {
+                p.pos++;
+                p.number();
+            }
+            while (true) {
+                p.skipSpace();
+                if (p.atEnd()) {
+                    break;
+                }
+                char c = p.peek();
+                if (Character.isLetter(c)) {
+                    if (closed || c != 'M' && c != 'L' && c != 'H' && c != 'V' && c != 'Z'
+                            || segments == 0 && c != 'M') {
+                        return -1;
+                    }
+                    p.pos++;
+                    command = c;
+                    if (c == 'Z') {
+                        closed = true;
+                        segments++;
+                    }
+                    continue;
+                }
+                if (closed || command == 0 || command == 'Z') {
+                    return -1;
+                }
+                switch (command) {
+                    case 'M', 'L' -> {
+                        cx = p.number();
+                        cy = p.number();
+                        if (command == 'M') {
+                            if (segments > 0) {
+                                return -1;
+                            }
+                            command = 'L';
+                        }
+                    }
+                    case 'H' -> cx = p.number();
+                    default -> cy = p.number();
+                }
+                segments++;
+                if (n > 0 && out[2 * n - 2] == cx && out[2 * n - 1] == cy) {
+                    continue;
+                }
+                if (n == 6) {
+                    return -1;
+                }
+                out[2 * n] = cx;
+                out[2 * n + 1] = cy;
+                n++;
+            }
+        } catch (IOException | RuntimeException e) {
+            return -1;
+        }
+        if (!closed) {
+            return -1;
+        }
+        if (n == 5 && out[8] == out[0] && out[9] == out[1]) {
+            n = 4;
+        }
+        if (n != 4) {
+            return -1;
+        }
+        boolean horizontalFirst = out[1] == out[3] && out[2] == out[4] && out[5] == out[7] && out[6] == out[0];
+        boolean verticalFirst = out[0] == out[2] && out[3] == out[5] && out[4] == out[6] && out[7] == out[1];
+        if (!horizontalFirst && !verticalFirst) {
+            return -1;
+        }
+        double x0 = Math.min(out[0], out[4]);
+        double x1 = Math.max(out[0], out[4]);
+        double y0 = Math.min(out[1], out[5]);
+        double y1 = Math.max(out[1], out[5]);
+        if (!(x1 > x0) || !(y1 > y0) || !Double.isFinite(x1 - x0) || !Double.isFinite(y1 - y0)) {
+            return -1;
+        }
+        out[12] = x0;
+        out[13] = y0;
+        out[14] = x1;
+        out[15] = y1;
+        return segments;
+    }
+
     static XpsGeometry abbreviated(String data, Budget budget) throws IOException {
         Parser p = new Parser(data);
         boolean evenOdd = true;

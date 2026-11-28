@@ -501,6 +501,31 @@ class XpsToPdfTest {
     }
 
     @Test
+    void batchedRectanglesFollowTransformsWindingAndTiles() throws IOException {
+        String body = "<Path Fill='#00FF00' RenderTransform='1,0,0,1,0,400' Data='M 20,0 H 60 V 40 H 20 Z'/>"
+                + "<Path Fill='#000000' Data='F 1 M 100,400 L 200,400 200,500 100,500 Z'/>"
+                + "<Path Fill='#000000' Data='M 150,450 L 150,550 250,550 250,450 Z'/>"
+                + "<Path Data='M 300,400 H 400 V 500 H 300 Z'><Path.Fill><VisualBrush Viewbox='0,0,20,20'"
+                + " Viewport='300,400,20,20' ViewboxUnits='Absolute' ViewportUnits='Absolute' TileMode='Tile'>"
+                + "<VisualBrush.Visual><Canvas><Path Fill='#FF0000' Data='M 0,0 H 10 V 10 H 0 Z'/>"
+                + "<Path Fill='#FF0000' Data='M 0,10 H 10 V 20 H 0 Z'/></Canvas></VisualBrush.Visual>"
+                + "</VisualBrush></Path.Fill></Path>";
+        Path in = write("boxes2.xps", xps(List.of(page(body))));
+        Path out = dir.resolve("boxes2.pdf");
+        convert(in, out);
+        try (PDDocument pdf = Loader.loadPDF(out.toFile())) {
+            Color moved = pixel(pdf, 0, 40, 420);
+            assertTrue(moved.getGreen() > 200 && moved.getRed() < 60, moved.toString());
+            assertTrue(pixel(pdf, 0, 40, 20).getRed() > 200);
+            assertTrue(pixel(pdf, 0, 175, 475).getRed() < 60);
+            assertTrue(pixel(pdf, 0, 225, 525).getRed() < 60);
+            Color tile = pixel(pdf, 0, 345, 455);
+            assertTrue(tile.getRed() > 200 && tile.getGreen() < 60, tile.toString());
+            assertTrue(pixel(pdf, 0, 355, 455).getBlue() > 200);
+        }
+    }
+
+    @Test
     void sharpMitersFollowTheXpsLimitAndAreClippedBeyondIt() throws IOException {
         Path in = write("miters.xps", xps(List.of(page("<Path Stroke='#FF000000' StrokeThickness='10'"
                 + " Data='M 50,50 L 300,100 50,150'/><Path Stroke='#FF000000' StrokeThickness='10'"

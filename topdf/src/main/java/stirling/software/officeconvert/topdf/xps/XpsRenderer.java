@@ -782,6 +782,18 @@ final class XpsRenderer {
         if (fill == null && stroke == null && uri == null && name == null) {
             return;
         }
+        if (stroke == null && uri == null && name == null && opacity >= 1 && e.firstChild == null
+                && ctx.accumulators.isEmpty() && boxable(fill) && XpsXml.attr(e, "RenderTransform") == null
+                && XpsXml.attr(e, "Clip") == null && XpsXml.attr(e, "OpacityMask") == null) {
+            String data = XpsXml.attr(e, "Data");
+            int counted = data == null || XpsXml.staticResource(data) != null ? -1
+                    : XpsGeometry.rectangle(data, rectangle);
+            if (counted >= 0) {
+                spend.spend(counted);
+                ctx.ops.box(rectangle[12], rectangle[13], rectangle[14], rectangle[15], fill.color().rgb());
+                return;
+            }
+        }
         XpsGeometry g = geometry(e, "Data", scope);
         if (g == null || g.isEmpty()) {
             return;
@@ -854,6 +866,8 @@ final class XpsRenderer {
         }
     }
 
+    private final double[] rectangle = new double[16];
+
     private final double[] boxCoords = new double[6];
 
     private final double[] boxX = new double[5];
@@ -862,9 +876,13 @@ final class XpsRenderer {
 
     private final double[] boxFound = new double[4];
 
+    private boolean boxable(Brush fill) {
+        return fill != null && fill.kind().equals("SolidColorBrush") && fill.color().alpha() * fill.opacity() >= 1
+                && profiles.space(fill.color()) == null;
+    }
+
     private double[] box(Brush fill, XpsGeometry g) {
-        if (!fill.kind().equals("SolidColorBrush") || fill.color().alpha() * fill.opacity() < 1
-                || profiles.space(fill.color()) != null) {
+        if (!boxable(fill)) {
             return null;
         }
         double[] c = boxCoords;
