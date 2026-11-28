@@ -57,7 +57,7 @@ final class Pictures {
             }
             PDColorSpace cs = image.getColorSpace();
             boolean plain = cs instanceof PDDeviceRGB || cs instanceof PDDeviceGray
-                    || cs instanceof PDICCBased icc && (icc.getNumberOfComponents() == 3 || icc.getNumberOfComponents() == 1);
+                    || cs instanceof PDICCBased icc && icc.getNumberOfComponents() == 1;
             if (!plain || image.getBitsPerComponent() != 8) {
                 return null;
             }
