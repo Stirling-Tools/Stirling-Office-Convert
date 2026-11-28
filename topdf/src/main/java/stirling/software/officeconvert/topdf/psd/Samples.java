@@ -13,6 +13,30 @@ final class Samples {
             }
             return;
         }
+        if (n == 3) {
+            byte[] c0 = in[0];
+            byte[] c1 = in[1];
+            byte[] c2 = in[2];
+            for (int x = 0, k = 0; x < width; x++, k += 3) {
+                out[k] = (byte) (c0[x] ^ mask);
+                out[k + 1] = (byte) (c1[x] ^ mask);
+                out[k + 2] = (byte) (c2[x] ^ mask);
+            }
+            return;
+        }
+        if (n == 4) {
+            byte[] c0 = in[0];
+            byte[] c1 = in[1];
+            byte[] c2 = in[2];
+            byte[] c3 = in[3];
+            for (int x = 0, k = 0; x < width; x++, k += 4) {
+                out[k] = (byte) (c0[x] ^ mask);
+                out[k + 1] = (byte) (c1[x] ^ mask);
+                out[k + 2] = (byte) (c2[x] ^ mask);
+                out[k + 3] = (byte) (c3[x] ^ mask);
+            }
+            return;
+        }
         for (int i = 0; i < n; i++) {
             byte[] c = in[i];
             for (int x = 0, k = i; x < width; x++, k += n) {
