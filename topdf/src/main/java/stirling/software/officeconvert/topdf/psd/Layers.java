@@ -134,13 +134,19 @@ final class Layers {
 
     private boolean damaged;
 
+    private boolean failed;
+
     private Layers() {
         root.group = true;
         root.blend = Blend.PASS_THROUGH;
     }
 
     boolean damaged() {
-        return damaged;
+        return damaged || overKept;
+    }
+
+    boolean failed() {
+        return failed;
     }
 
     boolean drawable() {
@@ -181,6 +187,7 @@ final class Layers {
         } catch (IOException | RuntimeException e) {
             layers.root.children.clear();
             layers.count = 0;
+            layers.failed = true;
             layers.warnings.add("The PSD document's layers could not be read");
         }
         return layers;

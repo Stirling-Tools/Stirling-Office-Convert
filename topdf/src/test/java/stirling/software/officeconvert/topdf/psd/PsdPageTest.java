@@ -331,6 +331,33 @@ class PsdPageTest {
     }
 
     @Test
+    void damagedRowsOfALayerReachingBelowTheCanvasAreReportedAsLost() throws IOException {
+        PsdFixture f = new PsdFixture(2, 1);
+        f.hasMerged = false;
+        f.mode = PsdDocument.GRAY;
+        f.flat(255);
+        PsdFixture.Layer tall = new PsdFixture.Layer().rect(-1, 0, 2, 2).fill(0, 90);
+        tall.encoded.put(0, new byte[] {0, 0, 7});
+        f.layers.add(tall);
+        OfficeToPdf.Result r = convert(f, "tall.psd");
+        assertTrue(r.truncated());
+        assertTrue(r.warnings().stream().anyMatch(w -> w.contains("damaged")), r.warnings().toString());
+    }
+
+    @Test
+    void unreadableLayersWithoutAMergedPictureAreReportedAsLost() throws IOException {
+        PsdFixture f = new PsdFixture(2, 1);
+        f.hasMerged = false;
+        f.mode = PsdDocument.GRAY;
+        f.flat(255);
+        f.layerCount = 30000;
+        f.layers.add(new PsdFixture.Layer().rect(0, 0, 1, 2).fill(0, 90));
+        OfficeToPdf.Result r = convert(f, "unreadable.psd");
+        assertTrue(r.truncated());
+        assertTrue(r.warnings().stream().anyMatch(w -> w.contains("could not be read")), r.warnings().toString());
+    }
+
+    @Test
     void zipCompressedPictureDataIsRead() throws IOException {
         PsdFixture f = new PsdFixture(3, 2);
         f.compression = Rows.ZIP;

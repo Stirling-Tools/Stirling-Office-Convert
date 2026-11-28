@@ -70,7 +70,7 @@ public final class PsdPage {
                     : merged(src, doc, layers, pdf, warnings, omitted);
             lost = omitted[0] || compose && layers.damaged();
             if (!doc.realMerged && !compose) {
-                lost |= layers.count > 0;
+                lost |= layers.count > 0 || layers.failed();
                 warnings.add("The PSD document was saved without a merged picture and has no layers that can be"
                         + " drawn; the page may be blank. Save it with Maximize Compatibility on");
             }

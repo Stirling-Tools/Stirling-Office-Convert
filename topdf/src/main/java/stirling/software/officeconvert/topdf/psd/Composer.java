@@ -292,8 +292,8 @@ final class Composer {
             }
             rows.next(scratch);
             next++;
+            damaged |= rows.damaged;
             if (next >= bottom - top) {
-                damaged |= rows.damaged;
                 rows.close();
                 rows = null;
                 done = true;
