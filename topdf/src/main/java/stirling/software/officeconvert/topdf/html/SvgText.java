@@ -1247,7 +1247,7 @@ final class SvgText {
         boolean visible = !c.hidden;
         float fo = alpha * Css.opacity(st.get("fill-opacity"));
         float so = alpha * Css.opacity(st.get("stroke-opacity"));
-        boolean plain = fill.server() == null && (stroke.none() || sw <= 0);
+        boolean plain = fill.server() == null && (stroke.none() || sw <= 0) && !c.onPath;
         var canvas = draw.canvas;
         canvas.save();
         try {
