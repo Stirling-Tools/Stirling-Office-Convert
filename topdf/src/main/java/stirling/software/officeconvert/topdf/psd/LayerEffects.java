@@ -34,6 +34,12 @@ final class LayerEffects {
 
     byte[] lowlight;
 
+    byte[] glow;
+
+    byte[] innerShadow;
+
+    byte[] innerGlow;
+
     private LayerEffects(int left, int top, int width, int height, byte[] stroke, byte[] shadow, boolean strokeUnder) {
         this.left = left;
         this.top = top;
@@ -44,8 +50,11 @@ final class LayerEffects {
         this.strokeUnder = strokeUnder;
     }
 
-    static int extent(Stroke stroke, Shadow shadow, Bevel bevel) {
+    static int extent(Stroke stroke, Shadow shadow, Bevel bevel, Shadow glow) {
         double e = 2;
+        if (glow != null) {
+            e = Math.max(e, glow.size() * 1.5 + 2);
+        }
         if (bevel != null) {
             e = Math.max(e, bevel.size() + 2);
         }
@@ -59,7 +68,7 @@ final class LayerEffects {
     }
 
     static LayerEffects build(float[] alpha, int left, int top, int width, int height, Stroke stroke, Shadow shadow,
-            Bevel bevel, double globalAngle, boolean opaque) {
+            Bevel bevel, Shadow glow, Shadow innerShadow, Shadow innerGlow, double globalAngle, boolean opaque) {
         byte[] s = null;
         boolean under = false;
         if (stroke != null && stroke.size() > 0) {
@@ -93,43 +102,70 @@ final class LayerEffects {
         }
         byte[] sh = null;
         if (shadow != null) {
-            double angle = Math.toRadians(shadow.global() ? globalAngle : shadow.angle());
-            int dx = (int) Math.floor(-Math.cos(angle) * shadow.distance() + 0.5 + 1e-9);
-            int dy = (int) Math.floor(Math.sin(angle) * shadow.distance() + 0.5 + 1e-9);
-            float spread = Math.max(0, Math.min(1, shadow.spread()));
-            float grow = shadow.size() * spread;
-            float[] grown = alpha;
-            if (spread > 0) {
-                float[] solid = new float[alpha.length];
-                for (int i = 0; i < alpha.length; i++) {
-                    solid[i] = alpha[i] > 0.5f / 255 ? 1 : 0;
-                }
-                grown = solid;
-                if (grow > 0) {
-                    float[] d = distance(solid, width, height, true);
-                    grown = new float[alpha.length];
-                    for (int i = 0; i < d.length; i++) {
-                        grown[i] = solid[i] > 0 ? 1 : clamp(grow + 1 - d[i]);
-                    }
-                }
-            }
-            float[] base = new float[width * height];
-            for (int y = 0; y < height; y++) {
-                for (int x = 0; x < width; x++) {
-                    base[y * width + x] = sample(grown, width, height, x - dx, y - dy);
-                }
-            }
-            gauss(base, width, height, shadow.size() * (1 - spread) * 0.4);
-            sh = new byte[width * height];
-            for (int i = 0; i < sh.length; i++) {
-                sh[i] = (byte) Math.round(clamp(base[i]) * 255);
-            }
+            sh = bytes(soft(alpha, width, height, shadow, globalAngle));
         }
         LayerEffects fx = new LayerEffects(left, top, width, height, s, sh, under);
         if (bevel != null && bevel.size() > 0) {
             fx.bevel(alpha, bevel, globalAngle);
         }
+        if (glow != null) {
+            fx.glow = bytes(soft(alpha, width, height, glow, globalAngle));
+        }
+        if (innerShadow != null) {
+            float[] shifted = soft(alpha, width, height, innerShadow, globalAngle);
+            for (int i = 0; i < shifted.length; i++) {
+                shifted[i] = alpha[i] * (1 - clamp(shifted[i]));
+            }
+            fx.innerShadow = bytes(shifted);
+        }
+        if (innerGlow != null) {
+            float[] spread = soft(alpha, width, height, innerGlow, globalAngle);
+            for (int i = 0; i < spread.length; i++) {
+                float b = clamp(spread[i]);
+                spread[i] = alpha[i] * clamp(innerGlow.conceal() ? 2 * (1 - b) : 2 * b - 1);
+            }
+            fx.innerGlow = bytes(spread);
+        }
         return fx;
+    }
+
+    private static byte[] bytes(float[] v) {
+        byte[] out = new byte[v.length];
+        for (int i = 0; i < out.length; i++) {
+            out[i] = (byte) Math.round(clamp(v[i]) * 255);
+        }
+        return out;
+    }
+
+    private static float[] soft(float[] alpha, int width, int height, Shadow shadow, double globalAngle) {
+        double angle = Math.toRadians(shadow.global() ? globalAngle : shadow.angle());
+        int dx = (int) Math.floor(-Math.cos(angle) * shadow.distance() + 0.5 + 1e-9);
+        int dy = (int) Math.floor(Math.sin(angle) * shadow.distance() + 0.5 + 1e-9);
+        float spread = Math.max(0, Math.min(1, shadow.spread()));
+        float grow = shadow.size() * spread;
+        float[] grown = alpha;
+        if (spread > 0) {
+            float[] solid = new float[alpha.length];
+            for (int i = 0; i < alpha.length; i++) {
+                solid[i] = alpha[i] > 0.5f / 255 ? 1 : 0;
+            }
+            grown = solid;
+            if (grow > 0) {
+                float[] d = distance(solid, width, height, true);
+                grown = new float[alpha.length];
+                for (int i = 0; i < d.length; i++) {
+                    grown[i] = solid[i] > 0 ? 1 : clamp(grow + 1 - d[i]);
+                }
+            }
+        }
+        float[] base = new float[width * height];
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                base[y * width + x] = sample(grown, width, height, x - dx, y - dy);
+            }
+        }
+        gauss(base, width, height, shadow.size() * (1 - spread) * 0.4);
+        return base;
     }
 
     private void bevel(float[] alpha, Bevel bevel, double globalAngle) {

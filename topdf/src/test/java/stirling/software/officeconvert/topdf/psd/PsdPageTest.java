@@ -605,6 +605,32 @@ class PsdPageTest {
     }
 
     @Test
+    void anOuterGlowShowsAroundTheLayerAndAnInnerShadowInsideItsLitEdge() throws IOException {
+        PsdFixture f = new PsdFixture(16, 16);
+        f.hasMerged = false;
+        f.flat(255).flat(255).flat(255);
+        Desc glow = new Desc("OrGl").bool("enab", true).bool("present", true).en("Md  ", "BlnM", "Nrml")
+                .obj("Clr ", rgb(0, 0, 0)).unit("Opct", "#Prc", 100).unit("blur", "#Pxl", 3).unit("Ckmt", "#Prc", 50);
+        Desc inner = new Desc("IrSh").bool("enab", true).bool("present", true).en("Md  ", "BlnM", "Nrml")
+                .obj("Clr ", rgb(0, 0, 0)).unit("Opct", "#Prc", 100).bool("uglg", false).unit("lagl", "#Ang", 90)
+                .unit("Dstn", "#Pxl", 3).unit("blur", "#Pxl", 0).unit("Ckmt", "#Prc", 0);
+        byte[] d = new Desc("null").bool("masterFXSwitch", true).obj("OrGl", glow).obj("IrSh", inner).bytes(true);
+        byte[] fx = new byte[d.length + 4];
+        System.arraycopy(d, 0, fx, 4, d.length);
+        f.layers.add(new PsdFixture.Layer().rect(4, 4, 12, 12).fill(-1, 255).fill(0, 200).fill(1, 200).fill(2, 200)
+                .block("lfx2", fx));
+        OfficeToPdf.Result r = convert(f, "glow.psd");
+        assertFalse(r.warnings().stream().anyMatch(w -> w.contains("glow") || w.contains("inner shadow")),
+                r.warnings().toString());
+        try (PDDocument pdf = open("glow.psd")) {
+            byte[] s = samples(image(pdf.getPage(0)));
+            assertTrue((s[(8 * 16 + 3) * 3] & 0xFF) < 200, "glow beside the layer");
+            assertEquals(255, s[0] & 0xFF);
+            assertTrue((s[(4 * 16 + 8) * 3] & 0xFF) < (s[(10 * 16 + 8) * 3] & 0xFF), "shadow at the top inside edge");
+        }
+    }
+
+    @Test
     void aPatternTooLargeToHoldIsLeftOutWithAWarning() throws IOException {
         PsdFixture f = new PsdFixture(2, 1);
         f.hasMerged = false;

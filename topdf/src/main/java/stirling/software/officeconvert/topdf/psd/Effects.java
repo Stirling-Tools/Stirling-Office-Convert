@@ -26,7 +26,8 @@ final class Effects {
 
     record Overlay(float[] color, float opacity, int blend, Descriptor gradient, Descriptor pattern) {}
 
-    record Found(Overlay overlay, LayerEffects.Stroke stroke, LayerEffects.Shadow shadow, LayerEffects.Bevel bevel) {}
+    record Found(Overlay overlay, LayerEffects.Stroke stroke, LayerEffects.Shadow shadow, LayerEffects.Bevel bevel,
+            LayerEffects.Shadow glow, LayerEffects.Shadow innerShadow, LayerEffects.Shadow innerGlow) {}
 
     static Found scan(Source.Cursor c, long len, Set<String> into) throws IOException {
         byte[] b = new byte[(int) Math.min(len, MAX_SCAN)];
@@ -47,6 +48,9 @@ final class Effects {
         LayerEffects.Stroke stroke = null;
         LayerEffects.Shadow shadow = null;
         LayerEffects.Bevel bevel = null;
+        LayerEffects.Shadow glow = null;
+        LayerEffects.Shadow innerShadow = null;
+        LayerEffects.Shadow innerGlow = null;
         for (Map.Entry<String, String> e : NAMES.entrySet()) {
             Object v = d.get(e.getKey());
             List<Object> all = new ArrayList<>();
@@ -92,6 +96,22 @@ final class Effects {
                             bounded(fx.number("Ckmt", 0), 100, 0) / 100, fx.flag("layerConceals", true));
                     continue;
                 }
+                if (e.getValue().equals("outer glow") && glow == null && color != null && fx.object("Grad") == null) {
+                    glow = new LayerEffects.Shadow(color, opacity, mode, 0, false, 0, bounded(fx.number("blur", 5), 250, 5),
+                            bounded(fx.number("Ckmt", 0), 100, 0) / 100, true);
+                    continue;
+                }
+                if (e.getValue().equals("inner shadow") && innerShadow == null && color != null) {
+                    innerShadow = new LayerEffects.Shadow(color, opacity, mode, fx.number("lagl", 120), fx.flag("uglg", true),
+                            bounded(fx.number("Dstn", 5), 30000, 5), bounded(fx.number("blur", 5), 250, 5),
+                            bounded(fx.number("Ckmt", 0), 100, 0) / 100, true);
+                    continue;
+                }
+                if (e.getValue().equals("inner glow") && innerGlow == null && color != null && fx.object("Grad") == null) {
+                    innerGlow = new LayerEffects.Shadow(color, opacity, mode, 0, false, 0, bounded(fx.number("blur", 5), 250, 5),
+                            bounded(fx.number("Ckmt", 0), 100, 0) / 100, !"SrcC".equals(fx.enumValue("glwS")));
+                    continue;
+                }
                 if (e.getValue().equals("bevel and emboss") && bevel == null) {
                     bevel = bevel(fx);
                     if (bevel != null) {
@@ -101,7 +121,7 @@ final class Effects {
                 into.add(e.getValue());
             }
         }
-        return new Found(overlay, stroke, shadow, bevel);
+        return new Found(overlay, stroke, shadow, bevel, glow, innerShadow, innerGlow);
     }
 
     private static LayerEffects.Bevel bevel(Descriptor fx) {

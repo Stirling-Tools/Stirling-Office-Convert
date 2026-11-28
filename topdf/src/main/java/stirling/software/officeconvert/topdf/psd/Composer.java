@@ -872,6 +872,7 @@ final class Composer {
                     drawEffect(dest, fx, fx.shadow, l.shadow.color(), l.shadow.opacity(), l.shadow.blend(), fxOpacity,
                             null);
                 }
+                drawGlow(dest, base, fxOpacity, null);
                 if (fx != null && fx.stroke != null && fx.strokeUnder) {
                     drawStroke(dest, base, fxOpacity);
                 }
@@ -906,6 +907,7 @@ final class Composer {
                 drawEffect(dest, fx, fx.shadow, l.shadow.color(), l.shadow.opacity(), l.shadow.blend(), fxOpacity,
                         l.shadow.conceal() && !(l.shadow.spread() > 0) ? shape : null);
             }
+            drawGlow(dest, base, fxOpacity, null);
             if (fx != null && fx.stroke != null && fx.strokeUnder) {
                 drawStroke(dest, base, fxOpacity);
             }
@@ -934,6 +936,7 @@ final class Composer {
             drawEffect(dest, fx, fx.shadow, l.shadow.color(), l.shadow.opacity(), l.shadow.blend(), fxOpacity,
                     l.shadow.conceal() && !(l.shadow.spread() > 0) ? shape : null);
         }
+        drawGlow(dest, base, fxOpacity, null);
         if (fx != null && fx.stroke != null && fx.strokeUnder) {
             drawStroke(dest, base, fxOpacity);
         }
@@ -986,6 +989,7 @@ final class Composer {
                     l.shadow.conceal() && !(l.shadow.spread() > 0) ? own : null, shape);
         }
         releaseShape(own);
+        drawGlow(dest, c, opacity, shape);
         if (fx != null && fx.stroke != null && fx.strokeUnder) {
             drawStroke(dest, c, opacity, shape);
         }
@@ -1363,11 +1367,12 @@ final class Composer {
             }
         }
         if (!(node instanceof Pixels || node instanceof Group) || node == top || node.layer.hidden
-                || node.layer.stroke == null && node.layer.shadow == null && node.layer.bevel == null) {
+                || node.layer.stroke == null && node.layer.shadow == null && node.layer.bevel == null
+                        && node.layer.glow == null && node.layer.innerShadow == null && node.layer.innerGlow == null) {
             return;
         }
         Layers.Layer l = node.layer;
-        int e = LayerEffects.extent(l.stroke, l.shadow, l.bevel);
+        int e = LayerEffects.extent(l.stroke, l.shadow, l.bevel, l.glow);
         int x0 = 0;
         int y0 = 0;
         int x1 = width;
@@ -1407,9 +1412,21 @@ final class Composer {
             if (l.bevel != null) {
                 effects.add("bevel and emboss");
             }
+            if (l.glow != null) {
+                effects.add("outer glow");
+            }
+            if (l.innerShadow != null) {
+                effects.add("inner shadow");
+            }
+            if (l.innerGlow != null) {
+                effects.add("inner glow");
+            }
             l.stroke = null;
             l.shadow = null;
             l.bevel = null;
+            l.glow = null;
+            l.innerShadow = null;
+            l.innerGlow = null;
             return;
         }
         budget[0] -= area;
@@ -1443,7 +1460,8 @@ final class Composer {
             y = 0;
             close(copy);
         }
-        node.fx = LayerEffects.build(alpha, x0, y0, w, h, l.stroke, l.shadow, l.bevel, doc.globalAngle,
+        node.fx = LayerEffects.build(alpha, x0, y0, w, h, l.stroke, l.shadow, l.bevel, l.glow, l.innerShadow,
+                l.innerGlow, doc.globalAngle,
                 l.fillOpacity >= 255);
     }
 
@@ -1552,9 +1570,26 @@ final class Composer {
         return true;
     }
 
+    private void drawGlow(float[] dest, Node node, float layerOpacity, float[] clip) {
+        LayerEffects fx = node.fx;
+        LayerEffects.Shadow g = node.layer.glow;
+        if (fx != null && g != null && fx.glow != null) {
+            drawEffect(dest, fx, fx.glow, g.color(), g.opacity(), g.blend(), layerOpacity, null, clip);
+        }
+    }
+
     private void drawBevel(float[] dest, Node node, float layerOpacity, float[] clip) {
         LayerEffects fx = node.fx;
-        LayerEffects.Bevel b = node.layer.bevel;
+        Layers.Layer l = node.layer;
+        if (fx != null && l.innerShadow != null && fx.innerShadow != null) {
+            drawEffect(dest, fx, fx.innerShadow, l.innerShadow.color(), l.innerShadow.opacity(), l.innerShadow.blend(),
+                    layerOpacity, null, clip);
+        }
+        if (fx != null && l.innerGlow != null && fx.innerGlow != null) {
+            drawEffect(dest, fx, fx.innerGlow, l.innerGlow.color(), l.innerGlow.opacity(), l.innerGlow.blend(),
+                    layerOpacity, null, clip);
+        }
+        LayerEffects.Bevel b = l.bevel;
         if (fx == null || b == null || fx.highlight == null) {
             return;
         }

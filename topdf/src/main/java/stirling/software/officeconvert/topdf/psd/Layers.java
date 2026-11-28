@@ -85,6 +85,9 @@ final class Layers {
         LayerEffects.Stroke stroke;
         LayerEffects.Shadow shadow;
         LayerEffects.Bevel bevel;
+        LayerEffects.Shadow glow;
+        LayerEffects.Shadow innerShadow;
+        LayerEffects.Shadow innerGlow;
         float[] solid;
         boolean vectorMask;
         int vectorDensity = 255;
@@ -318,6 +321,9 @@ final class Layers {
                 g.stroke = l.stroke;
                 g.shadow = l.shadow;
                 g.bevel = l.bevel;
+                g.glow = l.glow;
+                g.innerShadow = l.innerShadow;
+                g.innerGlow = l.innerGlow;
                 g.knockout = l.knockout;
                 g.blendClipped = l.blendClipped;
                 g.artboard = l.artboard;
@@ -499,11 +505,15 @@ final class Layers {
             l.modernEffects = true;
             Effects.Found found = Effects.scan(c, len, l.effects);
             if (found != null) {
-                effects |= found.stroke() != null || found.shadow() != null || found.bevel() != null;
+                effects |= found.stroke() != null || found.shadow() != null || found.bevel() != null
+                        || found.glow() != null || found.innerShadow() != null || found.innerGlow() != null;
                 l.overlay = found.overlay();
                 l.stroke = found.stroke();
                 l.shadow = found.shadow();
                 l.bevel = found.bevel();
+                l.glow = found.glow();
+                l.innerShadow = found.innerShadow();
+                l.innerGlow = found.innerGlow();
             }
         } else if (key == tag("lrFX")) {
             Effects.legacy(c, len, l.legacyEffects);
