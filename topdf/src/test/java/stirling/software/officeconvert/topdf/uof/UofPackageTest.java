@@ -233,6 +233,21 @@ class UofPackageTest {
     }
 
     @Test
+    void tablesWithoutWidthsShareTheTextWidthOfTheirSectionOrCell() throws IOException {
+        String inner = "<字:文字表><字:行><字:单元格><字:段落>" + run("A", "") + "</字:段落></字:单元格><字:单元格><字:段落>"
+                + run("B", "") + "</字:段落></字:单元格></字:行></字:文字表>";
+        String xml = HEAD + "vnd.uof.text\"><uof:文字处理><字:主体><字:文字表><字:行><字:单元格>" + inner
+                + "</字:单元格><字:单元格><字:段落>" + run("C", "") + "</字:段落></字:单元格></字:行></字:文字表>"
+                + "<字:分节><字:节属性><字:分栏 字:栏数=\"2\"/></字:节属性></字:分节><字:文字表><字:行><字:单元格>"
+                + "<字:段落>" + run("D", "") + "</字:段落></字:单元格></字:行></字:文字表></字:主体></uof:文字处理>"
+                + "</uof:UOF>";
+        String doc = entry(rewrite("widths.uot", xml, UofPackage.Kind.TEXT), "word/document.xml");
+        assertTrue(doc.contains("<w:gridCol w:w=\"1970\"/><w:gridCol w:w=\"1970\"/></w:tblGrid>"), doc);
+        assertTrue(doc.contains("<w:gridCol w:w=\"877\"/><w:gridCol w:w=\"877\"/></w:tblGrid>"), doc);
+        assertTrue(doc.contains("<w:gridCol w:w=\"8306\"/></w:tblGrid>"), doc);
+    }
+
+    @Test
     void stylesWhoseNamesSanitiseAlikeKeepApartIds() throws IOException {
         String xml = HEAD + "vnd.uof.text\"><uof:式样集><uof:段落式样 字:标识符=\"Heading.A\"/><uof:段落式样"
                 + " 字:标识符=\"Heading_A\" 字:基式样引用=\"Heading.A\"/></uof:式样集><uof:文字处理><字:主体><字:段落>"

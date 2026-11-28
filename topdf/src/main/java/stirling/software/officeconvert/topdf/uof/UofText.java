@@ -64,6 +64,8 @@ final class UofText {
 
     private boolean evenHeaders;
 
+    private long textWidth = 8306;
+
     private UofText(Element root, UofParts parts) {
         this.root = root;
         this.parts = parts;
@@ -108,10 +110,19 @@ final class UofText {
         List<Element> items = Uof.kids(body);
         boolean leading = !items.isEmpty() && Uof.name(items.get(0)).equals("分节");
         Element section = leading ? items.get(0) : null;
+        textWidth = textWidth(section);
         int count = items.size();
+        int ends = -1;
         for (int i = leading ? 1 : 0; i < count; i++) {
             Element e = items.get(i);
             OfficeZip.checkNotInterrupted();
+            if (!leading && ends < i) {
+                ends = i;
+                while (ends < count && !Uof.name(items.get(ends)).equals("分节")) {
+                    ends++;
+                }
+                textWidth = textWidth(ends < count ? items.get(ends) : null);
+            }
             switch (Uof.name(e)) {
                 case "段落" -> paragraph(doc, e, null, 0);
                 case "文字表" -> table(doc, e, 0);
@@ -119,6 +130,7 @@ final class UofText {
                     if (leading) {
                         doc.append("<w:p><w:pPr>").append(sectPr(section)).append("</w:pPr></w:p>");
                         section = e;
+                        textWidth = textWidth(section);
                     } else {
                         doc.append("<w:p><w:pPr>").append(sectPr(e)).append("</w:pPr></w:p>");
                         section = null;
@@ -165,24 +177,10 @@ final class UofText {
                         .append(" w:type=\"").append(type).append("\" r:id=\"").append(rel).append("\"/>");
             }
         }
-        long w = 11906;
-        long h = 16838;
-        Element paper = Uof.kid(p, "纸张");
-        if (paper != null) {
-            long pw = units.twips(Uof.attr(paper, "宽度"));
-            long ph = units.twips(Uof.attr(paper, "高度"));
-            if (UofUnits.known(pw) && UofUnits.known(ph) && pw > 1000 && ph > 1000 && pw < 200_000 && ph < 200_000) {
-                w = pw;
-                h = ph;
-            }
-        }
-        String orientation = Uof.text(Uof.kid(p, "纸张方向")).strip();
-        boolean landscape = orientation.isEmpty() ? w > h : orientation.equalsIgnoreCase("landscape");
-        if (landscape != w > h) {
-            long t = w;
-            w = h;
-            h = t;
-        }
+        long[] size = paper(p);
+        long w = size[0];
+        long h = size[1];
+        boolean landscape = size[2] != 0;
         b.append("<w:pgSz w:w=\"").append(w).append("\" w:h=\"").append(h).append('"');
         if (landscape) {
             b.append(" w:orient=\"landscape\"");
@@ -211,6 +209,32 @@ final class UofText {
         }
         b.append("</w:sectPr>");
         return b.toString();
+    }
+
+    private long[] paper(Element p) {
+        long w = 11906;
+        long h = 16838;
+        Element paper = Uof.kid(p, "纸张");
+        if (paper != null) {
+            long pw = units.twips(Uof.attr(paper, "宽度"));
+            long ph = units.twips(Uof.attr(paper, "高度"));
+            if (UofUnits.known(pw) && UofUnits.known(ph) && pw > 1000 && ph > 1000 && pw < 200_000 && ph < 200_000) {
+                w = pw;
+                h = ph;
+            }
+        }
+        String orientation = Uof.text(Uof.kid(p, "纸张方向")).strip();
+        boolean landscape = orientation.isEmpty() ? w > h : orientation.equalsIgnoreCase("landscape");
+        int turned = landscape ? 1 : 0;
+        return landscape != w > h ? new long[] {h, w, turned} : new long[] {w, h, turned};
+    }
+
+    private long textWidth(Element section) {
+        Element p = section == null ? null : Uof.kid(section, "节属性");
+        Element m = Uof.kid(p, "页边距");
+        long width = Math.max(1440, paper(p)[0] - margin(m, "左", 1800) - margin(m, "右", 1800));
+        double c = Uof.number(Uof.attr(Uof.kid(p, "分栏"), "栏数"));
+        return c >= 2 && c <= 12 ? Math.max(720, (width - 425 * ((int) c - 1)) / (int) c) : width;
     }
 
     private long margin(Element m, String side, long fallback) {
@@ -761,7 +785,7 @@ final class UofText {
         List<Element> rows = Uof.kids(t, "行");
         int columns = Math.max(grid.size(), columns(rows));
         columns = Math.clamp(columns, 1, 64);
-        long total = 9000;
+        long total = textWidth;
         long known = 0;
         int unknown = 0;
         for (int i = 0; i < columns; i++) {
@@ -876,15 +900,25 @@ final class UofText {
                 }
                 b.append("</w:tcPr>");
                 int before = b.length();
-                for (Element k : Uof.kids(c)) {
-                    switch (Uof.name(k)) {
-                        case "段落" -> paragraph(b, k, null, depth + 1);
-                        case "文字表" -> {
-                            table(b, k, depth + 1);
-                            b.append("<w:p/>");
+                long outer = textWidth;
+                long inner = 0;
+                for (int i = col; i < col + span && i < columns; i++) {
+                    inner += widths[i];
+                }
+                textWidth = Math.max(720, inner - 216);
+                try {
+                    for (Element k : Uof.kids(c)) {
+                        switch (Uof.name(k)) {
+                            case "段落" -> paragraph(b, k, null, depth + 1);
+                            case "文字表" -> {
+                                table(b, k, depth + 1);
+                                b.append("<w:p/>");
+                            }
+                            default -> {}
                         }
-                        default -> {}
                     }
+                } finally {
+                    textWidth = outer;
                 }
                 if (b.length() == before) {
                     b.append("<w:p/>");
