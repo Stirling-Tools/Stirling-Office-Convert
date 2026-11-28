@@ -925,6 +925,17 @@ class HtmlLayoutTest {
     }
 
     @Test
+    void theAltTextOfAPictureThatCannotLoadWidensItsColumn() throws IOException {
+        Laid l = lay("""
+                <!doctype html><html><body><table width="100%"><tr>
+                <td><img src="http://example.invalid/photo.gif" alt="Sylvia Carr"></td>
+                <td>Security experts have discovered two new vulnerabilities in Internet Explorer and Outlook that
+                leave your system open to attack, so read on to see what you should do about them.</td>
+                </tr></table></body></html>""");
+        assertTrue(l.word("Carr]").top() - l.word("[Sylvia").top() < 20, l.words().toString());
+    }
+
+    @Test
     void thePageColourReachesThePageMarginsWhateverTheBodyMargin() throws IOException {
         Laid l = lay("<html><body bgcolor=\"#ffff00\" style=\"margin:40px\"><p>Hi</p></body></html>");
         int x = Math.round(HtmlDocument.PAGE_MARGIN) + 3;

@@ -338,7 +338,7 @@ final class HtmlTables {
                 if (w != null && fixed[c] == 0) {
                     fixed[c] = w + across;
                 }
-                String text = s.element().text();
+                String text = s.element().text() + missingAlt(s, room);
                 float size = s.look().size;
                 CellWidths measured = new CellWidths();
                 measureChildren(s.element(), s.look(), room, measured, 0);
@@ -649,6 +649,17 @@ final class HtmlTables {
             }
         }
         return left == Float.MAX_VALUE ? new float[] {1.5f, 1.5f} : new float[] {left, right};
+    }
+
+    private String missingAlt(Slot s, float room) {
+        StringBuilder alt = new StringBuilder();
+        for (Element img : s.element().select("img[alt]")) {
+            String a = img.attr("alt").strip();
+            if (!a.isEmpty() && alt.length() < 2_000 && pictureWidth(img, s.look(), room) == null) {
+                alt.append(" [").append(a).append(']');
+            }
+        }
+        return alt.toString();
     }
 
     private float[] pictures(Slot s, float room) {
