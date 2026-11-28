@@ -447,7 +447,7 @@ final class SvgFilter {
         if (last == null) {
             return new Img(sourceGraphic.w, sourceGraphic.h);
         }
-        Img fin = last.linear ? toSrgb(last) : last;
+        Img fin = last.linear ? srgbInPlace(last) : last;
         clipTo(fin, regionShape);
         return fin;
     }
@@ -774,7 +774,7 @@ final class SvgFilter {
             case "blur": {
                 float r = a.isEmpty() ? 0 : SvgDraw.length(a.get(0), s.fontSize, 0, 0);
                 Img lin = toLinear(in);
-                return toSrgb(blur(lin, r * k[0], r * k[1]));
+                return srgbInPlace(blur(lin, r * k[0], r * k[1]));
             }
             case "drop-shadow": {
                 List<Float> nums = new ArrayList<>();
@@ -801,7 +801,7 @@ final class SvgFilter {
                 }
                 Point2D o = toPixel.deltaTransform(new Point2D.Double(dx, dy), null);
                 Img shadow = offset(blur(alpha, sd * k[0], sd * k[1]), o.getX(), o.getY());
-                return toSrgb(composite(lin, shadow, "over", 0, 0, 0, 0));
+                return srgbInPlace(composite(lin, shadow, "over", 0, 0, 0, 0));
             }
             default: {
                 float amount = a.isEmpty() ? (st.kind().equals("hue-rotate") ? 0 : 1) : amountOf(a.get(0), st.kind());
@@ -992,16 +992,30 @@ final class SvgFilter {
         Img out = new Img(in.w, in.h);
         out.area = in.area;
         out.box = in.box;
-        for (int i = 0; i < in.p.length; i += 4) {
-            float a = clamp(in.p[i + 3]);
-            out.p[i + 3] = a;
+        srgbInto(in.p, out.p);
+        return out;
+    }
+
+    private static Img srgbInPlace(Img in) {
+        srgbInto(in.p, in.p);
+        in.linear = false;
+        return in;
+    }
+
+    private static void srgbInto(float[] from, float[] to) {
+        for (int i = 0; i < from.length; i += 4) {
+            float a = clamp(from[i + 3]);
+            to[i + 3] = a;
             if (a > 0) {
                 for (int c = 0; c < 3; c++) {
-                    out.p[i + c] = srgb(in.p[i + c] / a) * a;
+                    to[i + c] = srgb(from[i + c] / a) * a;
                 }
+            } else {
+                to[i] = 0;
+                to[i + 1] = 0;
+                to[i + 2] = 0;
             }
         }
-        return out;
     }
 
     static Img flood(int w, int h, String colour, float opacity, boolean lin, int current) {
@@ -1043,12 +1057,10 @@ final class SvgFilter {
             if (sy < 0 || sy >= in.h) {
                 continue;
             }
-            for (int x = 0; x < in.w; x++) {
-                int sx = x - ox;
-                if (sx < 0 || sx >= in.w) {
-                    continue;
-                }
-                System.arraycopy(in.p, (sy * in.w + sx) * 4, out.p, (y * in.w + x) * 4, 4);
+            int x0 = Math.max(0, ox);
+            int x1 = (int) Math.min(in.w, (long) in.w + ox);
+            if (x1 > x0) {
+                System.arraycopy(in.p, (sy * in.w + x0 - ox) * 4, out.p, (y * in.w + x0) * 4, (x1 - x0) * 4);
             }
         }
         return out;
