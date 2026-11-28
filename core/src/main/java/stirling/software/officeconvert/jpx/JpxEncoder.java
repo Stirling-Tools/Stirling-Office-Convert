@@ -357,6 +357,8 @@ public final class JpxEncoder {
         double ssim = source.ssim(reference);
         EncodeJob job = new EncodeJob(source, Options.quality(Math.max(psnr, MIN_PSNR)));
         job.prepare();
+        int[][] buffers = new int[source.count()][];
+        TileDecoder.Scratch scratch = new TileDecoder.Scratch();
         byte[] best = null;
         double failed = Double.NEGATIVE_INFINITY;
         double passed = Double.POSITIVE_INFINITY;
@@ -366,7 +368,7 @@ public final class JpxEncoder {
             byte[] data = job.emit(target, 0);
             boolean close = false;
             if (data.length < maxBytes) {
-                Planes back = decoded(data, source);
+                Planes back = decoded(data, source, buffers, scratch);
                 double p = source.psnr(back);
                 double s = source.ssim(back);
                 close = p >= psnr && s >= ssim;
@@ -394,13 +396,13 @@ public final class JpxEncoder {
         return best;
     }
 
-    private static Planes decoded(byte[] data, Planes like) throws IOException {
-        JpxRaster r = JpxDecoder.decode(data).raster();
+    private static Planes decoded(byte[] data, Planes like, int[][] s, TileDecoder.Scratch scratch)
+            throws IOException {
+        JpxRaster r = JpxDecoder.decode(data, JpxOptions.defaults(), scratch).raster();
         int n = r.components();
         if (n != like.count()) {
             throw new IOException("The JPEG 2000 copy decodes to " + n + " components");
         }
-        int[][] s = new int[n][];
         for (int c = 0; c < n; c++) {
             int w = like.width(c);
             int h = like.height(c);
@@ -408,7 +410,9 @@ public final class JpxEncoder {
                 throw new IOException("The JPEG 2000 copy decodes to a different grid");
             }
             int shift = r.signed(c) ? 1 << (r.depth(c) - 1) : 0;
-            s[c] = new int[w * h];
+            if (s[c] == null) {
+                s[c] = new int[w * h];
+            }
             for (int y = 0; y < h; y++) {
                 for (int x = 0; x < w; x++) {
                     s[c][y * w + x] = r.sample(c, x, y) - shift;

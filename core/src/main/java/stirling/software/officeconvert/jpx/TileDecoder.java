@@ -2,7 +2,10 @@ package stirling.software.officeconvert.jpx;
 
 import java.io.IOException;
 import java.io.InterruptedIOException;
+import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 final class TileDecoder {
 
@@ -18,12 +21,44 @@ final class TileDecoder {
 
     private final BlockDecoder block = new BlockDecoder();
 
+    private final Scratch scratch;
+
+    static final class Scratch {
+
+        private final Map<Integer, Object> buffers = new HashMap<>();
+
+        int[] ints(int c, int n) {
+            if (buffers.get(c) instanceof int[] a && a.length == n) {
+                Arrays.fill(a, 0);
+                return a;
+            }
+            int[] a = new int[n];
+            buffers.put(c, a);
+            return a;
+        }
+
+        float[] floats(int c, int n) {
+            if (buffers.get(c) instanceof float[] a && a.length == n) {
+                Arrays.fill(a, 0);
+                return a;
+            }
+            float[] a = new float[n];
+            buffers.put(c, a);
+            return a;
+        }
+    }
+
     TileDecoder(Codestream cs, JpxRaster out, int reduce, long maxSamples) {
+        this(cs, out, reduce, maxSamples, null);
+    }
+
+    TileDecoder(Codestream cs, JpxRaster out, int reduce, long maxSamples, Scratch scratch) {
         this.cs = cs;
         this.siz = cs.siz;
         this.out = out;
         this.reduce = reduce;
         this.maxSamples = maxSamples;
+        this.scratch = scratch;
     }
 
     void decode(int t) throws IOException {
@@ -83,8 +118,8 @@ final class TileDecoder {
         int w = tc.width();
         int h = tc.height();
         boolean reversible = tc.style.reversible();
-        int[] ints = reversible ? new int[w * h] : null;
-        float[] floats = reversible ? null : new float[w * h];
+        int[] ints = !reversible ? null : scratch == null ? new int[w * h] : scratch.ints(tc.index, w * h);
+        float[] floats = reversible ? null : scratch == null ? new float[w * h] : scratch.floats(tc.index, w * h);
         for (int r = 0; r <= tc.top; r++) {
             Resolution res = tc.resolutions[r];
             for (int k = 0; k < res.precincts(); k++) {
