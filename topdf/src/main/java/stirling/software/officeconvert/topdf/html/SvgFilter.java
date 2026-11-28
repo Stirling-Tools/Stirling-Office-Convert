@@ -1392,7 +1392,27 @@ final class SvgFilter {
         }
     }
 
+    private static Img transpose(Img img) {
+        Img t = new Img(img.h, img.w);
+        transposeInto(img, t);
+        return t;
+    }
+
+    private static void transposeInto(Img from, Img to) {
+        for (int y = 0; y < from.h; y++) {
+            for (int x = 0; x < from.w; x++) {
+                System.arraycopy(from.p, (y * from.w + x) * 4, to.p, (x * to.w + y) * 4, 4);
+            }
+        }
+    }
+
     private static void convolve(Img img, float[] k, int radius, boolean horizontal) {
+        if (!horizontal) {
+            Img t = transpose(img);
+            convolve(t, k, radius, true);
+            transposeInto(t, img);
+            return;
+        }
         int len = horizontal ? img.w : img.h;
         int lines = horizontal ? img.h : img.w;
         float[] line = new float[len * 4];
@@ -1427,6 +1447,10 @@ final class SvgFilter {
     }
 
     private static void box(Img img, int left, int right, boolean horizontal) {
+        if (!horizontal) {
+            boxColumns(img, left, right);
+            return;
+        }
         int len = horizontal ? img.w : img.h;
         int lines = horizontal ? img.h : img.w;
         float[] line = new float[len * 4];
@@ -1448,6 +1472,33 @@ final class SvgFilter {
                 int idx = horizontal ? (l * img.w + i) * 4 : (i * img.w + l) * 4;
                 for (int c = 0; c < 4; c++) {
                     img.p[idx + c] = (acc[(hi + 1) * 4 + c] - acc[lo * 4 + c]) / n;
+                }
+            }
+        }
+    }
+
+    private static void boxColumns(Img img, int left, int right) {
+        int len = img.h;
+        int stride = img.w * 4;
+        int block = Math.min(stride, 64);
+        float[] acc = new float[(len + 1) * block];
+        float n = left + right + 1;
+        for (int x0 = 0; x0 < stride; x0 += block) {
+            int bw = Math.min(block, stride - x0);
+            for (int i = 0; i < len; i++) {
+                int row = i * stride + x0;
+                int from = i * bw;
+                int to = from + bw;
+                for (int c = 0; c < bw; c++) {
+                    acc[to + c] = acc[from + c] + img.p[row + c];
+                }
+            }
+            for (int i = 0; i < len; i++) {
+                int lo = Math.max(0, i - left) * bw;
+                int hi = (Math.min(len - 1, i + right) + 1) * bw;
+                int row = i * stride + x0;
+                for (int c = 0; c < bw; c++) {
+                    img.p[row + c] = (acc[hi + c] - acc[lo + c]) / n;
                 }
             }
         }
@@ -1730,6 +1781,12 @@ final class SvgFilter {
 
     private static void morph(Img img, int r, boolean dilate, boolean horizontal) {
         if (r <= 0) {
+            return;
+        }
+        if (!horizontal) {
+            Img t = transpose(img);
+            morph(t, r, dilate, true);
+            transposeInto(t, img);
             return;
         }
         int len = horizontal ? img.w : img.h;
