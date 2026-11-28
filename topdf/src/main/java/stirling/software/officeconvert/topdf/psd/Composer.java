@@ -1406,9 +1406,22 @@ final class Composer {
             }
             float ab = dest[at + n];
             if (separable && ab >= 1) {
-                for (int i = 0; i < n; i++) {
-                    float cb = dest[at + i];
-                    dest[at + i] = cb + (Blend.channel(mode, cb, src[at + i]) - cb) * as;
+                if (mode == Blend.MULTIPLY) {
+                    for (int i = 0; i < n; i++) {
+                        float cb = dest[at + i];
+                        dest[at + i] = cb + (cb * src[at + i] - cb) * as;
+                    }
+                } else if (mode == Blend.SCREEN) {
+                    for (int i = 0; i < n; i++) {
+                        float cb = dest[at + i];
+                        float cs = src[at + i];
+                        dest[at + i] = cb + (cb + cs - cb * cs - cb) * as;
+                    }
+                } else {
+                    for (int i = 0; i < n; i++) {
+                        float cb = dest[at + i];
+                        dest[at + i] = cb + (Blend.channel(mode, cb, src[at + i]) - cb) * as;
+                    }
                 }
                 continue;
             }
