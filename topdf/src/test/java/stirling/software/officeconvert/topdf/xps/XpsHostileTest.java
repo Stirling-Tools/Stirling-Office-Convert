@@ -121,6 +121,52 @@ class XpsHostileTest {
     }
 
     @Test
+    void anEntityExpansionBombIsRefused() throws IOException {
+        StringBuilder dtd = new StringBuilder("<!DOCTYPE FixedPage [<!ENTITY a0 'lol'>");
+        for (int i = 1; i <= 9; i++) {
+            dtd.append("<!ENTITY a").append(i).append(" '").append(("&a" + (i - 1) + ";").repeat(10)).append("'>");
+        }
+        dtd.append("]>");
+        String page = "<?xml version='1.0'?>" + dtd + "<FixedPage xmlns='" + XpsToPdfTest.NS + "' Width='816'"
+                + " Height='1056'><Glyphs Fill='#FF000000' FontUri='/Resources/font.ttf' FontRenderingEmSize='20'"
+                + " OriginX='10' OriginY='100' UnicodeString='&a9;'/></FixedPage>";
+        Path in = write("laughs.xps", XpsHostile.zip(XpsToPdfTest.xps(List.of(page))));
+        Path out = dir.resolve("laughs.pdf");
+        IOException e = assertTimeoutPreemptively(Duration.ofSeconds(30),
+                () -> assertThrows(IOException.class, () -> convert(in, out)));
+        assertTrue(e.getMessage().contains("DOCTYPE"), e.getMessage());
+        assertFalse(Files.exists(out));
+    }
+
+    @Test
+    void anElementWithTooManyAttributesIsRefused() throws IOException {
+        StringBuilder attrs = new StringBuilder();
+        for (int i = 0; i < 12_000; i++) {
+            attrs.append(" a").append(i).append("='1'");
+        }
+        String page = "<FixedPage xmlns='" + XpsToPdfTest.NS + "' Width='816' Height='1056'><Canvas" + attrs
+                + "/></FixedPage>";
+        Path in = write("attrs.xps", XpsHostile.zip(XpsToPdfTest.xps(List.of(page))));
+        Path out = dir.resolve("attrs.pdf");
+        assertTimeoutPreemptively(Duration.ofSeconds(30),
+                () -> assertThrows(IOException.class, () -> convert(in, out)));
+        assertFalse(Files.exists(out));
+    }
+
+    @Test
+    void aPageWithTooManyElementsIsRefused() throws IOException {
+        long limit = stirling.software.officeconvert.topdf.io.XmlElements.domElements();
+        org.junit.jupiter.api.Assumptions.assumeTrue(limit < 2_000_000);
+        String page = "<FixedPage xmlns='" + XpsToPdfTest.NS + "' Width='816' Height='1056'>"
+                + "<Canvas/>".repeat((int) limit + 10) + "</FixedPage>";
+        Path in = write("many.xps", XpsHostile.zip(XpsToPdfTest.xps(List.of(page))));
+        Path out = dir.resolve("many.pdf");
+        assertTimeoutPreemptively(Duration.ofSeconds(60),
+                () -> assertThrows(IOException.class, () -> convert(in, out)));
+        assertFalse(Files.exists(out));
+    }
+
+    @Test
     void aDecompressionBombIsRefused() throws IOException {
         Path in = dir.resolve("bomb.xps");
         Map<String, byte[]> parts = XpsToPdfTest.xps(List.of(XpsToPdfTest.page("")));
