@@ -1199,6 +1199,31 @@ class PsdPageTest {
     }
 
     @Test
+    void aReflectedGradientOnATinyCanvasEndsOnWholePixels() throws IOException {
+        PsdFixture f = new PsdFixture(4, 4);
+        f.hasMerged = false;
+        f.flat(255).flat(255).flat(255);
+        PsdFixture.Layer fill = new PsdFixture.Layer().rect(0, 0, 0, 0);
+        fill.channels.put(-1, new byte[0]);
+        Desc stop0 = new Desc("Clrt").obj("Clr ", rgb(0, 0, 0)).lng("Lctn", 0).lng("Mdpn", 50);
+        Desc stop1 = new Desc("Clrt").obj("Clr ", rgb(255, 255, 255)).lng("Lctn", 4096).lng("Mdpn", 50);
+        Desc grad = new Desc("Grdn").list("Clrs", stop0, stop1);
+        fill.block("GdFl", new Desc("null").unit("Angl", "#Ang", 30).en("Type", "GrdT", "Rflc").obj("Grad", grad)
+                .bytes(true));
+        f.layers.add(fill);
+        convert(f, "tiny-gradient.psd");
+        try (PDDocument pdf = open("tiny-gradient.psd")) {
+            byte[] s = samples(image(pdf.getPage(0)));
+            for (int y = 0; y < 4; y++) {
+                for (int x = 0; x < 4; x++) {
+                    assertEquals(s[(Math.abs(x - y) * 4) * 3] & 0xFF, s[(y * 4 + x) * 3] & 0xFF, 1,
+                            Arrays.toString(s));
+                }
+            }
+        }
+    }
+
+    @Test
     void anOutsideStrokeIsDrawnAroundTheLayer() throws IOException {
         PsdFixture f = new PsdFixture(9, 9);
         f.hasMerged = false;

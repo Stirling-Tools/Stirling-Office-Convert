@@ -128,6 +128,15 @@ final class Gradient {
         double cos = Math.cos(angle);
         double sin = Math.sin(angle);
         double length = (Math.abs(w * cos) + Math.abs(h * sin)) * scale;
+        double half = length / 2;
+        double ex = Math.signum(cos) * Math.min(Math.ceil(Math.abs(half * cos) - 1e-9), w * scale / 2);
+        double ey = Math.signum(sin) * Math.min(Math.ceil(Math.abs(half * sin) - 1e-9), h * scale / 2);
+        double e = Math.hypot(ex, ey);
+        if (e > 0) {
+            cos = ex / e;
+            sin = ey / e;
+            length = 2 * e;
+        }
         double radius = Math.max(1e-6, length / 2);
         double py = y + 0.5 - cy;
         for (int x = 0; x < width; x++) {
