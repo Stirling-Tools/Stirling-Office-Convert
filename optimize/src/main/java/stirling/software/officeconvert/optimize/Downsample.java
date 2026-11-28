@@ -62,6 +62,7 @@ import org.apache.pdfbox.util.Matrix;
 import stirling.software.officeconvert.extract.BrotliBudget;
 import stirling.software.officeconvert.extract.ImageBudget;
 import stirling.software.officeconvert.extract.PdfFiles;
+import stirling.software.officeconvert.jpx.JpxDecoder;
 import stirling.software.officeconvert.jpx.JpxEncoder;
 
 final class Downsample {
@@ -245,14 +246,18 @@ final class Downsample {
 
         private void record(PDImageXObject image) {
             COSObjectKey key = image.getCOSObject().getKey();
-            if (key == null || image.getWidth() <= 0 || image.getHeight() <= 0) {
+            if (key == null) {
+                return;
+            }
+            int[] size = size(image);
+            if (size[0] <= 0 || size[1] <= 0) {
                 return;
             }
             Matrix ctm = getGraphicsState().getCurrentTransformationMatrix();
             Point2D.Float origin = ctm.transformPoint(0, 0);
             double widthPt = origin.distance(ctm.transformPoint(1, 0));
             double heightPt = origin.distance(ctm.transformPoint(0, 1));
-            double inchesPerPixel = Math.max(widthPt / 72 / image.getWidth(), heightPt / 72 / image.getHeight());
+            double inchesPerPixel = Math.max(widthPt / 72 / size[0], heightPt / 72 / size[1]);
             needed.merge(key, inchesPerPixel, Math::max);
             streams.putIfAbsent(key, image.getCOSObject());
         }
@@ -632,6 +637,23 @@ final class Downsample {
 
     private static boolean hasMattedMask(COSStream stream) {
         return stream.getDictionaryObject(COSName.SMASK) instanceof COSStream mask && mask.containsKey(MATTE);
+    }
+
+    private static int[] size(PDImageXObject image) {
+        COSStream stream = image.getCOSObject();
+        int width = stream.getInt(COSName.WIDTH);
+        int height = stream.getInt(COSName.HEIGHT);
+        if (width > 0 && height > 0 && onlyJpx(stream)) {
+            try (var in = stream.createRawInputStream()) {
+                int[] header = JpxDecoder.size(in.readAllBytes());
+                if (header[0] == width && header[1] == height) {
+                    return new int[] {width, height};
+                }
+            } catch (IOException | RuntimeException e) {
+                return new int[] {image.getWidth(), image.getHeight()};
+            }
+        }
+        return new int[] {image.getWidth(), image.getHeight()};
     }
 
     private static boolean onlyJpx(COSStream stream) {
