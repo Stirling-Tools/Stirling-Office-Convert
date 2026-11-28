@@ -1368,6 +1368,15 @@ final class Composer {
         return ((h ^ h >>> 16) & 0xFFFFFF) / (float) 0x1000000;
     }
 
+    private boolean opaque(float[] src, int lo, int hi) {
+        for (int x = lo; x < hi; x++) {
+            if (src[x * stride + n] != 1) {
+                return false;
+            }
+        }
+        return hi > lo;
+    }
+
     private void composite(float[] dest, float[] src, int mode, float opacity, float[] clip) {
         composite(dest, src, mode, opacity, clip, 0, width);
     }
@@ -1378,6 +1387,10 @@ final class Composer {
         boolean whole = Blend.whole(mode) && (rgb || cmyk);
         boolean separable = Blend.separable(mode) && doc.mode != PsdDocument.LAB;
         if (!whole && !separable) {
+            if (opacity == 1 && clip == null && opaque(src, lo, hi)) {
+                System.arraycopy(src, lo * stride, dest, lo * stride, (hi - lo) * stride);
+                return;
+            }
             for (int x = lo; x < hi; x++) {
                 int at = x * stride;
                 float as = src[at + n] * opacity * (clip == null ? 1 : clip[x]);
