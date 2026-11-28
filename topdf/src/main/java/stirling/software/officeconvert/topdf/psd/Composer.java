@@ -957,7 +957,7 @@ final class Composer {
                 if (c instanceof Adjust a) {
                     adjust(a, src, null, null);
                 } else {
-                    clip(c, src, shape);
+                    atop(c, src);
                 }
             }
             if (later) {
@@ -970,6 +970,26 @@ final class Composer {
         drawBevel(dest, base, fxOpacity, null);
         if (fx != null && fx.stroke != null && !fx.strokeUnder) {
             drawStroke(dest, base, fxOpacity);
+        }
+    }
+
+    private void atop(Node c, float[] dest) throws IOException {
+        float[] base = shapeRow();
+        float[] inside = shapeRow();
+        for (int x = 0; x < width; x++) {
+            int at = x * stride + n;
+            base[x] = dest[at];
+            inside[x] = base[x] > 0 ? 1 : 0;
+            dest[at] = inside[x];
+        }
+        try {
+            clip(c, dest, inside);
+        } finally {
+            for (int x = 0; x < width; x++) {
+                dest[x * stride + n] = base[x];
+            }
+            releaseShape(inside);
+            releaseShape(base);
         }
     }
 

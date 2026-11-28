@@ -399,6 +399,24 @@ class PsdPageTest {
     }
 
     @Test
+    void aLayerClippedToATranslucentBaseTakesItsColorButKeepsTheBaseAlpha() throws IOException {
+        PsdFixture f = new PsdFixture(1, 1);
+        f.hasMerged = false;
+        f.flat(255).flat(255).flat(255);
+        f.layers.add(new PsdFixture.Layer().rect(0, 0, 1, 1).fill(-1, 128).fill(0, 100).fill(1, 100).fill(2, 100));
+        PsdFixture.Layer red = new PsdFixture.Layer().rect(0, 0, 1, 1).fill(-1, 255).fill(0, 255).fill(1, 0).fill(2, 0);
+        red.clipped = true;
+        f.layers.add(red);
+        convert(f, "clipped-atop.psd");
+        try (PDDocument pdf = open("clipped-atop.psd")) {
+            COSStream img = image(pdf.getPage(0));
+            assertArrayEquals(new int[] {255, 0, 0}, ints(samples(img), 0));
+            COSStream mask = (COSStream) img.getDictionaryObject(COSName.SMASK);
+            assertEquals(128, samples(mask)[0] & 0xFF);
+        }
+    }
+
+    @Test
     void anAdjustmentClippedToATranslucentLayerChangesItsWholeColor() throws IOException {
         PsdFixture f = new PsdFixture(1, 1);
         f.hasMerged = false;
