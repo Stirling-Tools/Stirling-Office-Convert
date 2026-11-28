@@ -152,6 +152,16 @@ class MailToPdfTest {
     }
 
     @Test
+    void aDraftEmlWithoutAFromHeaderKeepsItsMailHeader() throws IOException {
+        String mail = "Subject: Draft without sender\nMIME-Version: 1.0\n"
+                + "Content-Type: multipart/related; boundary=\"rel\"\n\n--rel\nContent-Type: text/html\n\n"
+                + "<html><body><p>Body of the draft</p></body></html>\n--rel--\n";
+        Converted c = convert("draft.eml", ascii(mail));
+        assertTrue(c.text().contains("Draft without sender"), c.text());
+        assertTrue(c.text().contains("Body of the draft"), c.text());
+    }
+
+    @Test
     void aBodyBackgroundPictureNamedByContentIdIsDrawn() throws IOException {
         String mail = "From: a@example.org\nTo: b@example.org\nSubject: Card\nMIME-Version: 1.0\n"
                 + "Content-Type: multipart/related; boundary=\"rel\"\n\n"

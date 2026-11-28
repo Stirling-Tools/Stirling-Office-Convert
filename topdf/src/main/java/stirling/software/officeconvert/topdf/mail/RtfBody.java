@@ -345,6 +345,7 @@ public final class RtfBody {
                     unicode('\n');
                 }
             }
+            case "plain" -> st.font = -1;
             case "tab" -> emit(st, '\t');
             case "lquote" -> emit(st, 0x2018);
             case "rquote" -> emit(st, 0x2019);

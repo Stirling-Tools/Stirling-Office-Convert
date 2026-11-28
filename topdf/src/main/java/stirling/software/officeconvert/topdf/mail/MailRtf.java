@@ -166,7 +166,7 @@ public final class MailRtf {
         while (i < b.length) {
             byte c = b[i];
             if (c == '\\') {
-                i += 2;
+                i = afterControl(b, i);
                 continue;
             }
             if (c == '{') {
@@ -180,5 +180,25 @@ public final class MailRtf {
             i++;
         }
         return b.length;
+    }
+
+    private static int afterControl(byte[] b, int at) {
+        if (at + 3 < b.length && b[at + 1] == 'b' && b[at + 2] == 'i' && b[at + 3] == 'n') {
+            int j = at + 4;
+            long n = 0;
+            boolean digits = false;
+            while (j < b.length && b[j] >= '0' && b[j] <= '9' && n < Integer.MAX_VALUE) {
+                n = n * 10 + (b[j] - '0');
+                digits = true;
+                j++;
+            }
+            if (digits && (j >= b.length || !(b[j] >= 'a' && b[j] <= 'z' || b[j] >= 'A' && b[j] <= 'Z'))) {
+                if (j < b.length && b[j] == ' ') {
+                    j++;
+                }
+                return (int) Math.min(b.length, j + n);
+            }
+        }
+        return at + 2;
     }
 }

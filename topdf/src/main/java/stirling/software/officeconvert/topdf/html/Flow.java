@@ -269,7 +269,7 @@ final class Flow {
         if (!(n instanceof Element next) || SKIPPED.contains(next.normalName()) || !BLOCKS.contains(next.normalName())) {
             return null;
         }
-        if (!flowsBeside(next, look, false)) {
+        if (!flowsBeside(next, look, false, side)) {
             return null;
         }
         List<Element> beside = new ArrayList<>();
@@ -290,7 +290,7 @@ final class Flow {
             while (n instanceof TextNode t && t.isBlank() || n instanceof Comment) {
                 n = n.nextSibling();
             }
-            if (!(n instanceof Element more) || !BLOCKS.contains(more.normalName()) || !flowsBeside(more, look, true)
+            if (!(n instanceof Element more) || !BLOCKS.contains(more.normalName()) || !flowsBeside(more, look, true, side)
                     || framed(more, look)) {
                 break;
             }
@@ -306,16 +306,19 @@ final class Flow {
     }
 
     private boolean framed(Element e, Look look) {
-        return CellBoxes.framedChild(ctx, e, ctx.declared(e, look), look) != null;
+        Map<String, String> d = ctx.declared(e, look);
+        return Layout.framed(d) || CellBoxes.framedChild(ctx, e, d, look) != null;
     }
 
-    private boolean flowsBeside(Element e, Look look, boolean later) {
+    private boolean flowsBeside(Element e, Look look, boolean later, String side) {
         if (SKIPPED.contains(e.normalName()) || e.hasAttr("hidden")) {
             return false;
         }
         Map<String, String> d = ctx.declared(e, look);
-        if (!d.getOrDefault("clear", "none").strip().equalsIgnoreCase("none")
-                || later && Set.of("table", "hr", "pre").contains(e.normalName())) {
+        String clear = d.getOrDefault("clear", "none").strip().toLowerCase(Locale.ROOT);
+        if (clear.equals("both") || clear.equals(side)
+                || later && (Set.of("table", "hr", "pre").contains(e.normalName())
+                        || BoxCss.isPageBreak(d.get("break-before")))) {
             return false;
         }
         return d.getOrDefault("float", "none").strip().equalsIgnoreCase("none")
@@ -2068,7 +2071,7 @@ final class Flow {
         float inset = edge ? 2 : 0;
         float lines = (float) Math.floor((h - 2 * inset) / (r.size() * 1.2f));
         if (!alt.isEmpty() && lines >= 1 && w - 2 * inset >= r.size()) {
-            shown.inlines.add(new Inline.Text(alt, r, null, -1));
+            shown.inlines.add(new Inline.Text(alt, r, link, -1));
         }
         return new Inline.FormControl(null, shown, w, h, inset, inset, inset, inset, -1, edge ? MISSING_EDGE : -1,
                 edge ? 0.75f : 0, 0, false, 0, false, true);

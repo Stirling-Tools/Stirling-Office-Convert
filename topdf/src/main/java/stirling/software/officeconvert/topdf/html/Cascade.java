@@ -816,6 +816,28 @@ final class Cascade {
         boolean word = false;
         for (int i = 0; i < selector.length(); i++) {
             char c = selector.charAt(i);
+            if (c == '\\') {
+                i++;
+                continue;
+            }
+            if (c == '[') {
+                classes++;
+                word = true;
+                char quote = 0;
+                for (i++; i < selector.length(); i++) {
+                    char a = selector.charAt(i);
+                    if (a == '\\') {
+                        i++;
+                    } else if (quote != 0) {
+                        quote = a == quote ? 0 : quote;
+                    } else if (a == '"' || a == '\'') {
+                        quote = a;
+                    } else if (a == ']') {
+                        break;
+                    }
+                }
+                continue;
+            }
             if (c == '#') {
                 ids++;
                 word = true;

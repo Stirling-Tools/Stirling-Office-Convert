@@ -111,4 +111,12 @@ class MimeTest {
     void aSignatureSeparatorEndsAFlowedParagraph() {
         assertTrue(EmlReader.unflow("Thanks for the \r\nnotes \r\n-- \r\nAna", false).contains("notes \n-- \nAna"));
     }
+
+    @Test
+    void plainResetsTheFontBeforeLaterBytesAreDecoded() {
+        String rtf = "{\\rtf1\\ansi\\deff0\\fromtext{\\fonttbl{\\f0\\fcharset0 Arial;}{\\f1\\fcharset204 Arial;}}"
+                + "\\f1\\'e9\\plain\\'e9}";
+        RtfBody.Body body = RtfBody.read(rtf.getBytes(StandardCharsets.ISO_8859_1));
+        assertTrue(body.content().contains("\u0439\u00e9"), body.content());
+    }
 }

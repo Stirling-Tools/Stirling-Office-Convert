@@ -245,7 +245,7 @@ public final class MailPage {
     private static long chars(Mail mail, int depth) {
         long n = 0;
         for (Mail.Segment s : mail.body) {
-            n += s instanceof Mail.Html h ? h.html().length() : s instanceof Mail.Text t ? t.text().length() : 0;
+            n += s instanceof Mail.Html h ? h.html().length() : s instanceof Mail.Text t ? shownLength(t.text()) : 0;
         }
         if (depth < 8) {
             for (Mail m : mail.nested) {
@@ -300,6 +300,14 @@ public final class MailPage {
                 + "color:#1f1f1f;background:transparent;text-align:left");
         pre.text(expandTabs(text.replace("\r\n", "\n").replace('\r', '\n')));
         return pre;
+    }
+
+    static long shownLength(String text) {
+        if (text.length() > MAX_HTML_CHARS / 8) {
+            return text.length();
+        }
+        long tabs = text.chars().filter(c -> c == '\t').count();
+        return text.length() + 7 * tabs;
     }
 
     static String expandTabs(String text) {

@@ -167,7 +167,7 @@ final class MailInput {
     private static boolean archived(byte[] head) {
         Mime.Part top = Mime.parse(head);
         String from = top.header("From");
-        return top.header("Snapshot-Content-Location") != null || from == null || from.contains("Saved by");
+        return top.header("Snapshot-Content-Location") != null || from != null && from.contains("Saved by");
     }
 
     static String extension(Path source) {
