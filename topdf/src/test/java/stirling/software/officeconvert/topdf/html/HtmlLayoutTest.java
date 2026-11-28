@@ -907,6 +907,16 @@ class HtmlLayoutTest {
     }
 
     @Test
+    void anOutlinedInlineBlockMakesItsLineTallByItsPaddingAndBorder() throws IOException {
+        Laid l = lay("""
+                <!doctype html><html><body><div>Top</div><div>Middle</div>
+                <div><a href="#" style="display:inline-block;padding:10px 20px;border:2px solid #333">Button</a></div>
+                <div>Bottom</div></body></html>""");
+        float line = l.word("Middle").top() - l.word("Top").top();
+        assertEquals(line + 15 + 3, l.word("Bottom").top() - l.word("Middle").top() - line, 2f, l.words().toString());
+    }
+
+    @Test
     void thePageColourReachesThePageMarginsWhateverTheBodyMargin() throws IOException {
         Laid l = lay("<html><body bgcolor=\"#ffff00\" style=\"margin:40px\"><p>Hi</p></body></html>");
         int x = Math.round(HtmlDocument.PAGE_MARGIN) + 3;

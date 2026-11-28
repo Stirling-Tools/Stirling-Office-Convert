@@ -749,7 +749,10 @@ final class Flow {
         Integer fill = Css.color(d.get("background-color"));
         boolean filled = fill != null && fill >= 0 && fill != 0xFFFFFF;
         boolean wide = BoxCss.length(d.get("width"), look.size, 0) > 0;
-        if (!filled && !(wide && e.normalName().equals("a")) || Layout.text(e, BUTTON_TEXT + 1).strip().isEmpty()
+        boolean framed = BoxCss.border(d, "top") > 0 && BoxCss.border(d, "bottom") > 0 && BoxCss.border(d, "left") > 0
+                && BoxCss.border(d, "right") > 0;
+        boolean tall = BoxCss.height(d, look) > 0;
+        if (!filled && !framed && !tall && !(wide && e.normalName().equals("a")) || Layout.text(e, BUTTON_TEXT + 1).strip().isEmpty()
                 || Layout.text(e, BUTTON_TEXT + 1).length() > BUTTON_TEXT) {
             return false;
         }
