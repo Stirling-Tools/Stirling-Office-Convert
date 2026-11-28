@@ -49,6 +49,10 @@ final class XpsOps {
 
     private final double[] coords = new double[6];
 
+    private final float[] fillRgb = new float[3];
+
+    private final float[] strokeRgb = new float[3];
+
     private float[] fill;
 
     private COSName fillSpace;
@@ -360,7 +364,8 @@ final class XpsOps {
         } finally {
             quiet = was;
         }
-        fill = rgb.clone();
+        System.arraycopy(rgb, 0, fillRgb, 0, 3);
+        fill = fillRgb;
         fillSpace = null;
     }
 
@@ -370,7 +375,8 @@ final class XpsOps {
             return;
         }
         num(rgb[0]).num(rgb[1]).num(rgb[2]).op("RG\n");
-        strokeColor = rgb.clone();
+        System.arraycopy(rgb, 0, strokeRgb, 0, 3);
+        strokeColor = strokeRgb;
         strokeSpace = null;
     }
 

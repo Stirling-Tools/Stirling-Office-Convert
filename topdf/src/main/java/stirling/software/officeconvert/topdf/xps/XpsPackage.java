@@ -8,6 +8,7 @@ import java.io.InterruptedIOException;
 import java.io.SequenceInputStream;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -187,7 +188,22 @@ final class XpsPackage implements Closeable {
             throw new IOException("The part " + part + " is larger than " + (max >> 20) + " MB");
         }
         try (InputStream in = open(part)) {
-            byte[] data = in.readNBytes((int) Math.min(max + 1, Integer.MAX_VALUE - 8));
+            byte[] data;
+            if (size >= 0 && size < (1 << 30)) {
+                byte[] exact = new byte[(int) size];
+                int got = in.readNBytes(exact, 0, exact.length);
+                int next = got == exact.length ? in.read() : -1;
+                if (next < 0) {
+                    data = got == exact.length ? exact : Arrays.copyOf(exact, got);
+                } else {
+                    byte[] rest = in.readNBytes((int) Math.min(max - got, Integer.MAX_VALUE - 8 - got));
+                    data = Arrays.copyOf(exact, got + 1 + rest.length);
+                    data[got] = (byte) next;
+                    System.arraycopy(rest, 0, data, got + 1, rest.length);
+                }
+            } else {
+                data = in.readNBytes((int) Math.min(max + 1, Integer.MAX_VALUE - 8));
+            }
             if (data.length > max) {
                 throw new IOException("The part " + part + " is larger than " + (max >> 20) + " MB");
             }
