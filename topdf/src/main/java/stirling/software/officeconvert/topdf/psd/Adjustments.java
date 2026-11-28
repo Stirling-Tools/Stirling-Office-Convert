@@ -277,7 +277,8 @@ abstract class Adjustments {
             double k = contrast >= 0 ? 1 / Math.max(1 / 255.0, 1 - contrast / 100) : 1 + contrast / 100;
             double bright = brightness;
             double m = mean;
-            lut = lut(v -> (float) (((v * 255 + bright - m) * k + m) / 255));
+            boolean compress = contrast < 0;
+            lut = lut(v -> (float) ((compress ? (v * 255 - m) * k + m + bright : (v * 255 + bright - m) * k + m) / 255));
         } else {
             float[] first = brightness == 0 ? null
                     : curve(new double[] {0, 128 - 0.4039 * brightness, 255}, new double[] {0, 128 + 0.2616 * brightness, 255});

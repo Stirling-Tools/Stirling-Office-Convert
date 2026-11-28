@@ -520,6 +520,22 @@ class PsdPageTest {
     }
 
     @Test
+    void legacyNegativeContrastCompressesAroundTheMeanBeforeTheBrightnessShift() throws IOException {
+        PsdFixture f = new PsdFixture(1, 1);
+        f.hasMerged = false;
+        f.mode = PsdDocument.GRAY;
+        f.flat(255);
+        f.layers.add(new PsdFixture.Layer().rect(0, 0, 1, 1).fill(0, 100));
+        java.nio.ByteBuffer brit = java.nio.ByteBuffer.allocate(8);
+        brit.putShort((short) -23).putShort((short) -26).putShort((short) 127).put((byte) 0);
+        f.layers.add(new PsdFixture.Layer().rect(0, 0, 0, 0).block("brit", brit.array()));
+        convert(f, "compress.psd");
+        try (PDDocument pdf = open("compress.psd")) {
+            assertEquals(84, samples(image(pdf.getPage(0)))[0] & 0xFF);
+        }
+    }
+
+    @Test
     void aPatternFillLayerRepeatsItsPatternAcrossTheCanvas() throws IOException {
         PsdFixture f = new PsdFixture(4, 1);
         f.hasMerged = false;
