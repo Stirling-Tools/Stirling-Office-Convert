@@ -4,6 +4,7 @@ import java.io.ByteArrayOutputStream;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -338,48 +339,57 @@ public final class Mime {
         value.reset();
     }
 
+    private static final byte[] BASE64 = new byte[256];
+
+    static {
+        Arrays.fill(BASE64, (byte) -1);
+        String alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+        for (int i = 0; i < alphabet.length(); i++) {
+            BASE64[alphabet.charAt(i)] = (byte) i;
+        }
+        BASE64['+'] = 62;
+        BASE64['-'] = 62;
+        BASE64['/'] = 63;
+        BASE64['_'] = 63;
+        BASE64['='] = -2;
+    }
+
     static byte[] base64(byte[] b, int from, int to) {
-        ByteArrayOutputStream out = new ByteArrayOutputStream(Math.max(16, (to - from) * 3 / 4));
+        byte[] out = new byte[Math.max(0, to - from) / 4 * 3 + 3];
+        int n = 0;
         int acc = 0;
         int bits = 0;
         for (int i = from; i < to; i++) {
-            int c = b[i] & 0xFF;
-            int v;
-            if (c >= 'A' && c <= 'Z') {
-                v = c - 'A';
-            } else if (c >= 'a' && c <= 'z') {
-                v = c - 'a' + 26;
-            } else if (c >= '0' && c <= '9') {
-                v = c - '0' + 52;
-            } else if (c == '+' || c == '-') {
-                v = 62;
-            } else if (c == '/' || c == '_') {
-                v = 63;
-            } else if (c == '=') {
-                acc = 0;
-                bits = 0;
-                continue;
-            } else {
+            int v = BASE64[b[i] & 0xFF];
+            if (v < 0) {
+                if (v == -2) {
+                    acc = 0;
+                    bits = 0;
+                }
                 continue;
             }
             acc = acc << 6 | v;
             bits += 6;
             if (bits >= 8) {
                 bits -= 8;
-                out.write(acc >> bits & 0xFF);
+                out[n++] = (byte) (acc >> bits);
             }
         }
-        return out.toByteArray();
+        return n == out.length ? out : Arrays.copyOf(out, n);
     }
 
     static byte[] quotedPrintable(byte[] b, int from, int to) {
-        ByteArrayOutputStream out = new ByteArrayOutputStream(to - from);
+        byte[] out = new byte[Math.max(16, to - from + (to - from) / 16)];
+        int n = 0;
         int i = from;
         while (i < to) {
             int eol = lineEnd(b, i, to);
             int end = eol;
             while (end > i && (b[end - 1] == ' ' || b[end - 1] == '\t')) {
                 end--;
+            }
+            if (out.length - n < end - i + 2) {
+                out = Arrays.copyOf(out, Math.max(out.length * 2, n + end - i + 2));
             }
             boolean soft = false;
             for (int k = i; k < end; k++) {
@@ -392,22 +402,22 @@ public final class Mime {
                     int hi = k + 2 < end ? Character.digit(b[k + 1], 16) : -1;
                     int lo = hi >= 0 ? Character.digit(b[k + 2], 16) : -1;
                     if (hi >= 0 && lo >= 0) {
-                        out.write(hi << 4 | lo);
+                        out[n++] = (byte) (hi << 4 | lo);
                         k += 2;
                     } else {
-                        out.write('=');
+                        out[n++] = '=';
                     }
                 } else {
-                    out.write(c);
+                    out[n++] = c;
                 }
             }
             int nxt = next(b, eol, to);
             if (!soft && nxt > eol) {
-                out.write('\r');
-                out.write('\n');
+                out[n++] = '\r';
+                out[n++] = '\n';
             }
             i = nxt;
         }
-        return out.toByteArray();
+        return Arrays.copyOf(out, n);
     }
 }

@@ -15,6 +15,20 @@ import org.junit.jupiter.api.Test;
 class MimeTest {
 
     @Test
+    void base64AndQuotedPrintableDecodeWhatTheyEncode() {
+        java.util.Random random = new java.util.Random(7);
+        for (int size : new int[] {0, 1, 2, 3, 57, 1000, 70_001}) {
+            byte[] data = new byte[size];
+            random.nextBytes(data);
+            byte[] encoded = java.util.Base64.getMimeEncoder().encode(data);
+            assertTrue(java.util.Arrays.equals(data, Mime.base64(encoded, 0, encoded.length)), "size " + size);
+        }
+        byte[] qp = "caf=C3=A9 =\r\nbar=3D\nlast  \n".getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+        assertEquals("caf\u00e9 bar=\r\nlast\r\n",
+                new String(Mime.quotedPrintable(qp, 0, qp.length), java.nio.charset.StandardCharsets.UTF_8));
+    }
+
+    @Test
     void plainTextTabsStopEveryEightColumns() {
         assertEquals("a       b\n        c\nabcdefgh        d", MailPage.expandTabs("a\tb\n\tc\nabcdefgh\td"));
         assertEquals("no tabs", MailPage.expandTabs("no tabs"));
