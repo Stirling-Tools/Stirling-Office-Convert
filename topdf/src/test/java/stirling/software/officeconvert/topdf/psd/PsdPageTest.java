@@ -538,6 +538,31 @@ class PsdPageTest {
     }
 
     @Test
+    void aLinkedPatternOverlayStartsAtTheLayerReferencePoint() throws IOException {
+        PsdFixture f = new PsdFixture(4, 1);
+        f.hasMerged = false;
+        f.flat(255).flat(255).flat(255);
+        f.global("Patt", PsdFixture.pattern("p1", 2, 1, new byte[] {10, (byte) 200}, new byte[] {20, 100},
+                new byte[] {30, 50}));
+        Desc overlay = new Desc("patternFill").bool("enab", true).bool("present", true).en("Md  ", "BlnM", "Nrml")
+                .unit("Opct", "#Prc", 100).obj("Ptrn", new Desc("Ptrn").text("Idnt", "p1")).unit("Scl ", "#Prc", 100)
+                .bool("Algn", true).obj("phase", new Desc("Pnt ").dbl("Hrzn", 0).dbl("Vrtc", 0));
+        byte[] d = new Desc("null").bool("masterFXSwitch", true).obj("patternFill", overlay).bytes(true);
+        byte[] fx = new byte[d.length + 4];
+        System.arraycopy(d, 0, fx, 4, d.length);
+        java.nio.ByteBuffer point = java.nio.ByteBuffer.allocate(16).putDouble(1).putDouble(0);
+        f.layers.add(new PsdFixture.Layer().rect(0, 0, 1, 4).fill(-1, 255).fill(0, 0).fill(1, 0).fill(2, 0)
+                .block("lfx2", fx).block("fxrp", point.array()));
+        OfficeToPdf.Result r = convert(f, "overlay-origin.psd");
+        assertFalse(r.warnings().stream().anyMatch(w -> w.contains("left out")), r.warnings().toString());
+        try (PDDocument pdf = open("overlay-origin.psd")) {
+            byte[] s = samples(image(pdf.getPage(0)));
+            assertArrayEquals(new int[] {200, 100, 50}, ints(s, 0));
+            assertArrayEquals(new int[] {10, 20, 30}, ints(s, 3));
+        }
+    }
+
+    @Test
     void aPatternTooLargeToHoldIsLeftOutWithAWarning() throws IOException {
         PsdFixture f = new PsdFixture(2, 1);
         f.hasMerged = false;
@@ -878,6 +903,17 @@ class PsdPageTest {
             try {
                 id(o, type);
                 id(o, value);
+            } catch (IOException e) {
+                throw new IllegalStateException(e);
+            }
+            return this;
+        }
+
+        Desc text(String k, String v) {
+            key(k, "TEXT");
+            try {
+                o.writeInt(v.length());
+                o.writeChars(v);
             } catch (IOException e) {
                 throw new IllegalStateException(e);
             }

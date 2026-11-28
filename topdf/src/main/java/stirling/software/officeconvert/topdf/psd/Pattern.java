@@ -203,13 +203,13 @@ final class Pattern {
     void row(int y, int width, double originX, double originY, double scale, float[] out, int stride, int n) {
         double s = scale > 0.01 ? scale : 1;
         boolean smooth = Math.abs(s - 1) > 1e-6;
-        double fy = smooth ? (y + 0.5 - originY) / s - 0.5 : Math.floor(y - originY);
+        double fy = smooth ? (y - originY) / s : Math.floor(y - originY);
         int y0 = (int) Math.floor(fy);
         float ty = (float) (fy - y0);
         int r0 = Math.floorMod(y0, height) * this.width;
         int r1 = Math.floorMod(y0 + 1, height) * this.width;
         for (int x = 0; x < width; x++) {
-            double fx = smooth ? (x + 0.5 - originX) / s - 0.5 : Math.floor(x - originX);
+            double fx = smooth ? (x - originX) / s : Math.floor(x - originX);
             int x0 = (int) Math.floor(fx);
             float tx = (float) (fx - x0);
             int c0 = Math.floorMod(x0, this.width);

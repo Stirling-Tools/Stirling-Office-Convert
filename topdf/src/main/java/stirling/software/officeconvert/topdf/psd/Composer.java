@@ -1204,7 +1204,7 @@ final class Composer {
         if (overlay != null && overlay.pattern() != null) {
             if (p.overlayPattern == null) {
                 p.overlayPattern = pattern(overlay.pattern());
-                double[] b = bounds(p);
+                double[] b = p.layer.reference != null ? p.layer.reference : bounds(p);
                 boolean linked = overlay.pattern().flag("Algn", true);
                 p.overlayPlace = place(overlay.pattern(), linked ? b[0] : 0, linked ? b[1] : 0);
             }

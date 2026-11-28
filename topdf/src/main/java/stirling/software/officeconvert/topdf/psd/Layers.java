@@ -77,6 +77,8 @@ final class Layers {
         boolean interior;
 
         byte[] artboard;
+
+        double[] reference;
         byte[] gradient;
         Descriptor vectorStroke;
         Effects.Overlay overlay;
@@ -473,6 +475,12 @@ final class Layers {
             }
         } else if (key == tag("iOpa") && len >= 1) {
             l.fillOpacity = c.u8();
+        } else if (key == tag("fxrp") && len >= 16) {
+            double x = Double.longBitsToDouble(c.u32() << 32 | c.u32());
+            double y = Double.longBitsToDouble(c.u32() << 32 | c.u32());
+            if (Double.isFinite(x) && Double.isFinite(y) && Math.abs(x) < 1e7 && Math.abs(y) < 1e7) {
+                l.reference = new double[] {x, y};
+            }
         } else if (key == tag("infx") && len >= 1) {
             l.interior = c.u8() != 0;
         } else if (key == tag("clbl") && len >= 1) {
