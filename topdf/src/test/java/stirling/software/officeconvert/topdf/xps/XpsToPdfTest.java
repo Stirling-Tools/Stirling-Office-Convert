@@ -450,6 +450,23 @@ class XpsToPdfTest {
     }
 
     @Test
+    void dashEndsUseTheDashCapAndPathEndsTheirOwnCaps() throws IOException {
+        Path in = write("dashcaps.xps", xps(List.of(page("<Path Stroke='#FF000000' StrokeThickness='20'"
+                + " StrokeDashArray='2 2' StrokeDashCap='Round' Data='M 50,100 L 450,100'/>"
+                + "<Path Stroke='#FF000000' StrokeThickness='20' StrokeDashArray='2 2' StrokeDashCap='Triangle'"
+                + " Data='M 50,300 L 450,300'/>"))));
+        Path out = dir.resolve("dashcaps.pdf");
+        convert(in, out);
+        try (PDDocument pdf = Loader.loadPDF(out.toFile())) {
+            assertTrue(pixel(pdf, 0, 95, 100).getRed() < 60);
+            assertTrue(pixel(pdf, 0, 44, 100).getRed() > 200);
+            assertTrue(pixel(pdf, 0, 95, 300).getRed() < 60);
+            assertTrue(pixel(pdf, 0, 95, 293).getRed() > 200);
+            assertTrue(pixel(pdf, 0, 44, 300).getRed() > 200);
+        }
+    }
+
+    @Test
     void sharpMitersFollowTheXpsLimitAndAreClippedBeyondIt() throws IOException {
         Path in = write("miters.xps", xps(List.of(page("<Path Stroke='#FF000000' StrokeThickness='10'"
                 + " Data='M 50,50 L 300,100 50,150'/><Path Stroke='#FF000000' StrokeThickness='10'"

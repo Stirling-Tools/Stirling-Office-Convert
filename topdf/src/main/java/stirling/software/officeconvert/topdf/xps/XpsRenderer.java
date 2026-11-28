@@ -2,6 +2,7 @@ package stirling.software.officeconvert.topdf.xps;
 
 import java.awt.Shape;
 import java.awt.geom.AffineTransform;
+import java.awt.geom.FlatteningPathIterator;
 import java.awt.geom.NoninvertibleTransformException;
 import java.awt.geom.Path2D;
 import java.awt.geom.PathIterator;
@@ -929,9 +930,13 @@ final class XpsRenderer {
         return t >= 0 && t < 1e6 ? t : 1;
     }
 
-    record Caps(int start, int end, double thickness) {
+    record Caps(int start, int end, double thickness, int dash, double[] pattern, double phase) {
+        Caps(int start, int end, double thickness) {
+            this(start, end, thickness, 0, null, 0);
+        }
+
         boolean drawn() {
-            return start != end || start == 3;
+            return pattern != null || start != end || start == 3;
         }
     }
 
@@ -965,11 +970,14 @@ final class XpsRenderer {
 
     private static boolean ownCaps(XpsElement e) {
         double t = thickness(e);
-        if (t <= 0 || dashed(e, t)) {
+        if (t <= 0) {
             return false;
         }
         int start = cap(e.getAttribute("StrokeStartLineCap").strip());
         int end = cap(e.getAttribute("StrokeEndLineCap").strip());
+        if (dashed(e, t)) {
+            return start != 0 || end != 0 || cap(e.getAttribute("StrokeDashCap").strip()) != 0;
+        }
         return start != end || start == 3;
     }
 
@@ -980,24 +988,29 @@ final class XpsRenderer {
         }
         ops.num(t).op("w\n");
         boolean dashed = dashed(e, t);
+        double[] pattern = null;
+        double phase = 0;
         if (dashed) {
             double[] dash = XpsXml.numbers(XpsXml.attr(e, "StrokeDashArray"));
             double[] use = dash.length % 2 == 1 ? doubled(dash) : dash;
+            pattern = new double[Math.min(use.length, 512)];
             ops.op("[");
-            for (int i = 0; i < use.length && i < 512; i++) {
-                ops.num(use[i] * t);
+            for (int i = 0; i < pattern.length; i++) {
+                pattern[i] = use[i] * t;
+                ops.num(pattern[i]);
             }
+            phase = XpsXml.number(XpsXml.attr(e, "StrokeDashOffset"), 0) * t;
             ops.op("] ");
-            ops.num(XpsXml.number(XpsXml.attr(e, "StrokeDashOffset"), 0) * t).op("d\n");
+            ops.num(phase).op("d\n");
         }
         int start = cap(e.getAttribute("StrokeStartLineCap").strip());
         int end = cap(e.getAttribute("StrokeEndLineCap").strip());
         Caps caps = new Caps(start, end, t);
         int pdfCap;
         if (dashed) {
-            String dashCap = e.getAttribute("StrokeDashCap").strip();
-            pdfCap = dashCap.isEmpty() ? 0 : cap(dashCap);
-            caps = null;
+            int dashCap = cap(e.getAttribute("StrokeDashCap").strip());
+            pdfCap = 0;
+            caps = dashCap == 0 && start == 0 && end == 0 ? null : new Caps(start, end, t, dashCap, pattern, phase);
         } else if (caps.drawn()) {
             pdfCap = 0;
         } else {
@@ -1200,7 +1213,117 @@ final class XpsRenderer {
         return out;
     }
 
+    static final int MAX_DASH_CAPS = 200_000;
+
+    static Path2D dashCaps(Shape shape, Caps caps) {
+        Path2D out = new Path2D.Double(Path2D.WIND_NON_ZERO);
+        double h = caps.thickness() / 2;
+        double[] p = caps.pattern();
+        double total = 0;
+        for (double v : p) {
+            total += v;
+        }
+        if (!(total > 0)) {
+            return out;
+        }
+        int[] budget = {MAX_DASH_CAPS};
+        double[] c = new double[6];
+        double sx = 0;
+        double sy = 0;
+        double px = 0;
+        double py = 0;
+        double dx = 1;
+        double dy = 0;
+        boolean open = false;
+        boolean on = true;
+        int idx = 0;
+        double rem = 0;
+        for (PathIterator it = new FlatteningPathIterator(shape.getPathIterator(null), Math.max(0.01, h / 20), 12);
+                !it.isDone(); it.next()) {
+            int type = it.currentSegment(c);
+            if (type == PathIterator.SEG_MOVETO) {
+                if (open && on) {
+                    dashEnd(out, px, py, dx, dy, caps.end(), h, budget);
+                }
+                sx = px = c[0];
+                sy = py = c[1];
+                double ph = caps.phase() % total;
+                if (ph < 0) {
+                    ph += total;
+                }
+                idx = 0;
+                rem = p[0];
+                while (ph > 0) {
+                    if (ph >= rem) {
+                        ph -= rem;
+                        idx = (idx + 1) % p.length;
+                        rem = p[idx];
+                    } else {
+                        rem -= ph;
+                        ph = 0;
+                    }
+                }
+                on = idx % 2 == 0;
+                open = false;
+                continue;
+            }
+            double x = type == PathIterator.SEG_CLOSE ? sx : c[0];
+            double y = type == PathIterator.SEG_CLOSE ? sy : c[1];
+            double len = Math.hypot(x - px, y - py);
+            if (len > 1e-12) {
+                double ux = (x - px) / len;
+                double uy = (y - py) / len;
+                if (!open) {
+                    open = true;
+                    if (on) {
+                        dashEnd(out, px, py, -ux, -uy, caps.start(), h, budget);
+                    }
+                }
+                double pos = 0;
+                while (len - pos >= rem && budget[0] > 0) {
+                    pos += rem;
+                    double qx = px + ux * pos;
+                    double qy = py + uy * pos;
+                    if (on) {
+                        dashEnd(out, qx, qy, ux, uy, caps.dash(), h, budget);
+                    } else {
+                        dashEnd(out, qx, qy, -ux, -uy, caps.dash(), h, budget);
+                    }
+                    on = !on;
+                    idx = (idx + 1) % p.length;
+                    rem = p[idx];
+                }
+                rem -= len - pos;
+                dx = ux;
+                dy = uy;
+                px = x;
+                py = y;
+            }
+            if (type == PathIterator.SEG_CLOSE) {
+                if (open && on) {
+                    dashEnd(out, px, py, dx, dy, caps.end(), h, budget);
+                }
+                open = false;
+            }
+        }
+        if (open && on) {
+            dashEnd(out, px, py, dx, dy, caps.end(), h, budget);
+        }
+        return out;
+    }
+
+    private static void dashEnd(Path2D out, double x, double y, double dx, double dy, int cap, double h,
+            int[] budget) {
+        if (cap != 0 && budget[0] > 0) {
+            budget[0]--;
+            capShape(out, x, y, dx, dy, cap, h);
+        }
+    }
+
     static Path2D capShapes(Shape shape, Caps caps) {
+        if (caps.pattern() != null) {
+            return dashCaps(shape, caps);
+        }
         Path2D out = new Path2D.Double(Path2D.WIND_NON_ZERO);
         double h = caps.thickness() / 2;
         double[] c = new double[6];
