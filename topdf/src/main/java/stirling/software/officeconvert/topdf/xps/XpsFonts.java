@@ -3,6 +3,7 @@ package stirling.software.officeconvert.topdf.xps;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InterruptedIOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
@@ -114,7 +115,9 @@ final class XpsFonts {
 
         final TrueTypeFont ttf;
 
-        final byte[] data;
+        private final byte[] kept;
+
+        final boolean hasData;
 
         final boolean cff;
 
@@ -155,7 +158,8 @@ final class XpsFonts {
         Font(String part, TrueTypeFont ttf, byte[] data, boolean collection) throws IOException {
             this.part = part;
             this.ttf = ttf;
-            this.data = data;
+            this.kept = collection ? data : null;
+            this.hasData = data != null;
             this.collection = collection;
             this.cff = ttf instanceof OpenTypeFont otf && otf.isPostScript();
             this.glyphs = ttf.getNumberOfGlyphs();
@@ -217,6 +221,15 @@ final class XpsFonts {
             this.symbol = sym;
             this.cids = cff ? cidMap((OpenTypeFont) ttf, glyphs) : null;
             this.noSubsetting = os2 != null && (os2.getFsType() & OS2WindowsMetricsTable.FSTYPE_NO_SUBSETTING) != 0;
+        }
+
+        byte[] data() throws IOException {
+            if (kept != null) {
+                return kept;
+            }
+            try (InputStream in = ttf.getOriginalData()) {
+                return in.readAllBytes();
+            }
         }
 
         int code(int gid) {
@@ -426,7 +439,7 @@ final class XpsFonts {
         boolean embedded = false;
         String tag = tag();
         if (!f.cff) {
-            if (!(f.noSubsetting && !f.collection && f.data != null)) {
+            if (!(f.noSubsetting && !f.collection && f.hasData)) {
                 try {
                     Set<Integer> gids = new HashSet<>();
                     for (int g = f.used.nextSetBit(0); g >= 0; g = f.used.nextSetBit(g + 1)) {
@@ -458,16 +471,17 @@ final class XpsFonts {
                     embedded = false;
                 }
             }
-            if (!embedded && !f.collection && f.data != null) {
-                COSStream file = stream(f.data);
-                file.setInt(COSName.LENGTH1, f.data.length);
+            if (!embedded && !f.collection && f.hasData) {
+                byte[] all = f.data();
+                COSStream file = stream(all);
+                file.setInt(COSName.LENGTH1, all.length);
                 descriptor.setItem(COSName.FONT_FILE2, file);
                 cid.setItem(COSName.CID_TO_GID_MAP, COSName.IDENTITY);
                 embedded = true;
             }
             cid.setItem(COSName.SUBTYPE, COSName.CID_FONT_TYPE2);
-        } else if (f.data != null) {
-            COSStream file = stream(f.data);
+        } else if (f.hasData) {
+            COSStream file = stream(f.data());
             file.setItem(COSName.SUBTYPE, COSName.getPDFName("OpenType"));
             descriptor.setItem(COSName.FONT_FILE3, file);
             cid.setItem(COSName.SUBTYPE, COSName.CID_FONT_TYPE0);
