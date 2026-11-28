@@ -2798,8 +2798,30 @@ final class SvgDraw {
         return m != null && SvgDoc.local(m).equals("marker") ? m : null;
     }
 
+    private boolean refersToActive(Element root) {
+        int n = 0;
+        for (Element e : root.getAllElements()) {
+            if (++n > 2000) {
+                return false;
+            }
+            for (org.jsoup.nodes.Attribute a : e.attributes()) {
+                String v = a.getValue();
+                int at = v.indexOf("url(");
+                while (at >= 0) {
+                    int close = v.indexOf(')', at);
+                    Element t = doc.byUrl(v.substring(at, close < 0 ? v.length() : close + 1));
+                    if (t != null && active.contains(t) && SvgDoc.local(t).equals("pattern")) {
+                        return true;
+                    }
+                    at = close < 0 ? -1 : v.indexOf("url(", close);
+                }
+            }
+        }
+        return false;
+    }
+
     private void drawMarker(Element m, Vertex v, boolean first, float strokeWidth) throws IOException {
-        if (groups >= MAX_GROUP_DEPTH || spent() || !active.add(m)) {
+        if (groups >= MAX_GROUP_DEPTH || spent() || refersToActive(m) || !active.add(m)) {
             return;
         }
         try {

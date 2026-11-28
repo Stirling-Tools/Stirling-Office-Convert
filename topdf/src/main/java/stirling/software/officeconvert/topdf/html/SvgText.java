@@ -103,7 +103,7 @@ final class SvgText {
         }
         fonts(l);
         if (vertical(style)) {
-            vertical(l, xs, ys, dxs, dys, rot);
+            vertical(l, xs, ys, dxs, dys, rot, text, style);
         } else {
             position(l, xs, ys, dxs, dys, rot, text, style);
         }
@@ -613,7 +613,8 @@ final class SvgText {
         };
     }
 
-    private void vertical(Layout l, float[] xs, float[] ys, float[] dxs, float[] dys, float[] rot) {
+    private void vertical(Layout l, float[] xs, float[] ys, float[] dxs, float[] dys, float[] rot, Element text,
+            SvgStyle style) {
         float column = 0;
         float pen = 0;
         int chunk = -1;
@@ -709,6 +710,7 @@ final class SvgText {
         if (chunk >= 0) {
             chunks.add(new int[] {chunk, prev});
         }
+        verticalLength(l, text, style);
         for (int[] ch : chunks) {
             Ch first = l.chars.get(ch[0]);
             String a = SvgDoc.lower(first.style.get("text-anchor"));
@@ -734,6 +736,63 @@ final class SvgText {
             }
             for (int k = ch[0]; k <= ch[1]; k++) {
                 l.chars.get(k).y += shift;
+            }
+        }
+    }
+
+    private void verticalLength(Layout l, Element text, SvgStyle style) {
+        float want = SvgDraw.length(SvgDoc.attr(text, "textLength"), style.fontSize, draw.vh(), Float.NaN);
+        if (!(want >= 0)) {
+            return;
+        }
+        int first = -1;
+        int last = -1;
+        int count = 0;
+        for (int i = 0; i < l.chars.size(); i++) {
+            Ch c = l.chars.get(i);
+            if (!c.skipped && !c.inUnit) {
+                if (first < 0) {
+                    first = i;
+                }
+                last = i;
+                count++;
+            }
+        }
+        if (first < 0) {
+            return;
+        }
+        Ch a = l.chars.get(first);
+        float top = upright(a.cp) ? a.y - a.size : a.y;
+        float bottom = l.chars.get(last).anchorIndex / 1000f;
+        float have = bottom - top;
+        if (!(have > 0)) {
+            return;
+        }
+        if (SvgDoc.lower(SvgDoc.attr(text, "lengthAdjust")).equals("spacingandglyphs")) {
+            float k = want / have;
+            for (Ch c : l.chars) {
+                if (c.skipped) {
+                    continue;
+                }
+                c.y = top + (c.y - top) * k;
+                c.anchorIndex = Math.round((top + (c.anchorIndex / 1000f - top) * k) * 1000);
+                if (!upright(c.cp)) {
+                    c.scaleX = k;
+                    c.advance *= k;
+                }
+            }
+        } else if (count > 1) {
+            float extra = (want - have) / (count - 1);
+            int k = -1;
+            for (Ch c : l.chars) {
+                if (c.skipped) {
+                    continue;
+                }
+                if (!c.inUnit) {
+                    k++;
+                }
+                c.y += extra * k;
+                c.anchorIndex += Math.round(extra * k * 1000);
             }
         }
     }
@@ -1402,7 +1461,7 @@ final class SvgText {
                 }
                 var m = c.face.metrics();
                 float upem = c.face.unitsPerEm();
-                float size = ds.fontSize;
+                float size = c.size;
                 float thick = Math.max(size / 20, m.underlineThickness() / upem * size);
                 List<Float> ys = new ArrayList<>();
                 if (deco.contains("underline")) {
