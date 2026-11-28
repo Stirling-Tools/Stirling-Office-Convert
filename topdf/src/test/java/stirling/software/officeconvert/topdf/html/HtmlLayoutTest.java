@@ -898,6 +898,15 @@ class HtmlLayoutTest {
     }
 
     @Test
+    void aNormalLineIsAWholeNumberOfPixelsTallAsInABrowser() throws IOException {
+        Laid l = lay("""
+                <!doctype html><html><body><div>One<br>Two<br>Three</div>
+                <div style="font:13px Arial">Four<br>Five</div></body></html>""");
+        assertEquals(13.5f, l.word("Two").top() - l.word("One").top(), 0.1f, l.words().toString());
+        assertEquals(11.25f, l.word("Five").top() - l.word("Four").top(), 0.1f, l.words().toString());
+    }
+
+    @Test
     void thePageColourReachesThePageMarginsWhateverTheBodyMargin() throws IOException {
         Laid l = lay("<html><body bgcolor=\"#ffff00\" style=\"margin:40px\"><p>Hi</p></body></html>");
         int x = Math.round(HtmlDocument.PAGE_MARGIN) + 3;
