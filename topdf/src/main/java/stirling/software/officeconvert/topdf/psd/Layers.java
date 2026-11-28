@@ -90,6 +90,8 @@ final class Layers {
         LayerEffects.Shadow innerShadow;
 
         LayerEffects.Shadow satin;
+
+        List<LayerEffects.Stroke> strokes = List.of();
         LayerEffects.Shadow innerGlow;
         float[] solid;
         boolean vectorMask;
@@ -168,7 +170,7 @@ final class Layers {
         long open = planes * (40L << 10);
         long caches = planes * doc.width * 4L;
         long strips = vectors * 2 * doc.width * VectorMask.STRIP;
-        long fx = effects ? LayerEffects.MAX_PIXELS * 30 + LayerEffects.MAX_PIXELS * 4 * 8 : 0;
+        long fx = effects ? LayerEffects.MAX_PIXELS * 30 + LayerEffects.MAX_PIXELS * 4 * 12 : 0;
         return buffers + open + caches + strips + blobs * 4 + fx + (64L << 20);
     }
 
@@ -337,6 +339,7 @@ final class Layers {
                 g.glowGradient = l.glowGradient;
                 g.innerShadow = l.innerShadow;
                 g.satin = l.satin;
+                g.strokes = l.strokes;
                 g.innerGlow = l.innerGlow;
                 g.knockout = l.knockout;
                 g.restricted = l.restricted;
@@ -528,7 +531,8 @@ final class Layers {
             Effects.Found found = Effects.scan(c, len, l.effects);
             if (found != null) {
                 effects |= found.stroke() != null || found.shadow() != null || found.bevel() != null
-                        || found.glow() != null || found.innerShadow() != null || found.innerGlow() != null || found.satin() != null;
+                        || found.glow() != null || found.innerShadow() != null || found.innerGlow() != null || found.satin() != null
+                        || !found.strokes().isEmpty();
                 l.overlay = found.overlay();
                 l.stroke = found.stroke();
                 l.shadow = found.shadow();
@@ -537,6 +541,7 @@ final class Layers {
                 l.glowGradient = found.glowGradient();
                 l.innerShadow = found.innerShadow();
                 l.satin = found.satin();
+                l.strokes = found.strokes();
                 l.innerGlow = found.innerGlow();
             }
         } else if (key == tag("lrFX")) {

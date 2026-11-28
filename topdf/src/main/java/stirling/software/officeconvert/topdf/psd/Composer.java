@@ -526,12 +526,49 @@ final class Composer {
         }
         try {
             byte[] line = plane.line(row);
-            return line != null && plane.sample(line, col - l.left) > 0;
+            if (line != null && plane.sample(line, col - l.left) > 0) {
+                return true;
+            }
         } catch (IOException e) {
             return false;
         } finally {
             plane.close();
         }
+        return snapped(l, row + 1, col);
+    }
+
+    private boolean snapped(Layers.Layer l, int row, int col) {
+        Descriptor d = l.vectorStroke;
+        Descriptor content = d == null ? null : d.object("strokeStyleContent");
+        float[] color = content == null ? null : content.color("Clr ");
+        if (color == null || !(rgb || doc.mode == PsdDocument.GRAY) || row >= l.bottom
+                || !"strokeStyleAlignCenter".equals(d.get("strokeStyleLineAlignment") instanceof Descriptor.Enum e
+                        ? e.value() : null)) {
+            return false;
+        }
+        float[] want = solid(color);
+        for (int i = -1; i < n; i++) {
+            Layers.Channel ch = l.channel(i);
+            if (ch == null) {
+                return false;
+            }
+            Plane plane = new Plane(ch, l.top, l.left, l.bottom, l.right, 0);
+            try {
+                if (!plane.covers(row)) {
+                    return false;
+                }
+                byte[] line = plane.line(row);
+                float v = line == null ? -1 : plane.sample(line, col - l.left);
+                if (i < 0 ? v < 1 : Math.abs(v - want[i]) > 2 / 255f) {
+                    return false;
+                }
+            } catch (IOException e) {
+                return false;
+            } finally {
+                plane.close();
+            }
+        }
+        return true;
     }
 
     private Pattern pattern(Descriptor d) {
@@ -899,14 +936,10 @@ final class Composer {
                             null);
                 }
                 drawGlow(dest, base, fxOpacity, null);
-                if (fx != null && fx.stroke != null && fx.strokeUnder) {
-                    drawStroke(dest, base, fxOpacity);
-                }
+                drawStrokes(dest, base, fxOpacity, null, true);
                 passThrough(g, dest, opacity);
                 drawBevel(dest, base, fxOpacity, null);
-                if (fx != null && fx.stroke != null && !fx.strokeUnder) {
-                    drawStroke(dest, base, fxOpacity);
-                }
+                drawStrokes(dest, base, fxOpacity, null, false);
                 return;
             }
             float[] isolated = buffer();
@@ -934,16 +967,12 @@ final class Composer {
                         l.shadow.conceal() && !(l.shadow.spread() > 0) ? shape : null);
             }
             drawGlow(dest, base, fxOpacity, null);
-            if (fx != null && fx.stroke != null && fx.strokeUnder) {
-                drawStroke(dest, base, fxOpacity);
-            }
+            drawStrokes(dest, base, fxOpacity, null, true);
             releaseShape(shape);
             composite(dest, src, l.blend, opacity, null, lo, hi);
             release(src);
             drawBevel(dest, base, fxOpacity, null);
-            if (fx != null && fx.stroke != null && !fx.strokeUnder) {
-                drawStroke(dest, base, fxOpacity);
-            }
+            drawStrokes(dest, base, fxOpacity, null, false);
             return;
         }
         LayerEffects fx = base.fx;
@@ -963,9 +992,7 @@ final class Composer {
                     l.shadow.conceal() && !(l.shadow.spread() > 0) ? shape : null);
         }
         drawGlow(dest, base, fxOpacity, null);
-        if (fx != null && fx.stroke != null && fx.strokeUnder) {
-            drawStroke(dest, base, fxOpacity);
-        }
+        drawStrokes(dest, base, fxOpacity, null, true);
         if (!l.blendClipped) {
             composite(dest, src, l.blend, opacity, null);
             for (Node c : base.clipped) {
@@ -993,9 +1020,7 @@ final class Composer {
         release(src);
         releaseShape(shape);
         drawBevel(dest, base, fxOpacity, null);
-        if (fx != null && fx.stroke != null && !fx.strokeUnder) {
-            drawStroke(dest, base, fxOpacity);
-        }
+        drawStrokes(dest, base, fxOpacity, null, false);
     }
 
     private void atop(Node c, float[] dest) throws IOException {
@@ -1040,15 +1065,11 @@ final class Composer {
         }
         releaseShape(own);
         drawGlow(dest, c, opacity, shape);
-        if (fx != null && fx.stroke != null && fx.strokeUnder) {
-            drawStroke(dest, c, opacity, shape);
-        }
+        drawStrokes(dest, c, opacity, shape, true);
         composite(dest, s, l.blend, opacity, shape, lo, hi);
         release(s);
         drawBevel(dest, c, opacity, shape);
-        if (fx != null && fx.stroke != null && !fx.strokeUnder) {
-            drawStroke(dest, c, opacity, shape);
-        }
+        drawStrokes(dest, c, opacity, shape, false);
     }
 
     private void adjust(Adjust a, float[] dest, float[] clip, float[] given) throws IOException {
@@ -1417,13 +1438,17 @@ final class Composer {
             }
         }
         if (!(node instanceof Pixels || node instanceof Group) || node == top || node.layer.hidden
-                || node.layer.stroke == null && node.layer.shadow == null && node.layer.bevel == null
+                || node.layer.stroke == null && node.layer.strokes.isEmpty() && node.layer.shadow == null
+                        && node.layer.bevel == null
                         && node.layer.glow == null && node.layer.innerShadow == null && node.layer.innerGlow == null
                         && node.layer.satin == null) {
             return;
         }
         Layers.Layer l = node.layer;
         int e = LayerEffects.extent(l.stroke, l.shadow, l.bevel, l.glow, l.innerShadow);
+        for (LayerEffects.Stroke s : l.strokes) {
+            e = Math.max(e, LayerEffects.extent(s, null, null, null, null));
+        }
         int x0 = 0;
         int y0 = 0;
         int x1 = width;
@@ -1454,7 +1479,7 @@ final class Composer {
         y1 = Math.min(doc.height, y1 + e);
         long area = (long) Math.max(0, x1 - x0) * Math.max(0, y1 - y0);
         if (area == 0 || area > LayerEffects.MAX_PIXELS || area > budget[0]) {
-            if (l.stroke != null) {
+            if (l.stroke != null || !l.strokes.isEmpty()) {
                 effects.add("stroke");
             }
             if (l.shadow != null) {
@@ -1476,6 +1501,7 @@ final class Composer {
                 effects.add("satin");
             }
             l.stroke = null;
+            l.strokes = List.of();
             l.shadow = null;
             l.bevel = null;
             l.glow = null;
@@ -1516,7 +1542,7 @@ final class Composer {
             close(copy);
         }
         node.fx = LayerEffects.build(alpha, x0, y0, w, h, l.stroke, l.shadow, l.bevel, l.glow, l.innerShadow,
-                l.innerGlow, l.satin, doc.globalAngle,
+                l.innerGlow, l.satin, l.strokes, doc.globalAngle,
                 l.fillOpacity >= 255);
     }
 
@@ -1677,8 +1703,21 @@ final class Composer {
         drawEffect(dest, fx, fx.highlight, b.light(), b.lightOpacity(), b.lightBlend(), layerOpacity, null, clip);
     }
 
-    private void drawStroke(float[] dest, Node node, float layerOpacity) {
-        drawStroke(dest, node, layerOpacity, null);
+    private void drawStrokes(float[] dest, Node node, float layerOpacity, float[] clip, boolean under) {
+        LayerEffects fx = node.fx;
+        if (fx == null) {
+            return;
+        }
+        List<LayerEffects.Stroke> more = node.layer.strokes;
+        for (int i = Math.min(more.size(), fx.strokes.length) - 1; i >= 0; i--) {
+            LayerEffects.Stroke s = more.get(i);
+            if (fx.strokes[i] != null && s.position().equals("OutF") == under) {
+                drawEffect(dest, fx, fx.strokes[i], s.color(), s.opacity(), s.blend(), layerOpacity, null, clip);
+            }
+        }
+        if (fx.stroke != null && fx.strokeUnder == under) {
+            drawStroke(dest, node, layerOpacity, clip);
+        }
     }
 
     private void drawStroke(float[] dest, Node node, float layerOpacity, float[] clip) {

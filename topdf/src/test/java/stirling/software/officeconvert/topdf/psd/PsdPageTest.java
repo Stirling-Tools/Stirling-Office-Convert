@@ -743,6 +743,64 @@ class PsdPageTest {
     }
 
     @Test
+    void everyStrokeOnALayerIsDrawn() throws IOException {
+        PsdFixture f = new PsdFixture(9, 9);
+        f.hasMerged = false;
+        f.flat(255).flat(255).flat(255);
+        f.layers.add(new PsdFixture.Layer().rect(0, 0, 9, 9).fill(-1, 255).fill(0, 255).fill(1, 255).fill(2, 255));
+        Desc outside = new Desc("FrFX").bool("enab", true).bool("present", true).en("Styl", "FStl", "OutF")
+                .en("PntT", "FrFl", "SClr").en("Md  ", "BlnM", "Nrml").unit("Opct", "#Prc", 100)
+                .unit("Sz  ", "#Pxl", 1).obj("Clr ", rgb(255, 0, 0));
+        Desc inside = new Desc("FrFX").bool("enab", true).bool("present", true).en("Styl", "FStl", "InsF")
+                .en("PntT", "FrFl", "SClr").en("Md  ", "BlnM", "Nrml").unit("Opct", "#Prc", 100)
+                .unit("Sz  ", "#Pxl", 1).obj("Clr ", rgb(0, 0, 255));
+        byte[] d = new Desc("null").bool("masterFXSwitch", true).list("frameFXMulti", outside, inside).bytes(true);
+        byte[] fx = new byte[d.length + 4];
+        System.arraycopy(d, 0, fx, 4, d.length);
+        f.layers.add(new PsdFixture.Layer().rect(2, 2, 7, 7).fill(-1, 255).fill(0, 128).fill(1, 128).fill(2, 128)
+                .block("lfx2", fx));
+        OfficeToPdf.Result r = convert(f, "two-strokes.psd");
+        assertFalse(r.warnings().stream().anyMatch(w -> w.contains("stroke")), r.warnings().toString());
+        try (PDDocument pdf = open("two-strokes.psd")) {
+            byte[] s = samples(image(pdf.getPage(0)));
+            assertArrayEquals(new int[] {255, 0, 0}, ints(s, (1 * 9 + 4) * 3));
+            assertArrayEquals(new int[] {0, 0, 255}, ints(s, (2 * 9 + 4) * 3));
+            assertArrayEquals(new int[] {128, 128, 128}, ints(s, (4 * 9 + 4) * 3));
+        }
+    }
+
+    @Test
+    void aShapeStrokeAlreadyInsideTheStoredPixelsIsNotDrawnAgain() throws IOException {
+        PsdFixture f = new PsdFixture(8, 8);
+        f.hasMerged = false;
+        f.flat(255).flat(255).flat(255);
+        f.layers.add(new PsdFixture.Layer().rect(0, 0, 8, 8).fill(-1, 255).fill(0, 255).fill(1, 255).fill(2, 255));
+        PsdFixture.Layer shape = new PsdFixture.Layer().rect(1, 1, 7, 7).fill(0, 0).fill(1, 0).fill(2, 0);
+        byte[] alpha = new byte[36];
+        for (int y = 1; y < 5; y++) {
+            for (int x = 1; x < 5; x++) {
+                alpha[y * 6 + x] = (byte) 255;
+            }
+        }
+        shape.channels.put(-1, alpha);
+        Desc stroke = new Desc("strokeStyle").bool("strokeEnabled", true).bool("fillEnabled", true)
+                .unit("strokeStyleLineWidth", "#Pxl", 1)
+                .en("strokeStyleLineAlignment", "strokeStyleLineAlignment", "strokeStyleAlignCenter")
+                .unit("strokeStyleOpacity", "#Prc", 100)
+                .obj("strokeStyleContent", new Desc("solidColorLayer").obj("Clr ", rgb(0, 0, 0)));
+        shape.block("vmsk", square(2 / 8.0, 2 / 8.0, 6 / 8.0, 6 / 8.0)).block("vstk", stroke.bytes(true))
+                .block("vowv", new byte[4])
+                .block("SoCo", new Desc("null").obj("Clr ", rgb(0, 0, 0)).bytes(true));
+        f.layers.add(shape);
+        convert(f, "snapped.psd");
+        try (PDDocument pdf = open("snapped.psd")) {
+            byte[] s = samples(image(pdf.getPage(0)));
+            assertArrayEquals(new int[] {255, 255, 255}, ints(s, (1 * 8 + 4) * 3));
+            assertArrayEquals(new int[] {0, 0, 0}, ints(s, (2 * 8 + 4) * 3));
+        }
+    }
+
+    @Test
     void aRestrictedChannelKeepsWhatIsBelowTheLayer() throws IOException {
         PsdFixture f = new PsdFixture(2, 1);
         f.hasMerged = false;

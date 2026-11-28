@@ -1,6 +1,7 @@
 package stirling.software.officeconvert.topdf.psd;
 
 import java.util.Arrays;
+import java.util.List;
 
 final class LayerEffects {
 
@@ -42,6 +43,8 @@ final class LayerEffects {
 
     byte[] satin;
 
+    byte[][] strokes = new byte[0][];
+
     private LayerEffects(int left, int top, int width, int height, byte[] stroke, byte[] shadow, boolean strokeUnder) {
         this.left = left;
         this.top = top;
@@ -73,39 +76,10 @@ final class LayerEffects {
     }
 
     static LayerEffects build(float[] alpha, int left, int top, int width, int height, Stroke stroke, Shadow shadow,
-            Bevel bevel, Shadow glow, Shadow innerShadow, Shadow innerGlow, Shadow satin, double globalAngle,
-            boolean opaque) {
-        byte[] s = null;
-        boolean under = false;
-        if (stroke != null && stroke.size() > 0) {
-            float peak = 0;
-            for (float a : alpha) {
-                peak = Math.max(peak, a);
-            }
-            float interior = peak >= 0.999f && opaque ? 1 : 0;
-            float[] shape = alpha;
-            if (peak < 0.999f) {
-                shape = new float[alpha.length];
-                for (int i = 0; i < alpha.length; i++) {
-                    shape[i] = alpha[i] > 0.5f / 255 ? 1 : 0;
-                }
-            }
-            float[] dOut = distance(shape, width, height, true);
-            float[] dIn = stroke.position().equals("OutF") ? null : distance(shape, width, height, false);
-            s = new byte[width * height];
-            float size = stroke.size();
-            under = stroke.position().equals("OutF");
-            for (int i = 0; i < s.length; i++) {
-                float v;
-                switch (stroke.position()) {
-                    case "InsF" -> v = shape[i] >= 0.5f ? clamp(size + 1 - dIn[i]) * shape[i] : 0;
-                    case "CtrF" -> v = shape[i] >= 0.5f ? clamp(size / 2 + 1 - dIn[i])
-                            : clamp(size / 2 + 1 - dOut[i]);
-                    default -> v = shape[i] >= 0.5f ? interior : Math.max(shape[i], clamp(size + 1 - dOut[i]));
-                }
-                s[i] = (byte) Math.round(v * 255);
-            }
-        }
+            Bevel bevel, Shadow glow, Shadow innerShadow, Shadow innerGlow, Shadow satin, List<Stroke> strokes,
+            double globalAngle, boolean opaque) {
+        byte[] s = stroke == null ? null : stroke(alpha, width, height, stroke, opaque);
+        boolean under = s != null && stroke.position().equals("OutF");
         byte[] sh = null;
         if (shadow != null) {
             sh = bytes(soft(alpha, width, height, shadow, globalAngle));
@@ -139,6 +113,10 @@ final class LayerEffects {
             }
             fx.innerGlow = bytes(spread);
         }
+        fx.strokes = new byte[strokes.size()][];
+        for (int i = 0; i < strokes.size(); i++) {
+            fx.strokes[i] = stroke(alpha, width, height, strokes.get(i), opaque);
+        }
         if (satin != null) {
             float[] one = soft(alpha, width, height, satin, 0);
             Shadow back = new Shadow(satin.color(), satin.opacity(), satin.blend(), satin.angle() + 180, false,
@@ -151,6 +129,39 @@ final class LayerEffects {
             fx.satin = bytes(one);
         }
         return fx;
+    }
+
+    private static byte[] stroke(float[] alpha, int width, int height, Stroke stroke, boolean opaque) {
+        byte[] s = null;
+        if (stroke.size() > 0) {
+            float peak = 0;
+            for (float a : alpha) {
+                peak = Math.max(peak, a);
+            }
+            float interior = peak >= 0.999f && opaque ? 1 : 0;
+            float[] shape = alpha;
+            if (peak < 0.999f) {
+                shape = new float[alpha.length];
+                for (int i = 0; i < alpha.length; i++) {
+                    shape[i] = alpha[i] > 0.5f / 255 ? 1 : 0;
+                }
+            }
+            float[] dOut = distance(shape, width, height, true);
+            float[] dIn = stroke.position().equals("OutF") ? null : distance(shape, width, height, false);
+            s = new byte[width * height];
+            float size = stroke.size();
+            for (int i = 0; i < s.length; i++) {
+                float v;
+                switch (stroke.position()) {
+                    case "InsF" -> v = shape[i] >= 0.5f ? clamp(size + 1 - dIn[i]) * shape[i] : 0;
+                    case "CtrF" -> v = shape[i] >= 0.5f ? clamp(size / 2 + 1 - dIn[i])
+                            : clamp(size / 2 + 1 - dOut[i]);
+                    default -> v = shape[i] >= 0.5f ? interior : Math.max(shape[i], clamp(size + 1 - dOut[i]));
+                }
+                s[i] = (byte) Math.round(v * 255);
+            }
+        }
+        return s;
     }
 
     private static byte[] bytes(float[] v) {

@@ -28,7 +28,7 @@ final class Effects {
 
     record Found(Overlay overlay, LayerEffects.Stroke stroke, LayerEffects.Shadow shadow, LayerEffects.Bevel bevel,
             LayerEffects.Shadow glow, Descriptor glowGradient, LayerEffects.Shadow innerShadow,
-            LayerEffects.Shadow innerGlow, LayerEffects.Shadow satin) {}
+            LayerEffects.Shadow innerGlow, LayerEffects.Shadow satin, List<LayerEffects.Stroke> strokes) {}
 
     static Found scan(Source.Cursor c, long len, Set<String> into) throws IOException {
         byte[] b = new byte[(int) Math.min(len, MAX_SCAN)];
@@ -54,6 +54,7 @@ final class Effects {
         LayerEffects.Shadow innerShadow = null;
         LayerEffects.Shadow innerGlow = null;
         LayerEffects.Shadow satin = null;
+        List<LayerEffects.Stroke> strokes = new ArrayList<>();
         for (Map.Entry<String, String> e : NAMES.entrySet()) {
             Object v = d.get(e.getKey());
             List<Object> all = new ArrayList<>();
@@ -87,6 +88,12 @@ final class Effects {
                 String paint = fx.enumValue("PntT") == null ? "SClr" : fx.enumValue("PntT");
                 boolean solidPaint = "SClr".equals(paint) && color != null;
                 boolean gradientPaint = "GrFl".equals(paint) && fx.object("Grad") != null;
+                if (e.getValue().equals("stroke") && stroke != null && solidPaint && strokes.size() < 4) {
+                    String position = fx.enumValue("Styl");
+                    strokes.add(new LayerEffects.Stroke(bounded(fx.number("Sz  ", 3), 250, 3),
+                            position == null ? "OutF" : position, color, opacity, mode, null));
+                    continue;
+                }
                 if (e.getValue().equals("stroke") && stroke == null && (solidPaint || gradientPaint)) {
                     String position = fx.enumValue("Styl");
                     stroke = new LayerEffects.Stroke(bounded(fx.number("Sz  ", 3), 250, 3), position == null ? "OutF" : position,
@@ -131,7 +138,7 @@ final class Effects {
                 into.add(e.getValue());
             }
         }
-        return new Found(overlay, stroke, shadow, bevel, glow, glowGradient, innerShadow, innerGlow, satin);
+        return new Found(overlay, stroke, shadow, bevel, glow, glowGradient, innerShadow, innerGlow, satin, strokes);
     }
 
     private static LayerEffects.Bevel bevel(Descriptor fx) {
