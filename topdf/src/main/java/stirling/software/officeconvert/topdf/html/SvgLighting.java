@@ -12,6 +12,22 @@ final class SvgLighting {
 
     private SvgLighting() {}
 
+    static boolean passesThrough(Element p) {
+        float[] order = SvgDraw.numbers(SvgDoc.attr(p, "order"));
+        int ox = order.length > 0 ? (int) order[0] : 3;
+        int oy = order.length > 1 ? (int) order[1] : ox;
+        if (order.length > 2 || order.length > 0 && (order[0] != ox || order.length > 1 && order[1] != oy)
+                || ox < 1 || oy < 1 || ox > MAX_ORDER || oy > MAX_ORDER) {
+            return true;
+        }
+        if (SvgDraw.numbers(SvgDoc.attr(p, "kernelMatrix")).length != ox * oy) {
+            return true;
+        }
+        int tx = SvgDoc.has(p, "targetX") ? (int) SvgDraw.number(SvgDoc.attr(p, "targetX"), -1) : ox / 2;
+        int ty = SvgDoc.has(p, "targetY") ? (int) SvgDraw.number(SvgDoc.attr(p, "targetY"), -1) : oy / 2;
+        return tx < 0 || tx >= ox || ty < 0 || ty >= oy;
+    }
+
     static SvgFilter.Img convolve(Element p, SvgFilter.Img in, SvgDraw d) {
         SvgFilter.Img none = in;
         float[] order = SvgDraw.numbers(SvgDoc.attr(p, "order"));

@@ -214,6 +214,17 @@ final class SvgFilter {
             content.draw();
             return;
         }
+        Rectangle2D through = passThrough(d, steps, bbox);
+        if (through != null) {
+            d.canvas.save();
+            try {
+                d.canvas.clip(through);
+                content.draw();
+            } finally {
+                d.canvas.restore();
+            }
+            return;
+        }
         List<float[]> vector = vectorColours(d, steps, e, s);
         if (vector != null) {
             List<float[]> saved = d.recolour;
@@ -252,6 +263,55 @@ final class SvgFilter {
 
     private static final java.util.Set<String> SHAPES = java.util.Set.of("rect", "circle", "ellipse", "line",
             "polyline", "polygon", "path");
+
+    private static Rectangle2D passThrough(SvgDraw d, List<Step> steps, Rectangle2D bbox) {
+        Rectangle2D region = null;
+        for (Step st : steps) {
+            Element owner = st.element();
+            if (owner == null) {
+                return null;
+            }
+            for (int i = 0; owner != null && i < 8 && owner.children().isEmpty(); i++) {
+                Element next = d.doc.target(owner);
+                owner = next != null && SvgDoc.local(next).equals("filter") ? next : null;
+            }
+            if (owner == null) {
+                return null;
+            }
+            int n = 0;
+            for (Element p : owner.children()) {
+                String tag = SvgDoc.local(p).toLowerCase(Locale.ROOT);
+                if (!tag.startsWith("fe")) {
+                    continue;
+                }
+                n++;
+                String in = SvgDoc.attr(p, "in").strip();
+                if (!in.isEmpty() && !in.equals("SourceGraphic") || SvgDoc.has(p, "x") || SvgDoc.has(p, "y")
+                        || SvgDoc.has(p, "width") || SvgDoc.has(p, "height")) {
+                    return null;
+                }
+                boolean same = switch (tag) {
+                    case "feconvolvematrix" -> SvgLighting.passesThrough(p);
+                    case "femorphology" -> {
+                        float[] r = SvgDraw.numbers(SvgDoc.attr(p, "radius"));
+                        float rx = r.length > 0 ? r[0] : 0;
+                        float ry = r.length > 1 ? r[1] : rx;
+                        yield rx < 0 || ry < 0 || rx == 0 && ry == 0;
+                    }
+                    default -> false;
+                };
+                if (!same) {
+                    return null;
+                }
+            }
+            Rectangle2D r = n == 0 ? null : region(d, st.element(), bbox);
+            if (r == null) {
+                return null;
+            }
+            region = region == null ? r : region.createIntersection(r);
+        }
+        return region;
+    }
 
     private static List<float[]> vectorColours(SvgDraw d, List<Step> steps, Element e, SvgStyle s) {
         List<float[]> out = new ArrayList<>();
@@ -347,7 +407,8 @@ final class SvgFilter {
         stirling.software.officeconvert.memory.Admission.Ticket ticket =
                 stirling.software.officeconvert.memory.Admission.jvm().enter(bytes);
         try {
-            filtered(d, steps, form, new Frame(device, null, null), w, h, toPixel, bbox, s);
+            filtered(d, steps, form, new Frame(device, null, null), w, h, toPixel, bbox, s,
+                    shadowLast(steps) ? content : null, region);
         } finally {
             ticket.close();
         }
@@ -416,20 +477,28 @@ final class SvgFilter {
                 stirling.software.officeconvert.memory.Admission.jvm().enter(bytes);
         try {
             filtered(d, steps, form, new Frame(null, grid,
-                    new Rectangle2D.Double(0, 0, region.getWidth() * kx, region.getHeight() * ky)), w, h, toPixel, bbox, s);
+                    new Rectangle2D.Double(0, 0, region.getWidth() * kx, region.getHeight() * ky)), w, h, toPixel, bbox, s,
+                    shadowLast(steps) ? content : null, region);
         } finally {
             ticket.close();
         }
     }
 
+    private static boolean shadowLast(List<Step> steps) {
+        Step last = steps.get(steps.size() - 1);
+        return last.element() == null && last.kind().equals("drop-shadow");
+    }
+
     private static void filtered(SvgDraw d, List<Step> steps, PDFormXObject form, Frame device, int w, int h,
-            AffineTransform toPixel, Rectangle2D bbox, SvgStyle s) throws IOException {
+            AffineTransform toPixel, Rectangle2D bbox, SvgStyle s, SvgDraw.Content over, Rectangle2D region)
+            throws IOException {
         Img src = rasterize(form, device, w, h);
         Img result = src;
-        for (Step st : steps) {
+        for (int i = 0; i < steps.size(); i++) {
+            Step st = steps.get(i);
             stirling.software.officeconvert.extract.PdfFiles.stopIfInterrupted();
             result = st.element() != null ? run(d, st.element(), bbox, toPixel, result, device)
-                    : function(st, result, toPixel, s);
+                    : function(st, result, toPixel, s, over != null && i == steps.size() - 1);
             if (result == null) {
                 return;
             }
@@ -458,6 +527,15 @@ final class SvgFilter {
             return;
         } finally {
             cs.restoreGraphicsState();
+        }
+        if (over != null) {
+            d.canvas.save();
+            try {
+                d.canvas.clip(region);
+                over.draw();
+            } finally {
+                d.canvas.restore();
+            }
         }
     }
 
@@ -961,7 +1039,7 @@ final class SvgFilter {
         return lin ? toLinear(picture) : picture;
     }
 
-    private static Img function(Step st, Img in, AffineTransform toPixel, SvgStyle s) {
+    private static Img function(Step st, Img in, AffineTransform toPixel, SvgStyle s, boolean shadowOnly) {
         List<String> a = st.args();
         double[] k = scales(toPixel);
         switch (st.kind()) {
@@ -994,7 +1072,7 @@ final class SvgFilter {
                 }
                 Point2D o = toPixel.deltaTransform(new Point2D.Double(dx, dy), null);
                 Img shadow = offset(blur(alpha, sd * k[0], sd * k[1]), o.getX(), o.getY());
-                return composite(lin, shadow, "over", 0, 0, 0, 0);
+                return shadowOnly ? shadow : composite(lin, shadow, "over", 0, 0, 0, 0);
             }
             default: {
                 String[] tv = cssColour(st);

@@ -827,6 +827,11 @@ final class SvgText {
         };
     }
 
+    private static boolean marked(int cp) {
+        int t = Character.getType(cp);
+        return t == Character.NON_SPACING_MARK || t == Character.ENCLOSING_MARK;
+    }
+
     private static boolean shapeable(Layout l, int from, int to, float[] dxs, float[] dys, float[] rot) {
         boolean any = false;
         for (int k = from; k < to; k++) {
@@ -837,7 +842,7 @@ final class SvgText {
             if (k > from && (dxs[k] != 0 || dys[k] != 0 || !Float.isNaN(rot[k]) && rot[k] != rot[from])) {
                 return false;
             }
-            if (complex(c.cp)) {
+            if (complex(c.cp) || marked(c.cp)) {
                 any = true;
             }
         }
@@ -903,7 +908,7 @@ final class SvgText {
                 for (int k = seg[0]; k < seg[1]; k++) {
                     int cp = l.chars.get(idx.get(k)).cp;
                     t.appendCodePoint(cp);
-                    hard |= complex(cp);
+                    hard |= complex(cp) || marked(cp);
                 }
                 if (hard && first.face.shapeable()) {
                     GlyphRun g = first.face.shape(t.toString(), rtl);
