@@ -26,6 +26,8 @@ final class BlockEncoder {
 
     private static final int RUN_BLOCKERS = SIG | VISIT | NEIGHBOURS;
 
+    private static final int SPILL = 4096;
+
     private final MqEncoder mq = new MqEncoder(1 << 14);
 
     private final MqEncoder.Contexts cx = new MqEncoder.Contexts(Mq.CONTEXTS);
@@ -36,13 +38,15 @@ final class BlockEncoder {
 
     private final boolean[] negative = new boolean[4096];
 
+    private final int[] symbols = new int[SPILL + 16];
+
+    private byte[] zero;
+
     private int w;
 
     private int h;
 
     private int fw;
-
-    private int orient;
 
     private int fraction;
 
@@ -55,7 +59,7 @@ final class BlockEncoder {
         this.w = w;
         this.h = h;
         this.fw = w + 2;
-        this.orient = orient;
+        this.zero = Contexts.zeroTable(orient);
         this.fraction = fraction;
         int max = 0;
         double initial = 0;
@@ -135,8 +139,19 @@ final class BlockEncoder {
         return (any & SIG) == 0;
     }
 
+    private int spill(int n) {
+        if (n < SPILL) {
+            return n;
+        }
+        mq.encode(cx, symbols, n);
+        return 0;
+    }
+
     private void significance(int shift) {
         double half = half(shift);
+        byte[] zero = this.zero;
+        int[] sym = symbols;
+        int n = 0;
         for (int y0 = 0; y0 < h; y0 += 4) {
             int yEnd = Math.min(y0 + 4, h);
             int base = y0 * w;
@@ -154,10 +169,10 @@ final class BlockEncoder {
                     int i = base + 4 * x + y - y0;
                     int m = data[i];
                     int bit = m >> shift & 1;
-                    mq.encode(cx, Contexts.zero(orient, f), bit);
+                    sym[n++] = zero[f >> 4 & 0xFF] << 1 | bit;
                     if (bit != 0) {
                         boolean neg = negative[i];
-                        sign(f, neg);
+                        sym[n++] = sign(f, neg);
                         becomeSignificant(fi, neg);
                         if (measure) {
                             double r = ((m >> shift) << shift) + half;
@@ -166,13 +181,17 @@ final class BlockEncoder {
                     }
                     flags[fi] |= VISIT;
                 }
+                n = spill(n);
             }
         }
+        mq.encode(cx, sym, n);
     }
 
     private void refinement(int shift) {
         double half = half(shift);
         double up = 1 << shift;
+        int[] sym = symbols;
+        int n = 0;
         for (int y0 = 0; y0 < h; y0 += 4) {
             int yEnd = Math.min(y0 + 4, h);
             int base = y0 * w;
@@ -189,7 +208,7 @@ final class BlockEncoder {
                     int m = data[base + 4 * x + y - y0];
                     int bit = m >> shift & 1;
                     int ctx = (f & REFINED) != 0 ? 16 : (f & NEIGHBOURS) != 0 ? 15 : 14;
-                    mq.encode(cx, ctx, bit);
+                    sym[n++] = ctx << 1 | bit;
                     if (measure) {
                         double before = ((m >> (shift + 1)) << (shift + 1)) + up;
                         double after = ((m >> shift) << shift) + half;
@@ -197,12 +216,17 @@ final class BlockEncoder {
                     }
                     flags[fi] = f | REFINED;
                 }
+                n = spill(n);
             }
         }
+        mq.encode(cx, sym, n);
     }
 
     private void cleanup(int shift) {
         double half = half(shift);
+        byte[] zero = this.zero;
+        int[] sym = symbols;
+        int n = 0;
         for (int y0 = 0; y0 < h; y0 += 4) {
             int yEnd = Math.min(y0 + 4, h);
             int base = y0 * w;
@@ -218,17 +242,18 @@ final class BlockEncoder {
                         }
                     }
                     if (r < 0) {
-                        mq.encode(cx, Mq.RUN, 0);
+                        sym[n++] = Mq.RUN << 1;
+                        n = spill(n);
                         continue;
                     }
-                    mq.encode(cx, Mq.RUN, 1);
-                    mq.encode(cx, Mq.UNIFORM, r >> 1);
-                    mq.encode(cx, Mq.UNIFORM, r & 1);
+                    sym[n++] = Mq.RUN << 1 | 1;
+                    sym[n++] = Mq.UNIFORM << 1 | r >> 1;
+                    sym[n++] = Mq.UNIFORM << 1 | r & 1;
                     int y = y0 + r;
                     int fi = (y + 1) * fw + x + 1;
                     int i = col + r;
                     int m = data[i];
-                    sign(flags[fi], negative[i]);
+                    sym[n++] = sign(flags[fi], negative[i]);
                     becomeSignificant(fi, negative[i]);
                     if (measure) {
                         double rec = ((m >> shift) << shift) + half;
@@ -246,10 +271,10 @@ final class BlockEncoder {
                     int i = col + y - y0;
                     int m = data[i];
                     int bit = m >> shift & 1;
-                    mq.encode(cx, Contexts.zero(orient, f), bit);
+                    sym[n++] = zero[f >> 4 & 0xFF] << 1 | bit;
                     if (bit != 0) {
                         boolean neg = negative[i];
-                        sign(f, neg);
+                        sym[n++] = sign(f, neg);
                         becomeSignificant(fi, neg);
                         if (measure) {
                             double rec = ((m >> shift) << shift) + half;
@@ -257,8 +282,10 @@ final class BlockEncoder {
                         }
                     }
                 }
+                n = spill(n);
             }
         }
+        mq.encode(cx, sym, n);
     }
 
     private boolean runnable(int x, int y0) {
@@ -267,9 +294,9 @@ final class BlockEncoder {
                 && (flags[fi + 2 * fw] & RUN_BLOCKERS) == 0 && (flags[fi + 3 * fw] & RUN_BLOCKERS) == 0;
     }
 
-    private void sign(int f, boolean negative) {
+    private static int sign(int f, boolean negative) {
         int sc = Contexts.sign(f);
-        mq.encode(cx, sc & 0x1F, (negative ? 1 : 0) ^ sc >> 5);
+        return (sc & 0x1F) << 1 | ((negative ? 1 : 0) ^ sc >> 5);
     }
 
     private void becomeSignificant(int fi, boolean negative) {

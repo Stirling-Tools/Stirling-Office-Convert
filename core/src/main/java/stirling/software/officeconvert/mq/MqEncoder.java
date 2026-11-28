@@ -5,18 +5,19 @@ import java.util.Arrays;
 public final class MqEncoder {
 
     public static final class Contexts {
-        final byte[] state;
+        final int[] state;
 
         public Contexts(int size) {
-            state = new byte[size];
+            state = new int[size];
+            reset();
         }
 
         public void reset() {
-            Arrays.fill(state, (byte) 0);
+            Arrays.fill(state, PACKED[0]);
         }
 
         public void set(int context, int index) {
-            state[context] = (byte) (index << 1);
+            state[context] = PACKED[index << 1];
         }
     }
 
@@ -44,7 +45,7 @@ public final class MqEncoder {
                 int st = i << 1 | mps;
                 ON_MPS[st] = (byte) (NMPS[i] << 1 | mps);
                 ON_LPS[st] = (byte) (NLPS[i] << 1 | (flip ? 1 - mps : mps));
-                PACKED[st] = QE[i] | (ON_MPS[st] & 0xFF) << 16 | (ON_LPS[st] & 0xFF) << 24;
+                PACKED[st] = QE[i] | mps << 15 | (ON_MPS[st] & 0xFF) << 16 | (ON_LPS[st] & 0xFF) << 24;
             }
         }
     }
@@ -74,12 +75,11 @@ public final class MqEncoder {
     }
 
     public void encode(Contexts contexts, int context, int bit) {
-        byte[] state = contexts.state;
-        int st = state[context];
-        int e = PACKED[st];
-        int qe = e & 0xFFFF;
+        int[] state = contexts.state;
+        int e = state[context];
+        int qe = e & 0x7FFF;
         int na = a - qe;
-        if (bit == (st & 1)) {
+        if (bit == (e >> 15 & 1)) {
             if ((na & 0x8000) != 0) {
                 a = na;
                 c += qe;
@@ -90,17 +90,68 @@ public final class MqEncoder {
             } else {
                 c += qe;
             }
-            state[context] = (byte) (e >>> 16);
+            state[context] = PACKED[e >>> 16 & 0xFF];
         } else {
             if (na < qe) {
                 c += qe;
             } else {
                 na = qe;
             }
-            state[context] = (byte) (e >>> 24);
+            state[context] = PACKED[e >>> 24];
         }
         a = na;
         renormalise();
+    }
+
+    public void encode(Contexts contexts, int[] symbols, int count) {
+        int[] state = contexts.state;
+        int a = this.a;
+        int c = this.c;
+        int ct = this.ct;
+        for (int i = 0; i < count; i++) {
+            int s = symbols[i];
+            int context = s >>> 1;
+            int e = state[context];
+            int qe = e & 0x7FFF;
+            int na = a - qe;
+            if ((s & 1) == (e >> 15 & 1)) {
+                if ((na & 0x8000) != 0) {
+                    a = na;
+                    c += qe;
+                    continue;
+                }
+                if (na < qe) {
+                    na = qe;
+                } else {
+                    c += qe;
+                }
+                state[context] = PACKED[e >>> 16 & 0xFF];
+            } else {
+                if (na < qe) {
+                    c += qe;
+                } else {
+                    na = qe;
+                }
+                state[context] = PACKED[e >>> 24];
+            }
+            int n = Integer.numberOfLeadingZeros(na) - 16;
+            if (n < ct) {
+                a = na << n;
+                c <<= n;
+                ct -= n;
+            } else {
+                this.a = na;
+                this.c = c;
+                this.ct = ct;
+                renormalise();
+                a = this.a;
+                c = this.c;
+                ct = this.ct;
+            }
+        }
+        this.a = a;
+        this.c = c;
+        this.ct = ct;
     }
 
     private void renormalise() {

@@ -48,6 +48,10 @@ final class Contexts {
         return ZERO[orient][flags >> 4 & 0xFF];
     }
 
+    static byte[] zeroTable(int orient) {
+        return ZERO[orient];
+    }
+
     static int sign(int flags) {
         return SIGN[flags >> 4 & 0xF | flags >> 8 & 0xF0];
     }
