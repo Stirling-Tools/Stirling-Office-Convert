@@ -84,7 +84,9 @@ public final class HtmlDocument {
 
     /** {@code fonts} decides which family of each CSS font stack is used; null takes the first named. */
     public static Converted write(Path source, OutputStream out, FontLibrary fonts) throws IOException {
-        return lay(source, out, fonts, 1f, HtmlAssets.NONE).converted();
+        try (DocxWriter writer = new DocxWriter(out)) {
+            return lay(source, writer, fonts, 1f, 1f, HtmlAssets.NONE, Map.of()).converted();
+        }
     }
 
     /** Lays the page out on paper enlarged by {@code 1 / zoom}, as a browser lays out content too wide for the page
@@ -109,7 +111,7 @@ public final class HtmlDocument {
 
     public static Laid lay(Path source, OutputStream out, FontLibrary fonts, float zoom, float scale,
             HtmlAssets assets, Map<String, Integer> targetPages) throws IOException {
-        try (DocxWriter writer = new DocxWriter(out)) {
+        try (DocxWriter writer = new DocxWriter(out).exactSizes()) {
             return lay(source, writer, fonts, zoom, scale, assets, targetPages);
         }
     }

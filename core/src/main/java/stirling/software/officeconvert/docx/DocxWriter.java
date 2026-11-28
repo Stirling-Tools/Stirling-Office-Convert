@@ -83,6 +83,11 @@ public final class DocxWriter implements DocSink, Closeable {
         out.write("<w:document " + NS + "><w:body>");
     }
 
+    public DocxWriter exactSizes() {
+        ctx.exactSizes = true;
+        return this;
+    }
+
     @Override
     public void begin(StyleSheet styles, HeaderFooterSet running) {
         this.body = new BodyXml(ctx, styles);

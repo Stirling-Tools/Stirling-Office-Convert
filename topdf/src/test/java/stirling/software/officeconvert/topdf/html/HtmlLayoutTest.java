@@ -172,6 +172,14 @@ class HtmlLayoutTest {
     }
 
     @Test
+    void pixelSizesAreNotRoundedToHalfPoints() throws IOException {
+        Laid l = lay("""
+                <html><body><p style="font-family:'Courier New';font-size:13px">abcdefghij</p></body></html>""");
+        Word w = l.word("abcdefghij");
+        assertEquals(58.5f, w.right() - w.left(), 0.3f, l.words().toString());
+    }
+
+    @Test
     void blankLinesTakeTheHeightOfTheirOwnText() throws IOException {
         Laid l = lay("""
                 <html><body><pre style="font-size:9px;line-height:12px">one

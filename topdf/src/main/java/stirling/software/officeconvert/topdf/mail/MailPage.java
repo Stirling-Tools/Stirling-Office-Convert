@@ -296,7 +296,7 @@ public final class MailPage {
 
     static Element pre(String text) {
         Element pre = new Element("pre").attr("style", "white-space:pre-wrap;overflow-wrap:anywhere;word-wrap:break-word;"
-                + "font-family:monospace;font-size:12.67px;line-height:18px;margin:0 0 8px 0;"
+                + "font-family:monospace;font-size:13px;line-height:18px;margin:0 0 8px 0;"
                 + "color:#1f1f1f;background:transparent;text-align:left");
         pre.text(expandTabs(text.replace("\r\n", "\n").replace('\r', '\n')));
         return pre;
