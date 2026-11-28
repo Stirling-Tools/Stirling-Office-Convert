@@ -59,7 +59,7 @@ final class Flow {
 
     static final Set<String> SKIPPED = Set.of("head", "script", "style", "template", "title", "meta", "link",
             "base", "iframe", "object", "embed", "applet", "frame", "frameset", "video", "audio", "canvas",
-            "map", "area", "input", "select", "option", "datalist", "param", "source", "track", "noembed", "noframes",
+            "area", "input", "select", "option", "datalist", "param", "source", "track", "noembed", "noframes",
             "dialog", "colgroup", "col");
 
     static final Set<String> BLOCKS = Set.of("address", "article", "aside", "blockquote", "body", "center",

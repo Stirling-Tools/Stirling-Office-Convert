@@ -192,6 +192,15 @@ class HtmlLayoutTest {
     }
 
     @Test
+    void contentInsideAnImageMapIsDrawnButItsAreasAreNot() throws IOException {
+        Laid l = lay("""
+                <html><body><map name="m"><area href="#a" alt="Hotspot"><a href="#b">Unsubscribe here</a></map>
+                </body></html>""");
+        assertTrue(l.text().contains("Unsubscribe here"), l.text());
+        assertFalse(l.text().contains("Hotspot"), l.text());
+    }
+
+    @Test
     void anImageInputIsDrawnAsItsPicture() throws IOException {
         Laid l = lay("""
                 <html><body><form><input type="IMAGE" src="http://example.invalid/b.png" alt="Website Maintenance">
