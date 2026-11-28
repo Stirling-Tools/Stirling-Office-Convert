@@ -18,7 +18,7 @@ import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
-import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory;
+import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.apache.pdfbox.rendering.ImageType;
 import org.apache.pdfbox.rendering.PDFRenderer;
@@ -504,7 +504,7 @@ final class SvgFilter {
             }
         }
         BufferedImage out = toImage(result);
-        PDImageXObject image = LosslessFactory.createFromImage(d.output.document(), out);
+        PDImageXObject image = encode(d.output.document(), out);
         PDPageContentStream cs = d.canvas.stream();
         cs.saveGraphicsState();
         try {
@@ -1202,6 +1202,79 @@ final class SvgFilter {
             }
         }
         return out;
+    }
+
+    static PDImageXObject encode(org.apache.pdfbox.pdmodel.PDDocument doc, BufferedImage img) throws IOException {
+        int w = img.getWidth();
+        int h = img.getHeight();
+        int[] px = ((DataBufferInt) img.getRaster().getDataBuffer()).getData();
+        boolean opaque = true;
+        for (int v : px) {
+            if (v >>> 24 != 255) {
+                opaque = false;
+                break;
+            }
+        }
+        PDImageXObject image = flate(doc, px, w, h, 3);
+        if (!opaque) {
+            image.getCOSObject().setItem(COSName.SMASK, flate(doc, px, w, h, 1));
+        }
+        return image;
+    }
+
+    private static PDImageXObject flate(org.apache.pdfbox.pdmodel.PDDocument doc, int[] px, int w, int h, int colours)
+            throws IOException {
+        int row = w * colours;
+        byte[] prev = new byte[row];
+        byte[] cur = new byte[row];
+        byte[] line = new byte[row + 1];
+        java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream(Math.max(64, w * h * colours / 4));
+        java.util.zip.Deflater deflater = new java.util.zip.Deflater(java.util.zip.Deflater.DEFAULT_COMPRESSION);
+        try (java.util.zip.DeflaterOutputStream z = new java.util.zip.DeflaterOutputStream(bytes, deflater, 1 << 16)) {
+            for (int y = 0; y < h; y++) {
+                int o = y * w;
+                if (colours == 3) {
+                    for (int x = 0; x < w; x++) {
+                        int v = px[o + x];
+                        cur[x * 3] = (byte) (v >> 16);
+                        cur[x * 3 + 1] = (byte) (v >> 8);
+                        cur[x * 3 + 2] = (byte) v;
+                    }
+                } else {
+                    for (int x = 0; x < w; x++) {
+                        cur[x] = (byte) (px[o + x] >>> 24);
+                    }
+                }
+                line[0] = 4;
+                for (int i = 0; i < row; i++) {
+                    int a = i >= colours ? cur[i - colours] & 0xFF : 0;
+                    int b = prev[i] & 0xFF;
+                    int c = i >= colours ? prev[i - colours] & 0xFF : 0;
+                    int pa = Math.abs(b - c);
+                    int pb = Math.abs(a - c);
+                    int pc = Math.abs(a + b - 2 * c);
+                    int pred = pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
+                    line[i + 1] = (byte) (cur[i] - pred);
+                }
+                z.write(line);
+                byte[] t = prev;
+                prev = cur;
+                cur = t;
+            }
+        } finally {
+            deflater.end();
+        }
+        PDImageXObject image = new PDImageXObject(doc, new java.io.ByteArrayInputStream(bytes.toByteArray()),
+                COSName.FLATE_DECODE, w, h, 8,
+                colours == 3 ? org.apache.pdfbox.pdmodel.graphics.color.PDDeviceRGB.INSTANCE
+                        : org.apache.pdfbox.pdmodel.graphics.color.PDDeviceGray.INSTANCE);
+        org.apache.pdfbox.cos.COSDictionary parms = new org.apache.pdfbox.cos.COSDictionary();
+        parms.setInt(COSName.PREDICTOR, 15);
+        parms.setInt(COSName.COLORS, colours);
+        parms.setInt(COSName.BITS_PER_COMPONENT, 8);
+        parms.setInt(COSName.COLUMNS, w);
+        image.getCOSObject().setItem(COSName.DECODE_PARMS, parms);
+        return image;
     }
 
     static BufferedImage toImage(Img img) {
