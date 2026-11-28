@@ -133,9 +133,9 @@ final class Presentation {
             out.put("background-url", background);
         }
         for (String dim : new String[] {"width", "height"}) {
-            String v = e.attr(dim).strip();
-            if (!v.isEmpty()) {
-                out.put(dim, v.matches("[0-9.]+") ? v + "px" : v);
+            String v = dimension(e.attr(dim));
+            if (v != null) {
+                out.put(dim, v);
             }
         }
         if ("font".equals(e.normalName())) {
@@ -153,6 +153,29 @@ final class Presentation {
         if ("body".equals(e.normalName()) && e.hasAttr("text")) {
             putColor(out, "color", e.attr("text"));
         }
+    }
+
+    static String dimension(String value) {
+        String v = value.strip();
+        int i = 0;
+        while (i < v.length() && i < 12 && Character.isDigit(v.charAt(i))) {
+            i++;
+        }
+        if (i == 0) {
+            return null;
+        }
+        int end = i;
+        if (end < v.length() && v.charAt(end) == '.') {
+            int f = end + 1;
+            while (f < v.length() && f < 20 && Character.isDigit(v.charAt(f))) {
+                f++;
+            }
+            if (f > end + 1) {
+                end = f;
+            }
+        }
+        boolean percent = end < v.length() && v.charAt(end) == '%';
+        return v.substring(0, end) + (percent ? "%" : "px");
     }
 
     private static void putColor(Map<String, String> out, String property, String value) {
@@ -227,10 +250,10 @@ final class Presentation {
         for (int i = 0; i < 2 && table != null && !"table".equals(table.normalName()); i++) {
             table = table.parent();
         }
-        String v = table == null || !"table".equals(table.normalName()) ? "" : table.attr("cellpadding").strip();
-        if (v.matches("[0-9]{1,4}([.][0-9]+)?")) {
+        String v = table == null || !"table".equals(table.normalName()) ? null : dimension(table.attr("cellpadding"));
+        if (v != null && v.endsWith("px")) {
             for (String side : new String[] {"top", "right", "bottom", "left"}) {
-                out.put("padding-" + side, v + "px");
+                out.put("padding-" + side, v);
             }
         }
     }

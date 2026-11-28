@@ -403,6 +403,14 @@ final class HtmlTables {
             sum = room;
         }
         floorAtLongestWord(t, least);
+        for (int c = 0; c < columns; c++) {
+            float w = t.columnWidths.get(c);
+            if (w < least[c] && sum < room) {
+                float grow = Math.min(least[c] - w, room - sum);
+                t.columnWidths.set(c, w + grow);
+                sum += grow;
+            }
+        }
         return sum;
     }
 
@@ -615,11 +623,11 @@ final class HtmlTables {
     }
 
     private static Float cellpadding(Element table, Look look) {
-        String cellpadding = table.attr("cellpadding").strip();
-        if (cellpadding.isEmpty()) {
+        String cellpadding = Presentation.dimension(table.attr("cellpadding"));
+        if (cellpadding == null || !cellpadding.endsWith("px")) {
             return null;
         }
-        Float pt = Css.length(cellpadding.matches("[0-9.]+") ? cellpadding + "px" : cellpadding, look.size, 0);
+        Float pt = Css.length(cellpadding, look.size, 0);
         return pt == null ? null : Math.max(0, Math.min(36, pt));
     }
 

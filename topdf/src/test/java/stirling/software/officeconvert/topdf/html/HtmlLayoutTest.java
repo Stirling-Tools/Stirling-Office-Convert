@@ -936,6 +936,19 @@ class HtmlLayoutTest {
     }
 
     @Test
+    void dimensionAttributesTakeTheirLeadingNumberAndAColumnIsNeverNarrowerThanItsLongestWord() throws IOException {
+        assertEquals("3px", Presentation.dimension("3D\"100%\""));
+        assertEquals("95%", Presentation.dimension(" 95%"));
+        assertEquals("10px", Presentation.dimension("10em"));
+        assertEquals("12.5px", Presentation.dimension("12.5"));
+        assertTrue(Presentation.dimension("wide") == null);
+        Laid l = lay("""
+                <!doctype html><html><body><table border="3D0"><tr><td width='3D"100%"'>Announcements and
+                newsletters</td></tr></table></body></html>""");
+        assertTrue(l.word("Announcements").right() - l.word("Announcements").left() > 60, l.words().toString());
+    }
+
+    @Test
     void thePageColourReachesThePageMarginsWhateverTheBodyMargin() throws IOException {
         Laid l = lay("<html><body bgcolor=\"#ffff00\" style=\"margin:40px\"><p>Hi</p></body></html>");
         int x = Math.round(HtmlDocument.PAGE_MARGIN) + 3;
