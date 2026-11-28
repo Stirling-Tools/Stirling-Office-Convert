@@ -2008,7 +2008,7 @@ final class Flow {
         String hv = d.getOrDefault("height", "").strip();
         Float w = BoxCss.boxLength(d.get("width"), look, room);
         Float h = hv.endsWith("%") ? null : BoxCss.boxLength(hv, look, room);
-        if (w == null || h == null || w < 1 || h < 1) {
+        if (w == null || h == null || w <= 0 || h < 1) {
             return null;
         }
         if (w > room) {

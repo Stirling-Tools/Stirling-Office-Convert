@@ -864,6 +864,15 @@ class HtmlLayoutTest {
     }
 
     @Test
+    void aOnePixelWidePictureThatCannotLoadKeepsItsHeight() throws IOException {
+        Laid l = lay("""
+                <!doctype html><html><body style="margin:0"><div>Top</div>
+                <div><img src="http://example.invalid/s.gif" width="1" height="40" style="display:block"></div>
+                <div>Bottom</div></body></html>""");
+        assertEquals(30 + 13.8f, l.word("Bottom").top() - l.word("Top").top(), 2f, l.words().toString());
+    }
+
+    @Test
     void thePageColourReachesThePageMarginsWhateverTheBodyMargin() throws IOException {
         Laid l = lay("<html><body bgcolor=\"#ffff00\" style=\"margin:40px\"><p>Hi</p></body></html>");
         int x = Math.round(HtmlDocument.PAGE_MARGIN) + 3;
