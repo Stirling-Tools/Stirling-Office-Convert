@@ -346,23 +346,7 @@ final class SvgText {
             if (first == null) {
                 first = f;
             }
-            for (String candidate : candidates(f)) {
-                for (String w : weightNames(numeric)) {
-                    FontFace face = draw.fonts.exact(candidate + " " + w, false, italic);
-                    if (face != null) {
-                        found = face;
-                        break;
-                    }
-                }
-                if (found != null) {
-                    break;
-                }
-                FontFace face = draw.fonts.exact(candidate, bold, italic);
-                if (face != null) {
-                    found = face;
-                    break;
-                }
-            }
+            found = resolve(f, numeric, bold, italic);
             if (found != null) {
                 break;
             }
@@ -381,6 +365,50 @@ final class SvgText {
         }
         faces.put(key, found);
         return found;
+    }
+
+    private FontFace resolve(String f, int numeric, boolean bold, boolean italic) {
+        for (String candidate : candidates(f)) {
+            for (String w : weightNames(numeric)) {
+                FontFace face = draw.fonts.exact(candidate + " " + w, false, italic);
+                if (face != null) {
+                    return face;
+                }
+            }
+            FontFace face = draw.fonts.exact(candidate, bold, italic);
+            if (face != null) {
+                return face;
+            }
+        }
+        return null;
+    }
+
+    private final Map<String, List<FontFace>> listed = new HashMap<>();
+
+    private List<FontFace> listed(SvgStyle s) {
+        String family = s.get("font-family");
+        int numeric = weight(SvgDoc.lower(s.get("font-weight")));
+        String style = SvgDoc.lower(s.get("font-style"));
+        boolean italic = style.startsWith("italic") || style.startsWith("oblique");
+        String key = family + "|" + numeric + "|" + italic;
+        List<FontFace> known = listed.get(key);
+        if (known != null) {
+            return known;
+        }
+        List<FontFace> out = new ArrayList<>();
+        int n = 0;
+        for (String raw : Css.splitTopLevel(family, ',')) {
+            String f = raw.strip().replaceAll("^[\"']|[\"']$", "").strip();
+            if (f.isEmpty() || ++n > 16) {
+                continue;
+            }
+            FontFace face = resolve(f, numeric, numeric >= 600, italic);
+            if (face != null && !out.contains(face)) {
+                out.add(face);
+            }
+        }
+        listed.put(key, out);
+        return out;
     }
 
     private static List<String> candidates(String family) {
@@ -403,7 +431,16 @@ final class SvgText {
             }
             FontFace face = face(c.style);
             if (!face.covers(c.cp) && !Character.isWhitespace(c.cp) && !Character.isISOControl(c.cp)) {
-                FontFace f = draw.fonts.fallback(c.cp, face);
+                FontFace f = null;
+                for (FontFace other : listed(c.style)) {
+                    if (other != face && other.covers(c.cp)) {
+                        f = other;
+                        break;
+                    }
+                }
+                if (f == null) {
+                    f = draw.fonts.fallback(c.cp, face);
+                }
                 if (f != null) {
                     face = f;
                 }
@@ -620,6 +657,39 @@ final class SvgText {
                 c.rotate = extra;
                 c.advance = h;
                 pen += c.size;
+            } else if (complex(c.cp) && c.face.shapeable() && Float.isNaN(rot[i])) {
+                int end = i + 1;
+                StringBuilder t = new StringBuilder().appendCodePoint(c.cp);
+                while (end < l.chars.size()) {
+                    Ch n = l.chars.get(end);
+                    if (n.skipped || n.path != null || n.face != c.face || n.style != c.style || !complex(n.cp)
+                            || !Float.isNaN(xs[end]) || !Float.isNaN(ys[end]) || dxs[end] != 0 || dys[end] != 0
+                            || !Float.isNaN(rot[end])) {
+                        break;
+                    }
+                    t.appendCodePoint(n.cp);
+                    end++;
+                }
+                byte dir = Character.getDirectionality(c.cp);
+                boolean rtl = dir == Character.DIRECTIONALITY_RIGHT_TO_LEFT
+                        || dir == Character.DIRECTIONALITY_RIGHT_TO_LEFT_ARABIC;
+                GlyphRun g = c.face.shape(t.toString(), rtl);
+                float w = g.width(c.size);
+                float b = (asc + desc) / 2;
+                for (int k = i; k < end; k++) {
+                    Ch u = l.chars.get(k);
+                    u.x = column - b;
+                    u.y = pen;
+                    u.rotate = 90;
+                    u.advance = k == i ? w : 0;
+                    u.inUnit = k != i;
+                    u.anchorIndex = Math.round((pen + w) * 1000);
+                }
+                c.shaped = g;
+                pen += w + spacing(c.style, "letter-spacing");
+                prev = end - 1;
+                i = end - 1;
+                continue;
             } else {
                 if (prev >= 0 && l.chars.get(prev).face == c.face && !upright(l.chars.get(prev).cp)
                         && !SvgDoc.lower(c.style.get("font-kerning")).equals("none")) {
@@ -642,9 +712,6 @@ final class SvgText {
         for (int[] ch : chunks) {
             Ch first = l.chars.get(ch[0]);
             String a = SvgDoc.lower(first.style.get("text-anchor"));
-            if (!a.equals("middle") && !a.equals("end")) {
-                continue;
-            }
             float start = Float.NaN;
             float end = Float.NaN;
             for (int k = ch[0]; k <= ch[1]; k++) {
@@ -660,7 +727,11 @@ final class SvgText {
             if (Float.isNaN(start)) {
                 continue;
             }
-            float shift = a.equals("middle") ? -(end - start) / 2 : -(end - start);
+            float shift = a.equals("middle") ? -(end - start) / 2 : a.equals("end") ? -(end - start) : 0;
+            shift += (upright(first.cp) ? first.y - first.size : first.y) - start;
+            if (shift == 0) {
+                continue;
+            }
             for (int k = ch[0]; k <= ch[1]; k++) {
                 l.chars.get(k).y += shift;
             }
@@ -1305,6 +1376,10 @@ final class SvgText {
                 continue;
             }
             SvgStyle ds = sp.style();
+            if (vertical(style) && l.chars.stream().noneMatch(ch -> ch.path != null)) {
+                verticalDecorations(l, sp, deco, ds, bbox, alpha);
+                continue;
+            }
             for (int i = sp.start(); i < sp.end(); ) {
                 Ch c = l.chars.get(i);
                 if (c.skipped || c.onPath) {
@@ -1355,6 +1430,49 @@ final class SvgText {
                 }
                 i = j;
             }
+        }
+    }
+
+    private void verticalDecorations(Layout l, Span sp, Set<String> deco, SvgStyle ds, Rectangle2D bbox, float alpha)
+            throws IOException {
+        float size = ds.fontSize;
+        Path2D.Float lines = new Path2D.Float();
+        for (int i = sp.start(); i < sp.end(); i++) {
+            Ch c = l.chars.get(i);
+            if (c.skipped || c.onPath || c.inUnit || c.face == null) {
+                continue;
+            }
+            var m = c.face.metrics();
+            float upem = c.face.unitsPerEm();
+            float asc = (m.useTypoMetrics() ? m.typoAscender() : m.hheaAscender()) / upem * size;
+            float desc = (m.useTypoMetrics() ? m.typoDescender() : m.hheaDescender()) / upem * size;
+            float thick = Math.max(size / 20, m.underlineThickness() / upem * size);
+            boolean up = upright(c.cp);
+            float axis = up ? c.x + c.advance / 2 : c.x + (asc + desc) / 2;
+            float top = up ? c.y - c.size : c.y;
+            float bottom = up ? c.y : c.y + c.advance;
+            float base = axis - (asc + desc) / 2;
+            List<Float> xs = new ArrayList<>();
+            if (deco.contains("underline")) {
+                xs.add(base + m.underlinePosition() / upem * size);
+            }
+            if (deco.contains("overline")) {
+                xs.add(base + asc);
+            }
+            if (deco.contains("line-through")) {
+                xs.add(base + (m.strikeoutPosition() > 0 ? m.strikeoutPosition() / upem * size : size * 0.3f));
+            }
+            for (float x : xs) {
+                lines.moveTo(x - thick / 2, top);
+                lines.lineTo(x + thick / 2, top);
+                lines.lineTo(x + thick / 2, bottom);
+                lines.lineTo(x - thick / 2, bottom);
+                lines.closePath();
+            }
+        }
+        if (ds.visible() && lines.getCurrentPoint() != null) {
+            java.awt.geom.Area merged = new java.awt.geom.Area(lines);
+            draw.paintShape(new Path2D.Float(merged), sp.element(), ds, alpha, false);
         }
     }
 
