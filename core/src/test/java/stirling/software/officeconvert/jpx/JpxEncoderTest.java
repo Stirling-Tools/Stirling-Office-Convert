@@ -277,9 +277,16 @@ class JpxEncoderTest {
         JpxEncoder.Planes cmyk = photo(16, 16, 4, 8, 2);
         JpxEncoder.Planes tagged = new JpxEncoder.Planes(16, 16, cmyk.samples(), cmyk.depths(), null,
                 JpxEncoder.Colour.CMYK, -1);
-        assertEquals("jpx ", new String(JpxEncoder.encode(tagged, JpxEncoder.Options.exact()), 20, 4,
-                java.nio.charset.StandardCharsets.US_ASCII));
-        assertEquals("jp2 ", new String(JpxEncoder.encode(photo(16, 16, 3, 8, 2), JpxEncoder.Options.exact()), 20, 4,
-                java.nio.charset.StandardCharsets.US_ASCII));
+        byte[] jpx = JpxEncoder.encode(tagged, JpxEncoder.Options.exact());
+        assertEquals("jpx ", new String(jpx, 20, 4, java.nio.charset.StandardCharsets.US_ASCII));
+        assertEquals("rreq", new String(jpx, 36, 4, java.nio.charset.StandardCharsets.US_ASCII));
+        assertEquals(21, java.nio.ByteBuffer.wrap(jpx, 32, 4).getInt());
+        int[][] back = nativeSamples(jpx);
+        for (int c = 0; c < 4; c++) {
+            assertArrayEquals(cmyk.samples()[c], back[c]);
+        }
+        byte[] jp2 = JpxEncoder.encode(photo(16, 16, 3, 8, 2), JpxEncoder.Options.exact());
+        assertEquals("jp2 ", new String(jp2, 20, 4, java.nio.charset.StandardCharsets.US_ASCII));
+        assertEquals("jp2h", new String(jp2, 36, 4, java.nio.charset.StandardCharsets.US_ASCII));
     }
 }

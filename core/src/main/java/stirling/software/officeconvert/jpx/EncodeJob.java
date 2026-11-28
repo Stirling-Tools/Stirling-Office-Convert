@@ -525,6 +525,19 @@ final class EncodeJob {
         m.tag(partOne ? "jp2 " : "jpx ");
         m.u32(0);
         m.tag(partOne ? "jp2 " : "jpx ");
+        if (!partOne) {
+            m.u32(21);
+            m.tag("rreq");
+            m.u8(1);
+            m.u8(0x80);
+            m.u8(0x80);
+            m.u16(2);
+            m.u16(1);
+            m.u8(0x80);
+            m.u16(5);
+            m.u8(0x80);
+            m.u16(0);
+        }
         boolean mixed = false;
         for (int c = 1; c < comps; c++) {
             mixed |= planes.depth(c) != planes.depth(0) || planes.isSigned(c) != planes.isSigned(0);
