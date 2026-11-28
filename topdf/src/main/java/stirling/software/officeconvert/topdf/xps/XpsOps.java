@@ -41,6 +41,14 @@ final class XpsOps {
 
     private boolean shared;
 
+    private int pending;
+
+    private boolean quiet;
+
+    private boolean pathOpen;
+
+    private final double[] coords = new double[6];
+
     private float[] fill;
 
     private COSName fillSpace;
@@ -85,7 +93,7 @@ final class XpsOps {
     void q() throws IOException {
         saved.push(ctm);
         shared = true;
-        op("q\n");
+        pending++;
     }
 
     void Q() throws IOException {
@@ -94,9 +102,34 @@ final class XpsOps {
         }
         ctm = saved.pop();
         shared = true;
+        if (pending > 0) {
+            pending--;
+            return;
+        }
         fill = null;
         strokeColor = null;
         op("Q\n");
+    }
+
+    void begin() throws IOException {
+        if (pending == 0) {
+            return;
+        }
+        if (pathOpen) {
+            throw new IllegalStateException("A graphics state was saved inside a path");
+        }
+        int n = pending;
+        pending = 0;
+        for (int i = 0; i < n; i++) {
+            put('q');
+            put('\n');
+        }
+    }
+
+    private void guard() throws IOException {
+        if (pending > 0 && !quiet) {
+            begin();
+        }
     }
 
     void cm(AffineTransform t) throws IOException {
@@ -121,6 +154,7 @@ final class XpsOps {
     }
 
     private XpsOps num(double v, int unit, int places) throws IOException {
+        guard();
         if (!Double.isFinite(v)) {
             v = 0;
         }
@@ -151,6 +185,7 @@ final class XpsOps {
     }
 
     XpsOps integer(long v) throws IOException {
+        guard();
         if (len + 24 > buf.length) {
             flush();
         }
@@ -183,13 +218,32 @@ final class XpsOps {
     }
 
     XpsOps op(String s) throws IOException {
-        for (int i = 0; i < s.length(); i++) {
-            put(s.charAt(i));
+        boolean paint = paints(s);
+        boolean was = quiet;
+        quiet |= paint;
+        try {
+            guard();
+            for (int i = 0; i < s.length(); i++) {
+                put(s.charAt(i));
+            }
+        } finally {
+            quiet = was;
+        }
+        if (paint) {
+            pathOpen = false;
         }
         return this;
     }
 
+    private static boolean paints(String s) {
+        return switch (s) {
+            case "f\n", "f*\n", "S\n", "B\n", "B*\n", "b\n", "b*\n", "s\n", "n\n" -> true;
+            default -> false;
+        };
+    }
+
     XpsOps name(COSName n) throws IOException {
+        guard();
         put('/');
         op(n.getName());
         put(' ');
@@ -197,6 +251,7 @@ final class XpsOps {
     }
 
     void hex4(int v) throws IOException {
+        guard();
         final String digits = "0123456789ABCDEF";
         put(digits.charAt((v >> 12) & 0xF));
         put(digits.charAt((v >> 8) & 0xF));
@@ -229,8 +284,22 @@ final class XpsOps {
     }
 
     boolean path(Shape shape, AffineTransform extra) throws IOException {
+        boolean was = quiet;
+        quiet = true;
+        try {
+            boolean any = trace(shape, extra);
+            if (any && pending > 0) {
+                pathOpen = true;
+            }
+            return any;
+        } finally {
+            quiet = was;
+        }
+    }
+
+    private boolean trace(Shape shape, AffineTransform extra) throws IOException {
         PathIterator it = shape.getPathIterator(extra);
-        double[] c = new double[6];
+        double[] c = coords;
         boolean any = false;
         double x = 0;
         double y = 0;
@@ -284,7 +353,13 @@ final class XpsOps {
         if (fill != null && fillSpace == null && fill[0] == rgb[0] && fill[1] == rgb[1] && fill[2] == rgb[2]) {
             return;
         }
-        num(rgb[0]).num(rgb[1]).num(rgb[2]).op("rg\n");
+        boolean was = quiet;
+        quiet = true;
+        try {
+            num(rgb[0]).num(rgb[1]).num(rgb[2]).op("rg\n");
+        } finally {
+            quiet = was;
+        }
         fill = rgb.clone();
         fillSpace = null;
     }

@@ -601,6 +601,7 @@ final class XpsRenderer {
         if (g == null) {
             return true;
         }
+        ctx.ops.begin();
         if (!ctx.ops.path(g.fill, null)) {
             return false;
         }
@@ -1442,6 +1443,7 @@ final class XpsRenderer {
         if (clipped) {
             return true;
         }
+        ops.begin();
         if (!ops.path(shape, null)) {
             return false;
         }
