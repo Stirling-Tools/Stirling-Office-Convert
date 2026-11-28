@@ -789,6 +789,10 @@ final class CffSubsetter {
 
         private boolean composite;
 
+        private int bodyStart;
+
+        private int bodyEnd;
+
         void reset(Fd fd) {
             this.fd = fd;
             top = 0;
@@ -798,6 +802,9 @@ final class CffSubsetter {
         }
 
         void glyph(int start, int end) {
+            boolean apart = !overlaps(global, start, end) && !overlaps(fd.subrs, start, end);
+            bodyStart = apart ? start : 0;
+            bodyEnd = apart ? end : 0;
             run(start, end, 0);
         }
 
@@ -896,7 +903,7 @@ final class CffSubsetter {
 
         private void clear() {
             for (int k = 0; k < top; k++) {
-                if (at[k] >= 0) {
+                if (at[k] >= 0 && (at[k] < bodyStart || at[k] >= bodyEnd)) {
                     operands.add(at[k]);
                 }
             }
@@ -909,6 +916,10 @@ final class CffSubsetter {
             allGlobal = true;
             renumber = false;
         }
+    }
+
+    private static boolean overlaps(Index subrs, int start, int end) {
+        return subrs != null && subrs.count() > 0 && start < subrs.end() && subrs.base() < end;
     }
 
     private Index index(int at) {
