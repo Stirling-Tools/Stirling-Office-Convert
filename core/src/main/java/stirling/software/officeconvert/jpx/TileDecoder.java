@@ -2,7 +2,10 @@ package stirling.software.officeconvert.jpx;
 
 import java.io.IOException;
 import java.io.InterruptedIOException;
+import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 final class TileDecoder {
 
@@ -18,15 +21,75 @@ final class TileDecoder {
 
     private final BlockDecoder block = new BlockDecoder();
 
+    private final Scratch scratch;
+
+    static final class Scratch {
+
+        private final Map<Integer, Object> buffers = new HashMap<>();
+
+        int[] ints(int c, int n) {
+            if (buffers.get(c) instanceof int[] a && a.length == n) {
+                Arrays.fill(a, 0);
+                return a;
+            }
+            int[] a = new int[n];
+            buffers.put(c, a);
+            return a;
+        }
+
+        byte[] bytes(int c, int n) {
+            if (buffers.get(-1 - c) instanceof byte[] a && a.length == n) {
+                Arrays.fill(a, (byte) 0);
+                return a;
+            }
+            byte[] a = new byte[n];
+            buffers.put(-1 - c, a);
+            return a;
+        }
+
+        short[] shorts(int c, int n) {
+            if (buffers.get(-1 - c) instanceof short[] a && a.length == n) {
+                Arrays.fill(a, (short) 0);
+                return a;
+            }
+            short[] a = new short[n];
+            buffers.put(-1 - c, a);
+            return a;
+        }
+
+        float[] floats(int c, int n) {
+            if (buffers.get(c) instanceof float[] a && a.length == n) {
+                Arrays.fill(a, 0);
+                return a;
+            }
+            float[] a = new float[n];
+            buffers.put(c, a);
+            return a;
+        }
+    }
+
     TileDecoder(Codestream cs, JpxRaster out, int reduce, long maxSamples) {
+        this(cs, out, reduce, maxSamples, null);
+    }
+
+    TileDecoder(Codestream cs, JpxRaster out, int reduce, long maxSamples, Scratch scratch) {
         this.cs = cs;
         this.siz = cs.siz;
         this.out = out;
         this.reduce = reduce;
         this.maxSamples = maxSamples;
+        this.scratch = scratch;
     }
 
-    void decode(int t) throws IOException {
+    record Parsed(TileComponent[] comps, CodingDefaults cod, byte[] body) {
+
+        boolean mct() {
+            return cod.mct() && comps.length >= 3 && sameSize(comps);
+        }
+    }
+
+    static Parsed parse(Codestream cs, int t, int reduce, long maxSamples) throws IOException {
+        Siz siz = cs.siz;
         TileStream ts = cs.tiles[t];
         MarkerSet tile = ts.markers;
         MarkerSet main = cs.main;
@@ -43,17 +106,21 @@ final class TileDecoder {
         if (samples > maxSamples) {
             throw new JpxException("JPEG 2000 tile is too large");
         }
-        if (ts.present()) {
-            byte[][] holder = new byte[1][];
-            int[] range = ts.body(cs.data, holder);
-            PacketReader reader = new PacketReader(comps, holder[0], range[0], range[1],
-                    ts.separateHeaders() ? ts.headers() : null, cod.sop(), cod.eph());
-            List<Poc> pocs = tile.pocs.isEmpty() ? main.pocs : tile.pocs;
-            Progression.run(comps, siz, rect, cod.layers(), cod.order(), pocs, reader);
-            reconstruct(comps, cod, holder[0]);
-        } else {
-            reconstruct(comps, cod, new byte[0]);
+        if (!ts.present()) {
+            return new Parsed(comps, cod, new byte[0]);
         }
+        byte[][] holder = new byte[1][];
+        int[] range = ts.body(cs.data, holder);
+        PacketReader reader = new PacketReader(comps, holder[0], range[0], range[1],
+                ts.separateHeaders() ? ts.headers() : null, cod.sop(), cod.eph());
+        List<Poc> pocs = tile.pocs.isEmpty() ? main.pocs : tile.pocs;
+        Progression.run(comps, siz, rect, cod.layers(), cod.order(), pocs, reader);
+        return new Parsed(comps, cod, holder[0]);
+    }
+
+    void decode(int t) throws IOException {
+        Parsed p = parse(cs, t, reduce, maxSamples);
+        reconstruct(p.comps(), p.cod(), p.body());
     }
 
     private void reconstruct(TileComponent[] comps, CodingDefaults cod, byte[] source) throws IOException {
@@ -83,8 +150,8 @@ final class TileDecoder {
         int w = tc.width();
         int h = tc.height();
         boolean reversible = tc.style.reversible();
-        int[] ints = reversible ? new int[w * h] : null;
-        float[] floats = reversible ? null : new float[w * h];
+        int[] ints = !reversible ? null : scratch == null ? new int[w * h] : scratch.ints(tc.index, w * h);
+        float[] floats = reversible ? null : scratch == null ? new float[w * h] : scratch.floats(tc.index, w * h);
         for (int r = 0; r <= tc.top; r++) {
             Resolution res = tc.resolutions[r];
             for (int k = 0; k < res.precincts(); k++) {
@@ -161,7 +228,7 @@ final class TileDecoder {
         return (int) Math.rint(f);
     }
 
-    private static ComponentStyle style(int c, MarkerSet tile, MarkerSet main) {
+    static ComponentStyle style(int c, MarkerSet tile, MarkerSet main) {
         ComponentStyle s = tile.coc.get(c);
         if (s != null) {
             return s;
@@ -172,7 +239,7 @@ final class TileDecoder {
         return main.coc.getOrDefault(c, main.cod.style());
     }
 
-    private static Quant quant(int c, MarkerSet tile, MarkerSet main) {
+    static Quant quant(int c, MarkerSet tile, MarkerSet main) {
         Quant q = tile.qcc.get(c);
         if (q != null) {
             return q;
@@ -183,7 +250,7 @@ final class TileDecoder {
         return main.qcc.getOrDefault(c, main.qcd);
     }
 
-    private static int roi(int c, MarkerSet tile, MarkerSet main) {
+    static int roi(int c, MarkerSet tile, MarkerSet main) {
         Integer r = tile.roi.get(c);
         return r != null ? r : main.roi.getOrDefault(c, 0);
     }

@@ -591,7 +591,8 @@ public final class Main {
                         + " smaller is normally a copy of the input; repaired PDFs may be larger. A copied input retains its private data."
                         + " Supported encrypted PDFs keep their encryption and permissions; use --password when required."
                         + " --image-dpi makes it lossy: each image is resampled to that resolution at the size it is"
-                        + " drawn and photographs are re-encoded as JPEG at --image-quality (default 0.75). --grayscale"
+                        + " drawn and photographs are re-encoded as JPEG at --image-quality (default 0.75), or as JPEG"
+                        + " 2000 when the photograph was JPEG 2000 and that is smaller at no lower quality. --grayscale"
                         + " converts text, graphics, shadings and images to gray. Signed and encrypted PDFs keep their"
                         + " colours and images."
                         + System.lineSeparator()

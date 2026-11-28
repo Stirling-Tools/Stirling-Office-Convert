@@ -3,6 +3,8 @@ package stirling.software.officeconvert.lineart;
 import java.io.ByteArrayOutputStream;
 import java.util.Arrays;
 
+import stirling.software.officeconvert.mq.MqEncoder;
+
 final class Jbig2Generic {
 
     static final byte[] AT = {3, -1, -3, -1, 2, -2, -2, -2};

@@ -8,6 +8,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import stirling.software.officeconvert.mq.MqEncoder;
+
 final class Jbig2Symbols {
 
     private static final int MAX_SIDE = 255;

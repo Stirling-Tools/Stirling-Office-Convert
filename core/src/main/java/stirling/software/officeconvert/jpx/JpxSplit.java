@@ -1,0 +1,522 @@
+package stirling.software.officeconvert.jpx;
+
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+
+public final class JpxSplit {
+
+    private static final int SOC = 0xFF4F;
+    private static final int SIZ = 0xFF51;
+    private static final int COD = 0xFF52;
+    private static final int COC = 0xFF53;
+    private static final int TLM = 0xFF55;
+    private static final int PLM = 0xFF57;
+    private static final int PLT = 0xFF58;
+    private static final int QCD = 0xFF5C;
+    private static final int QCC = 0xFF5D;
+    private static final int COM = 0xFF64;
+    private static final int SOT = 0xFF90;
+    private static final int SOD = 0xFF93;
+    private static final int EOC = 0xFFD9;
+
+    private static final int MAX_PACKETS = 1 << 22;
+
+    private JpxSplit() {}
+
+    public static byte[][] split(byte[] data, int[][] groups) throws IOException {
+        return split(data, groups, null);
+    }
+
+    public static byte[][] split(byte[] data, int[][] groups, JpxImage decoded) throws IOException {
+        return split(data, groups, decoded, Long.MAX_VALUE);
+    }
+
+    public static byte[][] split(byte[] data, int[][] groups, JpxImage decoded, long maxBytes) throws IOException {
+        Jp2Boxes boxes = Jp2Boxes.read(data);
+        int start = boxes.codestreamStart;
+        int end = boxes.codestreamEnd;
+        Codestream cs = Codestream.parse(data, start, end);
+        Siz siz = cs.siz;
+        int n = siz.components();
+        if (n > 256 || !cs.main.packed.isEmpty() || !cs.main.pocs.isEmpty() || !cs.main.roi.isEmpty()) {
+            return null;
+        }
+        int[][] maps = new int[groups.length][];
+        for (int g = 0; g < groups.length; g++) {
+            maps[g] = map(groups[g], n);
+            if (maps[g] == null) {
+                return null;
+            }
+        }
+        List<int[]> mainSegments = segments(data, start + 2, end);
+        if (mainSegments == null) {
+            return null;
+        }
+        List<List<int[]>> tileSegments = new ArrayList<>();
+        for (int t = 0; t < cs.tiles.length; t++) {
+            tileSegments.add(null);
+        }
+        if (!tileParts(data, mainSegments, end, tileSegments)) {
+            return null;
+        }
+        List<int[]> packets = new ArrayList<>();
+        int[] counted = new int[1];
+        List<byte[]> bodies = new ArrayList<>();
+        for (int t = 0; t < cs.tiles.length; t++) {
+            TileStream ts = cs.tiles[t];
+            if (ts.separateHeaders() || !ts.markers.pocs.isEmpty() || !ts.markers.roi.isEmpty()) {
+                return null;
+            }
+            int[] spans = new int[1];
+            byte[][] holder = new byte[1][];
+            if (ts.present()) {
+                spans = spans(cs, t, holder, counted);
+                if (spans == null) {
+                    return null;
+                }
+            }
+            packets.add(spans);
+            bodies.add(holder[0]);
+        }
+        for (int g = 0; g < groups.length; g++) {
+            if (!mctAllowed(cs, groups[g])) {
+                return null;
+            }
+        }
+        byte[][] out = new byte[groups.length][];
+        long total = 0;
+        for (int g = 0; g < groups.length; g++) {
+            out[g] = assemble(data, siz, mainSegments, tileSegments, packets, bodies, groups[g], maps[g]);
+            if (out[g] == null) {
+                return null;
+            }
+            total += out[g].length;
+        }
+        if (total > maxBytes) {
+            return null;
+        }
+        if (sameDecode(cs, groups, out)) {
+            return out;
+        }
+        JpxRaster whole = decoded != null && decoded.reduce() == 0 ? decoded.raster() : JpxDecoder.decode(data).raster();
+        return verified(whole, groups, out) ? out : null;
+    }
+
+    static boolean sameDecode(Codestream whole, int[][] groups, byte[][] parts) {
+        try {
+            for (int g = 0; g < groups.length; g++) {
+                if (!sameDecode(whole, groups[g], parts[g])) {
+                    return false;
+                }
+            }
+            return true;
+        } catch (IOException | RuntimeException e) {
+            return false;
+        }
+    }
+
+    private static boolean sameDecode(Codestream whole, int[] group, byte[] part) throws IOException {
+        if (part.length < 2 || u16(part, 0) != SOC) {
+            return false;
+        }
+        Codestream cs = Codestream.parse(part, 0, part.length);
+        Siz a = whole.siz;
+        Siz b = cs.siz;
+        if (b.components() != group.length || a.width() != b.width() || a.height() != b.height() || a.x0() != b.x0()
+                || a.y0() != b.y0() || a.tileWidth() != b.tileWidth() || a.tileHeight() != b.tileHeight()
+                || a.tileX0() != b.tileX0() || a.tileY0() != b.tileY0() || a.tiles() != b.tiles()
+                || whole.tiles.length != cs.tiles.length) {
+            return false;
+        }
+        long total = 0;
+        for (int i = 0; i < group.length; i++) {
+            int c = group[i];
+            if (a.depth()[c] != b.depth()[i] || a.signed()[c] != b.signed()[i] || a.dx()[c] != b.dx()[i]
+                    || a.dy()[c] != b.dy()[i]) {
+                return false;
+            }
+            total += (Siz.ceilDiv(b.width(), b.dx()[i]) - Siz.ceilDiv(b.x0(), b.dx()[i]))
+                    * (Siz.ceilDiv(b.height(), b.dy()[i]) - Siz.ceilDiv(b.y0(), b.dy()[i]));
+        }
+        ImageGrid grid = ImageGrid.of(b, 0);
+        long samples = Math.max(total, (long) grid.width() * grid.height() * group.length);
+        if (samples > JpxOptions.DEFAULT_MAX_SAMPLES) {
+            return false;
+        }
+        boolean colours = group.length >= 3 && group[0] == 0 && group[1] == 1 && group[2] == 2;
+        boolean touches = false;
+        for (int c : group) {
+            touches |= c < 3;
+        }
+        byte[][] scratch = {new byte[8192], new byte[8192]};
+        for (int t = 0; t < cs.tiles.length; t++) {
+            if (whole.tiles[t].present() != cs.tiles[t].present()) {
+                return false;
+            }
+            TileDecoder.Parsed pa = TileDecoder.parse(whole, t, 0, JpxOptions.DEFAULT_MAX_SAMPLES);
+            TileDecoder.Parsed pb = TileDecoder.parse(cs, t, 0, JpxOptions.DEFAULT_MAX_SAMPLES);
+            boolean mct = pa.mct();
+            if (pb.mct() != (mct && colours) || mct && touches && !colours) {
+                return false;
+            }
+            for (int i = 0; i < group.length; i++) {
+                if (!sameComponent(pa.comps()[group[i]], pa.body(), pb.comps()[i], pb.body(), scratch)) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    private static boolean sameComponent(TileComponent a, byte[] as, TileComponent b, byte[] bs, byte[][] scratch) {
+        if (a.x0 != b.x0 || a.y0 != b.y0 || a.x1 != b.x1 || a.y1 != b.y1 || a.roi != b.roi || a.top != b.top
+                || a.style.blockStyle() != b.style.blockStyle() || a.style.reversible() != b.style.reversible()
+                || a.resolutions.length != b.resolutions.length) {
+            return false;
+        }
+        for (int r = 0; r < a.resolutions.length; r++) {
+            Resolution ra = a.resolutions[r];
+            Resolution rb = b.resolutions[r];
+            if (ra.x0 != rb.x0 || ra.y0 != rb.y0 || ra.x1 != rb.x1 || ra.y1 != rb.y1 || ra.precincts() != rb.precincts()
+                    || ra.bands.length != rb.bands.length) {
+                return false;
+            }
+            for (int k = 0; k < ra.bands.length; k++) {
+                Band ba = ra.bands[k];
+                Band bb = rb.bands[k];
+                if (ba.orient != bb.orient || ba.x0 != bb.x0 || ba.y0 != bb.y0 || ba.x1 != bb.x1 || ba.y1 != bb.y1
+                        || ba.magnitudeBits != bb.magnitudeBits
+                        || Float.floatToIntBits(ba.step) != Float.floatToIntBits(bb.step)) {
+                    return false;
+                }
+            }
+            for (int k = 0; k < ra.precincts(); k++) {
+                Precinct pa = ra.existing(k);
+                Precinct pb = rb.existing(k);
+                if (pa == null || pb == null) {
+                    if (pa != pb) {
+                        return false;
+                    }
+                    continue;
+                }
+                for (int band = 0; band < ra.bands.length; band++) {
+                    CodeBlock[] ca = pa.bands()[band].blocks;
+                    CodeBlock[] cb = pb.bands()[band].blocks;
+                    if (ca.length != cb.length) {
+                        return false;
+                    }
+                    for (int j = 0; j < ca.length; j++) {
+                        if (!sameBlock(ca[j], as, cb[j], bs, scratch)) {
+                            return false;
+                        }
+                    }
+                }
+            }
+        }
+        return true;
+    }
+
+    private static boolean sameBlock(CodeBlock a, byte[] as, CodeBlock b, byte[] bs, byte[][] scratch) {
+        if (a.x0 != b.x0 || a.y0 != b.y0 || a.x1 != b.x1 || a.y1 != b.y1 || a.included != b.included
+                || a.passes != b.passes || a.zeroPlanes != b.zeroPlanes || a.segments.size() != b.segments.size()) {
+            return false;
+        }
+        for (int i = 0; i < a.segments.size(); i++) {
+            Segment sa = a.segments.get(i);
+            Segment sb = b.segments.get(i);
+            int n = sa.length();
+            if (sa.firstPass != sb.firstPass || sa.passes != sb.passes || n != sb.length()) {
+                return false;
+            }
+            byte[] x = sa.bytes(as, scratch[0]);
+            byte[] y = sb.bytes(bs, scratch[1]);
+            if (x.length > scratch[0].length) {
+                scratch[0] = x;
+            }
+            if (y.length > scratch[1].length) {
+                scratch[1] = y;
+            }
+            if (!java.util.Arrays.equals(x, 0, n, y, 0, n)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static int[] map(int[] group, int n) {
+        if (group.length == 0) {
+            return null;
+        }
+        int[] map = new int[n];
+        java.util.Arrays.fill(map, -1);
+        for (int i = 0; i < group.length; i++) {
+            if (group[i] < 0 || group[i] >= n || map[group[i]] >= 0) {
+                return null;
+            }
+            map[group[i]] = i;
+        }
+        return map;
+    }
+
+    private static boolean mctAllowed(Codestream cs, int[] group) {
+        boolean mct = cs.main.cod.mct();
+        for (TileStream ts : cs.tiles) {
+            mct |= ts.markers.cod != null && ts.markers.cod.mct();
+        }
+        if (!mct) {
+            return true;
+        }
+        boolean whole = group.length >= 3 && group[0] == 0 && group[1] == 1 && group[2] == 2;
+        boolean none = true;
+        for (int c : group) {
+            none &= c > 2;
+        }
+        return whole || none;
+    }
+
+    private static List<int[]> segments(byte[] data, int from, int end) {
+        List<int[]> list = new ArrayList<>();
+        int p = from;
+        while (p + 4 <= end) {
+            int code = u16(data, p);
+            if (code == SOT || code == SOD) {
+                list.add(new int[] {code, p, p});
+                return list;
+            }
+            if ((code & 0xFF00) != 0xFF00) {
+                return null;
+            }
+            int length = u16(data, p + 2);
+            if (length < 2 || p + 2 + length > end) {
+                return null;
+            }
+            list.add(new int[] {code, p, p + 2 + length});
+            p += 2 + length;
+        }
+        return null;
+    }
+
+    private static boolean tileParts(byte[] data, List<int[]> mainSegments, int end, List<List<int[]>> tiles) {
+        int p = mainSegments.getLast()[1];
+        while (p + 12 <= end && u16(data, p) == SOT) {
+            int index = u16(data, p + 4);
+            long psot = u32(data, p + 6);
+            if (index >= tiles.size()) {
+                return false;
+            }
+            List<int[]> header = segments(data, p + 12, end);
+            if (header == null || header.getLast()[0] != SOD) {
+                return false;
+            }
+            if (tiles.get(index) == null) {
+                tiles.set(index, header.subList(0, header.size() - 1));
+            }
+            if (psot == 0) {
+                return true;
+            }
+            if (psot < 14 || psot > end - p) {
+                return false;
+            }
+            p += (int) psot;
+        }
+        return true;
+    }
+
+    private static int[] spans(Codestream cs, int t, byte[][] holder, int[] counted) throws IOException {
+        TileStream ts = cs.tiles[t];
+        MarkerSet tile = ts.markers;
+        MarkerSet main = cs.main;
+        CodingDefaults cod = tile.cod != null ? tile.cod : main.cod;
+        long[] rect = cs.siz.tileRect(t);
+        TileComponent[] comps = new TileComponent[cs.siz.components()];
+        BlockBudget budget = new BlockBudget();
+        for (int c = 0; c < comps.length; c++) {
+            comps[c] = new TileComponent(cs.siz, c, rect, TileDecoder.style(c, tile, main),
+                    TileDecoder.quant(c, tile, main), TileDecoder.roi(c, tile, main), 0, budget);
+        }
+        int[] range = ts.body(cs.data, holder);
+        PacketReader reader = new PacketReader(comps, holder[0], range[0], range[1], null, cod.sop(), cod.eph());
+        int[][] spans = {new int[1 + 3 * 64]};
+        boolean[] overflow = new boolean[1];
+        Progression.run(comps, cs.siz, rect, cod.layers(), cod.order(), List.of(), (layer, r, c, k) -> {
+            int from = reader.position();
+            boolean more = reader.packet(layer, r, c, k);
+            if (reader.position() > from) {
+                if (++counted[0] > MAX_PACKETS) {
+                    overflow[0] = true;
+                    return false;
+                }
+                int[] a = spans[0];
+                int n = a[0];
+                if (1 + 3 * (n + 1) > a.length) {
+                    a = java.util.Arrays.copyOf(a, a.length * 2);
+                    spans[0] = a;
+                }
+                a[1 + 3 * n] = c;
+                a[2 + 3 * n] = from;
+                a[3 + 3 * n] = reader.position();
+                a[0] = n + 1;
+            }
+            return more;
+        });
+        return overflow[0] ? null : spans[0];
+    }
+
+    private static byte[] assemble(byte[] data, Siz siz, List<int[]> mainSegments, List<List<int[]>> tileSegments,
+            List<int[]> packets, List<byte[]> bodies, int[] group, int[] map) {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        u16(out, SOC);
+        boolean dropMct = group[0] != 0 || group.length < 3 || group[1] != 1 || group[2] != 2;
+        for (int[] seg : mainSegments) {
+            if (seg[0] == SOT) {
+                break;
+            }
+            if (!copy(data, seg, siz, group, map, dropMct, out)) {
+                return null;
+            }
+        }
+        for (int t = 0; t < packets.size(); t++) {
+            int[] spans = packets.get(t);
+            if (tileSegments.get(t) == null) {
+                continue;
+            }
+            ByteArrayOutputStream header = new ByteArrayOutputStream();
+            for (int[] seg : tileSegments.get(t)) {
+                if (!copy(data, seg, siz, group, map, dropMct, header)) {
+                    return null;
+                }
+            }
+            ByteArrayOutputStream body = new ByteArrayOutputStream();
+            byte[] source = bodies.get(t);
+            int sequence = 0;
+            for (int p = 0; p < spans[0]; p++) {
+                if (map[spans[1 + 3 * p]] < 0) {
+                    continue;
+                }
+                int from = spans[2 + 3 * p];
+                int length = spans[3 + 3 * p] - from;
+                byte[] packet = java.util.Arrays.copyOfRange(source, from, from + length);
+                if (length >= 6 && (packet[0] & 0xFF) == 0xFF && (packet[1] & 0xFF) == 0x91) {
+                    packet[4] = (byte) (sequence >> 8);
+                    packet[5] = (byte) sequence;
+                }
+                sequence = (sequence + 1) & 0xFFFF;
+                body.writeBytes(packet);
+            }
+            long psot = 12L + header.size() + 2 + body.size();
+            if (psot > 0xFFFFFFFFL) {
+                return null;
+            }
+            u16(out, SOT);
+            u16(out, 10);
+            u16(out, t);
+            u32(out, psot);
+            out.write(0);
+            out.write(1);
+            out.writeBytes(header.toByteArray());
+            u16(out, SOD);
+            out.writeBytes(body.toByteArray());
+        }
+        u16(out, EOC);
+        return out.toByteArray();
+    }
+
+    private static boolean copy(byte[] data, int[] seg, Siz siz, int[] group, int[] map, boolean dropMct,
+            ByteArrayOutputStream out) {
+        int code = seg[0];
+        int from = seg[1];
+        int to = seg[2];
+        switch (code) {
+            case SIZ -> {
+                if (to - from < 40 + 3 * siz.components()) {
+                    return false;
+                }
+                u16(out, SIZ);
+                u16(out, 38 + 3 * group.length);
+                out.write(data, from + 4, 34);
+                u16(out, group.length);
+                for (int c : group) {
+                    out.write(data, from + 40 + 3 * c, 3);
+                }
+                return true;
+            }
+            case COD -> {
+                if (to - from < 9) {
+                    return false;
+                }
+                byte[] seg2 = java.util.Arrays.copyOfRange(data, from, to);
+                if (dropMct && seg2.length > 8) {
+                    seg2[8] = 0;
+                }
+                out.writeBytes(seg2);
+                return true;
+            }
+            case COC, QCC -> {
+                if (to - from < 6) {
+                    return false;
+                }
+                int c = data[from + 4] & 0xFF;
+                if (c < map.length && map[c] >= 0) {
+                    byte[] seg2 = java.util.Arrays.copyOfRange(data, from, to);
+                    seg2[4] = (byte) map[c];
+                    out.writeBytes(seg2);
+                }
+                return true;
+            }
+            case QCD, COM -> {
+                out.write(data, from, to - from);
+                return true;
+            }
+            case TLM, PLM, PLT -> {
+                return true;
+            }
+            default -> {
+                return false;
+            }
+        }
+    }
+
+    private static boolean verified(JpxRaster whole, int[][] groups, byte[][] parts) throws IOException {
+        for (int g = 0; g < groups.length; g++) {
+            JpxRaster part = JpxDecoder.decode(parts[g]).raster();
+            if (part.components() != groups[g].length) {
+                return false;
+            }
+            for (int i = 0; i < groups[g].length; i++) {
+                int c = groups[g][i];
+                if (part.width(i) != whole.width(c) || part.height(i) != whole.height(c)
+                        || part.depth(i) != whole.depth(c) || part.signed(i) != whole.signed(c)) {
+                    return false;
+                }
+                for (int y = 0; y < whole.height(c); y++) {
+                    for (int x = 0; x < whole.width(c); x++) {
+                        if (part.sample(i, x, y) != whole.sample(c, x, y)) {
+                            return false;
+                        }
+                    }
+                }
+            }
+        }
+        return true;
+    }
+
+    private static int u16(byte[] d, int p) {
+        return (d[p] & 0xFF) << 8 | d[p + 1] & 0xFF;
+    }
+
+    private static long u32(byte[] d, int p) {
+        return (long) u16(d, p) << 16 | u16(d, p + 2);
+    }
+
+    private static void u16(ByteArrayOutputStream out, int v) {
+        out.write(v >> 8);
+        out.write(v);
+    }
+
+    private static void u32(ByteArrayOutputStream out, long v) {
+        u16(out, (int) (v >> 16) & 0xFFFF);
+        u16(out, (int) v & 0xFFFF);
+    }
+}

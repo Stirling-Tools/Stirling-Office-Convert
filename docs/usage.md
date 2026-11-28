@@ -312,6 +312,21 @@ tile to 2 million code-blocks, and an interrupted thread stops decoding. PDF to 
 of more than 67 million samples, judged from its codestream header before anything decodes it. `JpxDecoder` also
 serves callers directly.
 
+`JpxEncoder` writes JPEG 2000 (Part 1) as a JP2 file or a raw codestream from a `BufferedImage` or from
+`JpxEncoder.Planes` (1 to 16 bit samples, signed or not, any number of components, each subsampled by its own
+horizontal and vertical factor from 1 to 255, an alpha channel, enumerated sRGB, grey, sYCC or CMYK colour or an ICC
+profile). `Options.exact()` is lossless (5/3 wavelet, reversible colour
+transform) and decodes to the same samples; `Options.rate(bitsPerPixel)` and `Options.quality(psnr)` are lossy (9/7
+wavelet, irreversible colour transform), with the code-block passes chosen by rate-distortion optimisation to fit the
+size or reach the PSNR. Options set the decomposition levels (0 to 12), quality layers (1 to 64), tile size (0 picks
+one: the whole image up to 16 million pixels, else 1,024), code-block size and progression order (LRCP, RLCP, RPCL,
+PCRL, CPRL). `encodeAsClose` encodes a picture at least as close to it, in PSNR and SSIM, as a reference such as a
+decoded JPEG, or returns null when that takes the given number of bytes or more. Code-blocks are coded on the
+calling thread and, when there is more than one processor, on the fork-join pool the caller runs in (the common pool
+otherwise), at most one thread per processor; `withThreads(1)` keeps it to the calling thread, and the output is the
+same either way. Encoding holds the samples, the coded data and one tile component of coefficients at a time, and
+stops when the calling thread is interrupted.
+
 The library depends on `org.apache.pdfbox:pdfbox:3.0.8` and `commons-logging`, with `org.apache.pdfbox:jbig2-imageio`
 at runtime for JBIG2 pictures, and runs on Java 25 or later.
 
@@ -776,8 +791,16 @@ exactly what is written.
   differently.
 - JPEG 2000. Part 1 does not allow JPX images, so they are decoded and stored again (JPEG when photographic, lossless
   otherwise, with any alpha as a soft mask); parts 2 and 3 keep them unless they break the part 2 JPX rules (channel
-  count, bit depth, colour boxes). Decoding uses the core library's own JPEG 2000 decoder, so nothing extra is
-  needed.
+  count, bit depth, colour boxes). When the only problem is an alpha channel in the picture (with or without a
+  different depth from the colours, which must share one depth and keep the file's channel order), and the colour is
+  enumerated sRGB, grey or CMYK in the file or `DeviceGray`, `DeviceRGB`, `DeviceCMYK` or `ICCBased` in the image,
+  parts 2 to 4 split the codestream itself into the colour picture and its soft mask without decoding and encoding
+  again, so both keep their exact samples. That copy is used when it takes no more bytes than the JPEG or Flate copy
+  that part 1 would store, and is decoded and compared sample by sample before it is kept. Otherwise parts 2 to 4
+  store a broken one again as JPEG 2000 that follows the rules when that is smaller: a photograph when a JPEG 2000 copy at least as close to the decoded picture as the JPEG copy, in PSNR
+  and SSIM, takes fewer bytes; anything else, and soft masks, when a lossless JPEG 2000 copy is smaller than the
+  lossless one. Otherwise, and for pictures of more than 4.2 million samples, it is stored as in part 1. Decoding
+  and encoding use the core library's own JPEG 2000 code, so nothing extra is needed.
 - Limits. Content nested deeper than 28 graphics states moves into form XObjects; names over 127 bytes are shortened
   everywhere they are used; long strings and `TJ` arrays in content are split without moving a glyph; numbers are
   clamped; names that are not UTF-8 are rewritten as UTF-8; images and masks get a bit depth PDF/A allows; for part 1
@@ -949,6 +972,10 @@ further; the JDK default is 240 MB.
   with status 2. Write `.docx` or `.rtf` instead.
 - Input of a kind the library does not read, by extension or content, throws `UnsupportedFormatException`, an
   `IOException` subclass; a damaged or empty file of a kind it reads still throws a plain `IOException`.
+- `JpxEncoder` writes JPEG 2000. PDF/A parts 2 to 4 store JPEG 2000 pictures that break the JPX rules as rule-abiding
+  JPEG 2000 when that is smaller at no lower quality, and where the optimizer would re-encode a JPEG 2000 photograph
+  as JPEG it keeps it as JPEG 2000 instead when that is smaller at no lower quality. The MQ arithmetic coder moved from the line-art module to
+  `stirling.software.officeconvert.mq.MqEncoder` in the core library, where JBIG2 and JPEG 2000 share it.
 
 ### 0.2.0
 

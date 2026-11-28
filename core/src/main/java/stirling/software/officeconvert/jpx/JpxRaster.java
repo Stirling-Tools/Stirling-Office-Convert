@@ -33,6 +33,10 @@ public final class JpxRaster {
     private final int height;
 
     JpxRaster(Siz siz, int reduce, long maxSamples, int bands) throws JpxException {
+        this(siz, reduce, maxSamples, bands, null);
+    }
+
+    JpxRaster(Siz siz, int reduce, long maxSamples, int bands, TileDecoder.Scratch scratch) throws JpxException {
         int n = siz.components();
         widths = new int[n];
         heights = new int[n];
@@ -68,10 +72,11 @@ public final class JpxRaster {
             throw new JpxException("JPEG 2000 image has " + samples + " samples, more than " + limit);
         }
         for (int c = 0; c < n; c++) {
+            int size = widths[c] * heights[c];
             if (depths[c] <= 8) {
-                bytes[c] = new byte[widths[c] * heights[c]];
+                bytes[c] = scratch == null ? new byte[size] : scratch.bytes(c, size);
             } else {
-                shorts[c] = new short[widths[c] * heights[c]];
+                shorts[c] = scratch == null ? new short[size] : scratch.shorts(c, size);
             }
         }
         if (siz.uniform()) {
@@ -113,6 +118,22 @@ public final class JpxRaster {
     public int sample(int c, int x, int y) {
         int i = y * widths[c] + x;
         return bytes[c] != null ? bytes[c][i] & 0xFF : shorts[c][i] & 0xFFFF;
+    }
+
+    void row(int c, int y, int[] out, int minus) {
+        int w = widths[c];
+        int at = y * w;
+        if (bytes[c] != null) {
+            byte[] b = bytes[c];
+            for (int x = 0; x < w; x++) {
+                out[x] = (b[at + x] & 0xFF) - minus;
+            }
+        } else {
+            short[] s = shorts[c];
+            for (int x = 0; x < w; x++) {
+                out[x] = (s[at + x] & 0xFFFF) - minus;
+            }
+        }
     }
 
     public int imageSample(int c, int x, int y) {

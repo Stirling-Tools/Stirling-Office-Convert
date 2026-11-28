@@ -12,6 +12,10 @@ public final class JpxDecoder {
     }
 
     public static JpxImage decode(byte[] data, JpxOptions options) throws IOException {
+        return decode(data, options, null);
+    }
+
+    static JpxImage decode(byte[] data, JpxOptions options, TileDecoder.Scratch scratch) throws IOException {
         Jp2Boxes boxes = Jp2Boxes.read(data);
         Codestream cs = Codestream.parse(data, boxes.codestreamStart, boxes.codestreamEnd);
         int reduce = Math.min(options.reduce(), minimumLevels(cs));
@@ -19,8 +23,8 @@ public final class JpxDecoder {
             reduce = 0;
         }
         JpxRaster raster = new JpxRaster(cs.siz, reduce, options.maxSamples(),
-                ImageComposer.bands(boxes, cs.siz.components()));
-        TileDecoder decoder = new TileDecoder(cs, raster, reduce, options.maxSamples());
+                ImageComposer.bands(boxes, cs.siz.components()), scratch);
+        TileDecoder decoder = new TileDecoder(cs, raster, reduce, options.maxSamples(), scratch);
         Rectangle region = options.region();
         for (int t = 0; t < cs.tiles.length; t++) {
             if (wanted(cs.siz, t, region)) {
