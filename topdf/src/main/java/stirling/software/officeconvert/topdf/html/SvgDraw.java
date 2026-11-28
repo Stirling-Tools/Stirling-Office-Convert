@@ -89,6 +89,7 @@ final class SvgDraw {
     int feImages;
 
     final java.util.Set<Element> activeFilters = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+    List<float[]> recolour;
 
     record Paint(int rgb, float alpha, Element server, boolean none, String fallback, AffineTransform space,
             Rectangle2D box) {
@@ -1647,6 +1648,26 @@ final class SvgDraw {
             if (a <= 0) {
                 return;
             }
+        }
+        if (server == null && recolour != null && !recolour.isEmpty()) {
+            float[] c = {((paint.rgb() >> 16) & 0xFF) / 255f, ((paint.rgb() >> 8) & 0xFF) / 255f,
+                (paint.rgb() & 0xFF) / 255f, a};
+            for (float[] m : recolour) {
+                float r = c[0];
+                float g = c[1];
+                float b = c[2];
+                float al = c[3];
+                c[0] = Math.clamp(m[0] * r + m[1] * g + m[2] * b + m[3] * al + m[4], 0f, 1f);
+                c[1] = Math.clamp(m[5] * r + m[6] * g + m[7] * b + m[8] * al + m[9], 0f, 1f);
+                c[2] = Math.clamp(m[10] * r + m[11] * g + m[12] * b + m[13] * al + m[14], 0f, 1f);
+                c[3] = Math.clamp(m[15] * r + m[16] * g + m[17] * b + m[18] * al + m[19], 0f, 1f);
+            }
+            a = c[3];
+            if (a <= 0) {
+                return;
+            }
+            paint = new Paint(Math.round(c[0] * 255) << 16 | Math.round(c[1] * 255) << 8 | Math.round(c[2] * 255), 1,
+                    null, false);
         }
         if (stroke && server != null && a < 1 && width > 0 && dashes(s) == null) {
             String cap = SvgDoc.lower(s.get("stroke-linecap"));

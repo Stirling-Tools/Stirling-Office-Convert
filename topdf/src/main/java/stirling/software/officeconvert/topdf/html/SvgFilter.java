@@ -73,7 +73,9 @@ final class SvgFilter {
 
     private record Step(String kind, List<String> args, Element element) {}
 
-    record Ctx(SvgDraw d, AffineTransform toPixel, Rectangle2D device, int w, int h, Rectangle2D bbox, boolean boxUnits,
+    record Frame(Rectangle2D device, AffineTransform grid, Rectangle2D exact) {}
+
+    record Ctx(SvgDraw d, AffineTransform toPixel, Frame device, int w, int h, Rectangle2D bbox, boolean boxUnits,
             Rectangle2D region) {}
 
 
@@ -212,6 +214,21 @@ final class SvgFilter {
             content.draw();
             return;
         }
+        List<float[]> vector = vectorColours(d, steps, e, s);
+        if (vector != null) {
+            List<float[]> saved = d.recolour;
+            List<float[]> now = new ArrayList<>(vector);
+            if (saved != null) {
+                now.addAll(saved);
+            }
+            d.recolour = now;
+            try {
+                content.draw();
+            } finally {
+                d.recolour = saved;
+            }
+            return;
+        }
         if (d.feImages > 0) {
             for (Step st : steps) {
                 if (st.element() != null && d.activeFilters.contains(st.element())) {
@@ -233,6 +250,54 @@ final class SvgFilter {
         }
     }
 
+    private static final java.util.Set<String> SHAPES = java.util.Set.of("rect", "circle", "ellipse", "line",
+            "polyline", "polygon", "path");
+
+    private static List<float[]> vectorColours(SvgDraw d, List<Step> steps, Element e, SvgStyle s) {
+        List<float[]> out = new ArrayList<>();
+        boolean fades = false;
+        for (Step st : steps) {
+            if (st.element() != null) {
+                return null;
+            }
+            if (st.kind().equals("blur")) {
+                if (!st.args().isEmpty() && SvgDraw.length(st.args().get(0), s.fontSize, 0, 0) != 0) {
+                    return null;
+                }
+                continue;
+            }
+            String[] tv = st.kind().equals("drop-shadow") ? null : cssColour(st);
+            float[] m = tv == null ? null : matrixOf(tv[0], tv[1]);
+            if (m == null) {
+                return null;
+            }
+            fades |= m[18] != 1 || m[15] != 0 || m[16] != 0 || m[17] != 0 || m[19] != 0;
+            out.add(m);
+        }
+        if (out.isEmpty()) {
+            return out;
+        }
+        if (!SHAPES.contains(SvgDoc.local(e)) || d.recolour == null && d.feImages > 0) {
+            return null;
+        }
+        String fill = SvgDoc.lower(s.get("fill"));
+        String stroke = SvgDoc.lower(s.get("stroke"));
+        if (fill.contains("url(") || stroke.contains("url(") || fill.startsWith("context-")
+                || stroke.startsWith("context-")) {
+            return null;
+        }
+        for (String m : List.of("marker-start", "marker-mid", "marker-end")) {
+            String v = SvgDoc.lower(s.get(m));
+            if (!v.isEmpty() && !v.equals("none")) {
+                return null;
+            }
+        }
+        if (fades && !fill.equals("none") && !stroke.equals("none") && !stroke.isEmpty()) {
+            return null;
+        }
+        return out;
+    }
+
     private static void applySteps(SvgDraw d, List<Step> steps, Element e, SvgStyle s, Rectangle2D bbox,
             SvgDraw.Content content) throws IOException {
         Rectangle2D region = null;
@@ -247,6 +312,10 @@ final class SvgFilter {
             return;
         }
         AffineTransform raw = d.raw();
+        if ((Math.abs(raw.getShearX()) > 1e-9 || Math.abs(raw.getShearY()) > 1e-9) && directional(d, steps)) {
+            applyLocal(d, steps, region, raw, bbox, s, content);
+            return;
+        }
         Rectangle2D device = raw.createTransformedShape(region).getBounds2D();
         Rectangle2D page = new Rectangle2D.Double(-2 * d.canvas.width(), -2 * d.canvas.height(), 5 * d.canvas.width(),
                 5 * d.canvas.height());
@@ -278,13 +347,82 @@ final class SvgFilter {
         stirling.software.officeconvert.memory.Admission.Ticket ticket =
                 stirling.software.officeconvert.memory.Admission.jvm().enter(bytes);
         try {
-            filtered(d, steps, form, device, w, h, toPixel, bbox, s);
+            filtered(d, steps, form, new Frame(device, null, null), w, h, toPixel, bbox, s);
         } finally {
             ticket.close();
         }
     }
 
-    private static void filtered(SvgDraw d, List<Step> steps, PDFormXObject form, Rectangle2D device, int w, int h,
+    private static boolean directional(SvgDraw d, List<Step> steps) {
+        for (Step st : steps) {
+            Element owner = st.element();
+            for (int i = 0; owner != null && i < 8 && owner.children().isEmpty(); i++) {
+                Element next = d.doc.target(owner);
+                owner = next != null && SvgDoc.local(next).equals("filter") ? next : null;
+            }
+            if (owner == null) {
+                continue;
+            }
+            for (Element p : owner.children()) {
+                String tag = SvgDoc.local(p).toLowerCase(Locale.ROOT);
+                String pair = tag.equals("fegaussianblur") ? "stdDeviation" : tag.equals("femorphology") ? "radius" : null;
+                if (tag.equals("feconvolvematrix")) {
+                    return true;
+                }
+                if (pair != null) {
+                    float[] v = SvgDraw.numbers(SvgDoc.attr(p, pair));
+                    if (v.length > 1 && v[0] != v[1]) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    private static void applyLocal(SvgDraw d, List<Step> steps, Rectangle2D region, AffineTransform raw,
+            Rectangle2D bbox, SvgStyle s, SvgDraw.Content content) throws IOException {
+        double kx = PIXELS_PER_POINT * Math.hypot(raw.getScaleX(), raw.getShearY());
+        double ky = PIXELS_PER_POINT * Math.hypot(raw.getShearX(), raw.getScaleY());
+        double px = region.getWidth() * kx * region.getHeight() * ky;
+        if (!(px > 0) || !Double.isFinite(px)) {
+            return;
+        }
+        if (px > MAX_PIXELS) {
+            double f = Math.sqrt(MAX_PIXELS / px);
+            kx *= f;
+            ky *= f;
+        }
+        int w = Math.max(1, (int) Math.ceil(region.getWidth() * kx));
+        int h = Math.max(1, (int) Math.ceil(region.getHeight() * ky));
+        d.charge((long) w * h * (steps.size() + 1));
+        if (d.spent()) {
+            return;
+        }
+        AffineTransform toPixel = new AffineTransform(kx, 0, 0, ky, -region.getX() * kx, -region.getY() * ky);
+        AffineTransform grid;
+        try {
+            grid = new AffineTransform(toPixel);
+            grid.concatenate(raw.createInverse());
+        } catch (java.awt.geom.NoninvertibleTransformException e) {
+            return;
+        }
+        PDFormXObject form = d.capture(content, d.canvas.transform());
+        if (form == null) {
+            return;
+        }
+        long bytes = (long) w * h * 16L * (6 + MAX_RESULTS);
+        stirling.software.officeconvert.memory.Admission.Ticket ticket =
+                stirling.software.officeconvert.memory.Admission.jvm().enter(bytes);
+        try {
+            filtered(d, steps, form, new Frame(null, grid,
+                    new Rectangle2D.Double(0, 0, region.getWidth() * kx, region.getHeight() * ky)), w, h, toPixel, bbox, s);
+        } finally {
+            ticket.close();
+        }
+    }
+
+    private static void filtered(SvgDraw d, List<Step> steps, PDFormXObject form, Frame device, int w, int h,
             AffineTransform toPixel, Rectangle2D bbox, SvgStyle s) throws IOException {
         Img src = rasterize(form, device, w, h);
         Img result = src;
@@ -302,14 +440,43 @@ final class SvgFilter {
         cs.saveGraphicsState();
         try {
             cs.transform(new Matrix(d.rawInverse()));
-            cs.drawImage(image, (float) device.getX(), (float) device.getY(), (float) device.getWidth(),
-                    (float) device.getHeight());
+            if (device.grid() == null) {
+                Rectangle2D box = device.device();
+                cs.drawImage(image, (float) box.getX(), (float) box.getY(), (float) box.getWidth(),
+                        (float) box.getHeight());
+            } else {
+                AffineTransform place = device.grid().createInverse();
+                place.concatenate(new AffineTransform(w, 0, 0, -h, 0, h));
+                cs.transform(new Matrix(place));
+                Rectangle2D exact = device.exact();
+                cs.addRect(0, (float) (1 - exact.getHeight() / h), (float) (exact.getWidth() / w),
+                        (float) (exact.getHeight() / h));
+                cs.clip();
+                cs.drawImage(image, 0, 0, 1, 1);
+            }
+        } catch (java.awt.geom.NoninvertibleTransformException e) {
+            return;
         } finally {
             cs.restoreGraphicsState();
         }
     }
 
-    private static Img rasterize(PDFormXObject form, Rectangle2D device, int w, int h) throws IOException {
+    private static Img rasterize(PDFormXObject form, Frame frame, int w, int h) throws IOException {
+        if (frame.grid() != null) {
+            try (PDDocument tmp = new PDDocument()) {
+                PDPage page = new PDPage(new PDRectangle(w + 2, h + 2));
+                tmp.addPage(page);
+                try (PDPageContentStream cs = new PDPageContentStream(tmp, page)) {
+                    AffineTransform t = new AffineTransform(1, 0, 0, -1, 0, h + 2);
+                    t.concatenate(frame.grid());
+                    cs.transform(new Matrix(t));
+                    cs.drawForm(form);
+                }
+                BufferedImage img = new PDFRenderer(tmp).renderImage(0, 1, ImageType.ARGB);
+                return fromImage(img, w, h);
+            }
+        }
+        Rectangle2D device = frame.device();
         double scale = w / device.getWidth();
         try (PDDocument tmp = new PDDocument()) {
             float pw = (float) ((w + 2) / scale);
@@ -399,7 +566,7 @@ final class SvgFilter {
 
 
     private static Img run(SvgDraw d, Element f, Rectangle2D bbox, AffineTransform toPixel, Img sourceGraphic,
-            Rectangle2D device) throws IOException {
+            Frame device) throws IOException {
         SvgStyle fs = d.domStyle(f);
         Element owner = f;
         for (int i = 0; i < 8; i++) {
@@ -448,7 +615,7 @@ final class SvgFilter {
             Img in1 = space(input(SvgDoc.attr(p, "in"), results, last, src), lin);
             Img out;
             try {
-                out = primitive(tag, p, ps, in1, results, last, src, lin, ctx, sub);
+                out = primitive(tag, p, ps, in1, results, last, src, lin, ctx, sub, box);
             } catch (RuntimeException ex) {
                 out = null;
             }
@@ -623,7 +790,7 @@ final class SvgFilter {
     }
 
     private static Img primitive(String tag, Element p, SvgStyle ps, Img in1, Map<String, Img> results, Img last,
-            Img src, boolean lin, Ctx c, java.awt.Shape sub) throws IOException {
+            Img src, boolean lin, Ctx c, java.awt.Shape sub, Rectangle2D box) throws IOException {
         SvgDraw d = c.d();
         AffineTransform toPixel = c.toPixel();
         Rectangle2D bbox = c.bbox();
@@ -727,7 +894,7 @@ final class SvgFilter {
             case "fediffuselighting", "fespecularlighting":
                 return SvgLighting.light(p, ps, in1, lin, tag.equals("fespecularlighting"), c);
             case "feimage":
-                return image(p, ps, c, sub, lin);
+                return image(p, ps, c, sub, box, lin);
             case "feturbulence":
                 d.charge((long) in1.w * in1.h * 4 * Math.max(1, Math.min(10,
                         (long) SvgDraw.number(SvgDoc.attr(p, "numOctaves"), 1))));
@@ -745,7 +912,8 @@ final class SvgFilter {
 
     static final int MAX_IMAGE_DEPTH = 2;
 
-    private static Img image(Element p, SvgStyle ps, Ctx c, java.awt.Shape sub, boolean lin) throws IOException {
+    private static Img image(Element p, SvgStyle ps, Ctx c, java.awt.Shape sub, Rectangle2D box, boolean lin)
+            throws IOException {
         SvgDraw d = c.d();
         Img empty = new Img(c.w(), c.h());
         if (d.feImages >= MAX_IMAGE_DEPTH || d.spent()) {
@@ -768,8 +936,9 @@ final class SvgFilter {
                 }
                 Element parent = target.parent();
                 SvgStyle base = parent == null || parent.parent() == null ? SvgStyle.root() : d.domStyle(parent);
+                Rectangle2D origin = box != null ? box : area;
                 form = d.capture(() -> {
-                    d.canvas.translate((float) area.getX(), (float) area.getY());
+                    d.canvas.translate((float) origin.getX(), (float) origin.getY());
                     d.element(target, base, 0, 0);
                 }, d.canvas.transform());
             } else {
@@ -828,52 +997,58 @@ final class SvgFilter {
                 return composite(lin, shadow, "over", 0, 0, 0, 0);
             }
             default: {
-                float amount = a.isEmpty() ? (st.kind().equals("hue-rotate") ? 0 : 1) : amountOf(a.get(0), st.kind());
-                String values;
-                String type = "matrix";
-                switch (st.kind()) {
-                    case "grayscale" -> {
-                        float t = 1 - Math.min(1, amount);
-                        values = (0.2126 + 0.7874 * t) + " " + (0.7152 - 0.7152 * t) + " " + (0.0722 - 0.0722 * t)
-                                + " 0 0 " + (0.2126 - 0.2126 * t) + " " + (0.7152 + 0.2848 * t) + " "
-                                + (0.0722 - 0.0722 * t) + " 0 0 " + (0.2126 - 0.2126 * t) + " " + (0.7152 - 0.7152 * t)
-                                + " " + (0.0722 + 0.9278 * t) + " 0 0 0 0 0 1 0";
-                    }
-                    case "sepia" -> {
-                        float t = 1 - Math.min(1, amount);
-                        values = (0.393 + 0.607 * t) + " " + (0.769 - 0.769 * t) + " " + (0.189 - 0.189 * t)
-                                + " 0 0 " + (0.349 - 0.349 * t) + " " + (0.686 + 0.314 * t) + " " + (0.168 - 0.168 * t)
-                                + " 0 0 " + (0.272 - 0.272 * t) + " " + (0.534 - 0.534 * t) + " " + (0.131 + 0.869 * t)
-                                + " 0 0 0 0 0 1 0";
-                    }
-                    case "saturate" -> {
-                        type = "saturate";
-                        values = String.valueOf(amount);
-                    }
-                    case "hue-rotate" -> {
-                        type = "huerotate";
-                        values = String.valueOf(a.isEmpty() ? 0 : angle(a.get(0)));
-                    }
-                    case "invert" -> {
-                        float t = Math.min(1, amount);
-                        float m = 1 - 2 * t;
-                        values = m + " 0 0 0 " + t + " 0 " + m + " 0 0 " + t + " 0 0 " + m + " 0 " + t + " 0 0 0 1 0";
-                    }
-                    case "opacity" -> values = "1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 " + Math.min(1, amount) + " 0";
-                    case "brightness" -> values = amount + " 0 0 0 0 0 " + amount + " 0 0 0 0 0 " + amount
-                            + " 0 0 0 0 0 1 0";
-                    case "contrast" -> {
-                        float off = (1 - amount) / 2;
-                        values = amount + " 0 0 0 " + off + " 0 " + amount + " 0 0 " + off + " 0 0 " + amount + " 0 "
-                                + off + " 0 0 0 1 0";
-                    }
-                    default -> {
-                        return in;
-                    }
-                }
-                return colorMatrix(in, type, values);
+                String[] tv = cssColour(st);
+                return tv == null ? in : colorMatrix(in, tv[0], tv[1]);
             }
         }
+    }
+
+    private static String[] cssColour(Step st) {
+        List<String> a = st.args();
+        float amount = a.isEmpty() ? (st.kind().equals("hue-rotate") ? 0 : 1) : amountOf(a.get(0), st.kind());
+        String values;
+        String type = "matrix";
+        switch (st.kind()) {
+            case "grayscale" -> {
+                float t = 1 - Math.min(1, amount);
+                values = (0.2126 + 0.7874 * t) + " " + (0.7152 - 0.7152 * t) + " " + (0.0722 - 0.0722 * t)
+                        + " 0 0 " + (0.2126 - 0.2126 * t) + " " + (0.7152 + 0.2848 * t) + " "
+                        + (0.0722 - 0.0722 * t) + " 0 0 " + (0.2126 - 0.2126 * t) + " " + (0.7152 - 0.7152 * t)
+                        + " " + (0.0722 + 0.9278 * t) + " 0 0 0 0 0 1 0";
+            }
+            case "sepia" -> {
+                float t = 1 - Math.min(1, amount);
+                values = (0.393 + 0.607 * t) + " " + (0.769 - 0.769 * t) + " " + (0.189 - 0.189 * t)
+                        + " 0 0 " + (0.349 - 0.349 * t) + " " + (0.686 + 0.314 * t) + " " + (0.168 - 0.168 * t)
+                        + " 0 0 " + (0.272 - 0.272 * t) + " " + (0.534 - 0.534 * t) + " " + (0.131 + 0.869 * t)
+                        + " 0 0 0 0 0 1 0";
+            }
+            case "saturate" -> {
+                type = "saturate";
+                values = String.valueOf(amount);
+            }
+            case "hue-rotate" -> {
+                type = "huerotate";
+                values = String.valueOf(a.isEmpty() ? 0 : angle(a.get(0)));
+            }
+            case "invert" -> {
+                float t = Math.min(1, amount);
+                float m = 1 - 2 * t;
+                values = m + " 0 0 0 " + t + " 0 " + m + " 0 0 " + t + " 0 0 " + m + " 0 " + t + " 0 0 0 1 0";
+            }
+            case "opacity" -> values = "1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 " + Math.min(1, amount) + " 0";
+            case "brightness" -> values = amount + " 0 0 0 0 0 " + amount + " 0 0 0 0 0 " + amount
+                    + " 0 0 0 0 0 1 0";
+            case "contrast" -> {
+                float off = (1 - amount) / 2;
+                values = amount + " 0 0 0 " + off + " 0 " + amount + " 0 0 " + off + " 0 0 " + amount + " 0 "
+                        + off + " 0 0 0 1 0";
+            }
+            default -> {
+                return null;
+            }
+        }
+        return new String[] {type, values};
     }
 
     private static float amountOf(String v, String kind) {
@@ -1344,6 +1519,29 @@ final class SvgFilter {
     }
 
     static Img colorMatrix(Img in, String type, String values) {
+        float[] m = matrixOf(type, values);
+        if (m == null) {
+            return in;
+        }
+        Img out = new Img(in.w, in.h);
+        for (int i = 0; i < in.p.length; i += 4) {
+            float a = in.p[i + 3];
+            float r = a > 0 ? in.p[i] / a : 0;
+            float g = a > 0 ? in.p[i + 1] / a : 0;
+            float b = a > 0 ? in.p[i + 2] / a : 0;
+            float nr = clamp(m[0] * r + m[1] * g + m[2] * b + m[3] * a + m[4]);
+            float ng = clamp(m[5] * r + m[6] * g + m[7] * b + m[8] * a + m[9]);
+            float nb = clamp(m[10] * r + m[11] * g + m[12] * b + m[13] * a + m[14]);
+            float na = clamp(m[15] * r + m[16] * g + m[17] * b + m[18] * a + m[19]);
+            out.p[i] = nr * na;
+            out.p[i + 1] = ng * na;
+            out.p[i + 2] = nb * na;
+            out.p[i + 3] = na;
+        }
+        return out;
+    }
+
+    private static float[] matrixOf(String type, String values) {
         float[] m;
         float[] v = SvgDraw.numbers(values);
         switch (type) {
@@ -1367,27 +1565,12 @@ final class SvgFilter {
                 0.0721f, 0, 0};
             default -> {
                 if (v.length != 20) {
-                    return in;
+                    return null;
                 }
                 m = v;
             }
         }
-        Img out = new Img(in.w, in.h);
-        for (int i = 0; i < in.p.length; i += 4) {
-            float a = in.p[i + 3];
-            float r = a > 0 ? in.p[i] / a : 0;
-            float g = a > 0 ? in.p[i + 1] / a : 0;
-            float b = a > 0 ? in.p[i + 2] / a : 0;
-            float nr = clamp(m[0] * r + m[1] * g + m[2] * b + m[3] * a + m[4]);
-            float ng = clamp(m[5] * r + m[6] * g + m[7] * b + m[8] * a + m[9]);
-            float nb = clamp(m[10] * r + m[11] * g + m[12] * b + m[13] * a + m[14]);
-            float na = clamp(m[15] * r + m[16] * g + m[17] * b + m[18] * a + m[19]);
-            out.p[i] = nr * na;
-            out.p[i + 1] = ng * na;
-            out.p[i + 2] = nb * na;
-            out.p[i + 3] = na;
-        }
-        return out;
+        return m;
     }
 
     private static Img transfer(Img in, Element p) {

@@ -420,6 +420,8 @@ final class SvgText {
                     "Liberation Mono");
             case "cursive" -> List.of("Yellowtail", "Comic Sans MS", "URW Chancery L");
             case "fantasy" -> List.of("Sedgwick Ave Display", "Impact", "Papyrus");
+            case "arial", "helvetica", "arimo" -> List.of(family, "Liberation Sans", "Arimo");
+            case "courier new", "courier", "cousine" -> List.of(family, "Liberation Mono", "Cousine");
             default -> List.of(family);
         };
     }
@@ -652,9 +654,14 @@ final class SvgText {
             float desc = (m.useTypoMetrics() ? m.typoDescender() : m.hheaDescender()) / upem * c.size;
             float h = Character.isISOControl(c.cp) ? 0 : c.face.advance(c.cp, c.size);
             float extra = Float.isNaN(rot[i]) ? 0 : rot[i];
+            double turn = Math.toRadians(extra);
+            float cos = (float) Math.cos(turn);
+            float sin = (float) Math.sin(turn);
             if (upright(c.cp)) {
-                c.x = column - h / 2;
-                c.y = pen + (asc + desc) / 2 + c.size / 2;
+                float ox = -h / 2;
+                float oy = (asc + desc) / 2 + c.size / 2;
+                c.x = column + ox * cos - oy * sin;
+                c.y = pen + ox * sin + oy * cos;
                 c.rotate = extra;
                 c.advance = h;
                 pen += c.size;
@@ -697,8 +704,8 @@ final class SvgText {
                     pen += c.face.pairKerning(l.chars.get(prev).cp, c.cp) * c.size / c.face.unitsPerEm();
                 }
                 float b = (asc + desc) / 2;
-                c.x = column - b;
-                c.y = pen;
+                c.x = column - b * cos;
+                c.y = pen - b * sin;
                 c.rotate = 90 + extra;
                 c.advance = h;
                 pen += h;
@@ -1228,8 +1235,9 @@ final class SvgText {
             return;
         }
         SvgStyle st = c.style;
-        SvgDraw.Paint fill = draw.paint(st.get("fill"), st);
-        SvgDraw.Paint stroke = draw.paint(st.get("stroke"), st);
+        AffineTransform user = draw.raw();
+        SvgDraw.Paint fill = draw.paint(st.get("fill"), st).inContext(user, bbox);
+        SvgDraw.Paint stroke = draw.paint(st.get("stroke"), st).inContext(user, bbox);
         float sw = draw.strokeWidth(st);
         boolean visible = !c.hidden;
         float fo = alpha * Css.opacity(st.get("fill-opacity"));
@@ -1310,8 +1318,9 @@ final class SvgText {
         if (c.hidden) {
             return;
         }
-        SvgDraw.Paint fill = draw.paint(st.get("fill"), st);
-        SvgDraw.Paint stroke = draw.paint(st.get("stroke"), st);
+        AffineTransform user = draw.raw();
+        SvgDraw.Paint fill = draw.paint(st.get("fill"), st).inContext(user, bbox);
+        SvgDraw.Paint stroke = draw.paint(st.get("stroke"), st).inContext(user, bbox);
         float sw = draw.strokeWidth(st);
         float fo = alpha * Css.opacity(st.get("fill-opacity"));
         float so = alpha * Css.opacity(st.get("stroke-opacity"));

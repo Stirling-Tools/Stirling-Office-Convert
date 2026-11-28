@@ -148,6 +148,16 @@ class SvgToPdfTest {
     }
 
     @Test
+    void colourOnlyFilterFunctionsRecolourVectorsWithoutPictures() throws IOException {
+        Drawn d = draw("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"200\" height=\"100\">"
+                + "<rect x=\"10\" y=\"10\" width=\"60\" height=\"60\" fill=\"#ff0000\" filter=\"invert(100%)\"/>"
+                + "<rect x=\"110\" y=\"10\" width=\"60\" height=\"60\" fill=\"#0000ff\" filter=\"blur()\"/></svg>");
+        assertEquals(0, d.pictures());
+        assertTrue(near(rgb(d, 50, 50), 0x00FFFF), Integer.toHexString(rgb(d, 50, 50)));
+        assertTrue(near(rgb(d, 140, 40), 0x0000FF), Integer.toHexString(rgb(d, 140, 40)));
+    }
+
+    @Test
     void onlyFilteredElementsBecomePictures() throws IOException {
         Drawn d = draw("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"200\" height=\"100\">"
                 + "<filter id=\"f\"><feGaussianBlur stdDeviation=\"4\"/><feOffset dx=\"5\" dy=\"5\"/></filter>"
