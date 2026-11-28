@@ -4,6 +4,8 @@ import java.awt.geom.AffineTransform;
 import java.awt.geom.Point2D;
 import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
+import java.awt.image.DataBufferInt;
+import java.awt.image.SinglePixelPackedSampleModel;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -42,9 +44,21 @@ final class SvgFilter {
         Rectangle2D box;
 
         Img(int w, int h) {
+            this(w, h, new float[w * h * 4]);
+        }
+
+        private Img(int w, int h, float[] p) {
             this.w = w;
             this.h = h;
-            this.p = new float[w * h * 4];
+            this.p = p;
+        }
+
+        Img view() {
+            Img c = new Img(w, h, p);
+            c.linear = linear;
+            c.area = area;
+            c.box = box;
+            return c;
         }
 
         Img copy() {
@@ -249,8 +263,7 @@ final class SvgFilter {
 
     private static void filtered(SvgDraw d, List<Step> steps, PDFormXObject form, Rectangle2D device, int w, int h,
             AffineTransform toPixel, Rectangle2D bbox, SvgStyle s) throws IOException {
-        BufferedImage source = rasterize(form, device, w, h);
-        Img src = fromImage(source);
+        Img src = rasterize(form, device, w, h);
         Img result = src;
         for (Step st : steps) {
             stirling.software.officeconvert.extract.PdfFiles.stopIfInterrupted();
@@ -273,7 +286,7 @@ final class SvgFilter {
         }
     }
 
-    private static BufferedImage rasterize(PDFormXObject form, Rectangle2D device, int w, int h) throws IOException {
+    private static Img rasterize(PDFormXObject form, Rectangle2D device, int w, int h) throws IOException {
         double scale = w / device.getWidth();
         try (PDDocument tmp = new PDDocument()) {
             float pw = (float) ((w + 2) / scale);
@@ -287,15 +300,7 @@ final class SvgFilter {
             }
             PDFRenderer r = new PDFRenderer(tmp);
             BufferedImage img = r.renderImage(0, (float) scale, ImageType.ARGB);
-            BufferedImage fit = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
-            int cw = Math.min(w, img.getWidth());
-            int ch = Math.min(h, img.getHeight());
-            int[] row = new int[cw];
-            for (int y = 0; y < ch; y++) {
-                img.getRGB(0, y, cw, 1, row, 0, cw);
-                fit.setRGB(0, y, cw, 1, row, 0, cw);
-            }
-            return fit;
+            return fromImage(img, w, h);
         }
     }
 
@@ -392,7 +397,7 @@ final class SvgFilter {
         Ctx ctx = new Ctx(d, toPixel, device, sourceGraphic.w, sourceGraphic.h, bbox, boxUnits, region);
         java.awt.Shape regionShape = toPixel.createTransformedShape(region);
         Map<String, Img> results = new HashMap<>();
-        Img source = sourceGraphic.copy();
+        Img source = sourceGraphic.view();
         source.linear = false;
         source.area = regionShape;
         source.box = region;
@@ -426,7 +431,7 @@ final class SvgFilter {
             }
             if (out == null) {
                 out = in1.copy();
-            } else if (out == in1 || out == src || out == last || results.containsValue(out)) {
+            } else if (out == in1 || out == src || out == last || out.p == source.p || results.containsValue(out)) {
                 out = out.copy();
             }
             out.linear = lin;
@@ -758,7 +763,7 @@ final class SvgFilter {
         if (form == null) {
             return empty;
         }
-        Img picture = fromImage(rasterize(form, c.device(), c.w(), c.h()));
+        Img picture = rasterize(form, c.device(), c.w(), c.h());
         return lin ? toLinear(picture) : picture;
     }
 
@@ -871,18 +876,41 @@ final class SvgFilter {
 
 
     static Img fromImage(BufferedImage img) {
-        Img out = new Img(img.getWidth(), img.getHeight());
-        int[] row = new int[out.w];
-        for (int y = 0; y < out.h; y++) {
-            img.getRGB(0, y, out.w, 1, row, 0, out.w);
-            for (int x = 0; x < out.w; x++) {
-                int c = row[x];
-                float a = (c >>> 24) / 255f;
-                int i = (y * out.w + x) * 4;
-                out.p[i] = ((c >> 16) & 0xFF) / 255f * a;
-                out.p[i + 1] = ((c >> 8) & 0xFF) / 255f * a;
-                out.p[i + 2] = (c & 0xFF) / 255f * a;
-                out.p[i + 3] = a;
+        return fromImage(img, img.getWidth(), img.getHeight());
+    }
+
+    static Img fromImage(BufferedImage img, int w, int h) {
+        Img out = new Img(w, h);
+        int cw = Math.min(w, img.getWidth());
+        int ch = Math.min(h, img.getHeight());
+        int[] data = null;
+        int stride = 0;
+        if (img.getType() == BufferedImage.TYPE_INT_ARGB
+                && img.getRaster().getDataBuffer() instanceof DataBufferInt db
+                && img.getRaster().getSampleModel() instanceof SinglePixelPackedSampleModel sm
+                && img.getRaster().getSampleModelTranslateX() == 0 && img.getRaster().getSampleModelTranslateY() == 0) {
+            data = db.getData();
+            stride = sm.getScanlineStride();
+        }
+        int[] row = data == null ? new int[cw] : null;
+        float[] p = out.p;
+        for (int y = 0; y < ch; y++) {
+            int base = y * stride;
+            if (data == null) {
+                img.getRGB(0, y, cw, 1, row, 0, cw);
+            }
+            int i = y * w * 4;
+            for (int x = 0; x < cw; x++, i += 4) {
+                int c = data == null ? row[x] : data[base + x];
+                int ai = c >>> 24;
+                if (ai == 0) {
+                    continue;
+                }
+                float a = ai / 255f;
+                p[i] = ((c >> 16) & 0xFF) / 255f * a;
+                p[i + 1] = ((c >> 8) & 0xFF) / 255f * a;
+                p[i + 2] = (c & 0xFF) / 255f * a;
+                p[i + 3] = a;
             }
         }
         return out;
@@ -890,22 +918,19 @@ final class SvgFilter {
 
     static BufferedImage toImage(Img img) {
         BufferedImage out = new BufferedImage(img.w, img.h, BufferedImage.TYPE_INT_ARGB);
-        int[] row = new int[img.w];
-        for (int y = 0; y < img.h; y++) {
-            for (int x = 0; x < img.w; x++) {
-                int i = (y * img.w + x) * 4;
-                float a = clamp(img.p[i + 3]);
-                int r = 0;
-                int g = 0;
-                int b = 0;
-                if (a > 0) {
-                    r = Math.round(clamp(img.p[i] / a) * 255);
-                    g = Math.round(clamp(img.p[i + 1] / a) * 255);
-                    b = Math.round(clamp(img.p[i + 2] / a) * 255);
-                }
-                row[x] = Math.round(a * 255) << 24 | r << 16 | g << 8 | b;
+        int[] data = ((DataBufferInt) out.getRaster().getDataBuffer()).getData();
+        float[] p = img.p;
+        int n = img.w * img.h;
+        for (int k = 0, i = 0; k < n; k++, i += 4) {
+            float a = clamp(p[i + 3]);
+            if (a == 0) {
+                continue;
             }
-            out.setRGB(0, y, img.w, 1, row, 0, img.w);
+            int r = Math.round(clamp(p[i] / a) * 255);
+            int g = Math.round(clamp(p[i + 1] / a) * 255);
+            int b = Math.round(clamp(p[i + 2] / a) * 255);
+            int ai = Math.round(a * 255);
+            data[k] = ai << 24 | r << 16 | g << 8 | b;
         }
         return out;
     }
