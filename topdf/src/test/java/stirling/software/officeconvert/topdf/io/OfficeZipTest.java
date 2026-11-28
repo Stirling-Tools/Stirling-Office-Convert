@@ -8,9 +8,15 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
+import java.util.zip.ZipOutputStream;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -38,6 +44,48 @@ class OfficeZipTest {
             assertFalse(main.external());
             assertTrue(new String(zip.read(main)).contains("Hello"));
         }
+    }
+
+    @Test
+    void aPartIsReadWhateverSizeItsDirectoryEntryClaims() throws Exception {
+        byte[] body = ("<a>" + "x".repeat(2_000) + "</a>").getBytes(StandardCharsets.US_ASCII);
+        for (int declared : new int[] {body.length, body.length + 500, 40}) {
+            Path file = Fixtures.write(dir, "sized" + declared + ".docx", declaring(body, declared));
+            try (OfficeZip zip = OfficeZip.open(file)) {
+                if (declared >= body.length) {
+                    assertArrayEquals(body, zip.read("word/part.xml"), "declared " + declared);
+                } else {
+                    IOException e = assertThrows(IOException.class, () -> zip.read("word/part.xml"));
+                    assertTrue(e.getMessage().contains("larger than its zip entry says"), e.getMessage());
+                }
+            }
+        }
+    }
+
+    private static byte[] declaring(byte[] body, int declared) throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try (ZipInputStream in = new ZipInputStream(new ByteArrayInputStream(Fixtures.docx("Hello")));
+                ZipOutputStream z = new ZipOutputStream(out)) {
+            for (ZipEntry e = in.getNextEntry(); e != null; e = in.getNextEntry()) {
+                z.putNextEntry(new ZipEntry(e.getName()));
+                in.transferTo(z);
+                z.closeEntry();
+            }
+            z.putNextEntry(new ZipEntry("word/part.xml"));
+            z.write(body);
+            z.closeEntry();
+        }
+        byte[] zip = out.toByteArray();
+        for (int i = zip.length - 22; i >= 0; i--) {
+            if (zip[i] == 0x50 && zip[i + 1] == 0x4b && zip[i + 2] == 1 && zip[i + 3] == 2) {
+                zip[i + 24] = (byte) declared;
+                zip[i + 25] = (byte) (declared >> 8);
+                zip[i + 26] = 0;
+                zip[i + 27] = 0;
+                break;
+            }
+        }
+        return zip;
     }
 
     @Test

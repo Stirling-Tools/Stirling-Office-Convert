@@ -15,6 +15,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Deque;
 import java.util.Enumeration;
@@ -419,9 +420,22 @@ public final class OfficeZip implements Closeable {
 
     public byte[] read(String part) throws IOException {
         try (InputStream in = open(part)) {
-            return in.readAllBytes();
+            if (!(in instanceof PartStream p) || p.remaining < 0 || p.remaining > PRESIZED_BYTES) {
+                return in.readAllBytes();
+            }
+            byte[] b = new byte[(int) p.remaining];
+            int n = p.readNBytes(b, 0, b.length);
+            if (n < b.length) {
+                return Arrays.copyOf(b, n);
+            }
+            if (p.read() >= 0) {
+                throw p.overrun();
+            }
+            return b;
         }
     }
+
+    private static final int PRESIZED_BYTES = 1 << 26;
 
     public InputStream open(Relationship r) throws IOException {
         return open(followable(r));
