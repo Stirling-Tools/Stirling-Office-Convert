@@ -254,9 +254,12 @@ final class SvgFilter {
                 mine.add(st.element());
             }
         }
+        Element filtering = d.filtering;
+        d.filtering = e;
         try {
             applySteps(d, steps, e, s, bbox, content);
         } finally {
+            d.filtering = filtering;
             mine.forEach(d.activeFilters::remove);
         }
     }
@@ -981,7 +984,7 @@ final class SvgFilter {
             case "fediffuselighting", "fespecularlighting":
                 return SvgLighting.light(p, ps, in1, lin, tag.equals("fespecularlighting"), c);
             case "feimage":
-                return image(p, ps, c, sub, box, lin);
+                return image(p, ps, c, sub, box, lin, src);
             case "feturbulence":
                 d.charge((long) in1.w * in1.h * 4 * Math.max(1, Math.min(10,
                         (long) SvgDraw.number(SvgDoc.attr(p, "numOctaves"), 1))));
@@ -999,8 +1002,8 @@ final class SvgFilter {
 
     static final int MAX_IMAGE_DEPTH = 2;
 
-    private static Img image(Element p, SvgStyle ps, Ctx c, java.awt.Shape sub, Rectangle2D box, boolean lin)
-            throws IOException {
+    private static Img image(Element p, SvgStyle ps, Ctx c, java.awt.Shape sub, Rectangle2D box, boolean lin,
+            Img src) throws IOException {
         SvgDraw d = c.d();
         Img empty = new Img(c.w(), c.h());
         if (d.feImages >= MAX_IMAGE_DEPTH || d.spent()) {
@@ -1020,6 +1023,9 @@ final class SvgFilter {
                 Element target = d.doc.byUrl(href);
                 if (target == null) {
                     return empty;
+                }
+                if (target == d.filtering) {
+                    return src;
                 }
                 Element parent = target.parent();
                 SvgStyle base = parent == null || parent.parent() == null ? SvgStyle.root() : d.domStyle(parent);

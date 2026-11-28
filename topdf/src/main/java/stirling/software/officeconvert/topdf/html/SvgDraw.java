@@ -90,6 +90,7 @@ final class SvgDraw {
 
     final java.util.Set<Element> activeFilters = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
     List<float[]> recolour;
+    Element filtering;
     private int markerLoops;
 
     record Paint(int rgb, float alpha, Element server, boolean none, String fallback, AffineTransform space,
