@@ -235,7 +235,6 @@ final class XpsOps {
                 num(x1).num(y0).op("l\n");
                 num(x1).num(y1).op("l\n");
                 num(x0).num(y1).op("l\n");
-                op("h\n");
             }
             op("f\n");
         } finally {
