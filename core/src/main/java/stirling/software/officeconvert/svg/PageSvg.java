@@ -1553,7 +1553,8 @@ final class PageSvg extends PDFGraphicsStreamEngine {
             AffineTransform element = new AffineTransform(linear);
             element.preConcatenate(AffineTransform.getTranslateInstance(m.getTranslateX(), m.getTranslateY()));
             if (mode.isFill()) {
-                Paint p = paint(false, run != null && run.face == face ? textElement(run) : element, null);
+                Paint p = paint(false, run != null && run.face == face ? textElement(run) : element,
+                        out.area != null ? out.area : new Rectangle2D.Double(0, 0, width, height));
                 fill = p.value() == null ? "#808080" : p.value();
                 fillOpacity = p.opacity();
             }
@@ -1729,7 +1730,22 @@ final class PageSvg extends PDFGraphicsStreamEngine {
                     }
                     a.constructAppearances(document);
                 }
-                showAnnotation(a);
+                int rotation = page.getRotation();
+                PDRectangle rect = a.getRectangle();
+                if (a.isNoRotate() && rotation % 360 != 0 && rect != null) {
+                    AffineTransform saved = new AffineTransform(out.toSvg);
+                    flushText();
+                    try {
+                        out.toSvg.rotate(Math.toRadians(rotation), rect.getLowerLeftX(),
+                                rect.getUpperRightY());
+                        showAnnotation(a);
+                        flushText();
+                    } finally {
+                        out.toSvg.setTransform(saved);
+                    }
+                } else {
+                    showAnnotation(a);
+                }
             } catch (IOException | RuntimeException e) {
                 continue;
             }
