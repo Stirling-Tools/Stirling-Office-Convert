@@ -892,7 +892,7 @@ final class Composer {
                 if (c.layer.hidden) {
                     continue;
                 }
-                clip(c, dest, shape);
+                atop(c, dest, shape);
             }
             releaseShape(shape);
             return;
@@ -947,7 +947,7 @@ final class Composer {
                 if (c.layer.hidden) {
                     continue;
                 }
-                clip(c, dest, shape);
+                atop(c, dest, shape);
             }
         } else {
             for (Node c : base.clipped) {
@@ -974,13 +974,17 @@ final class Composer {
     }
 
     private void atop(Node c, float[] dest) throws IOException {
+        atop(c, dest, null);
+    }
+
+    private void atop(Node c, float[] dest, float[] shape) throws IOException {
         float[] base = shapeRow();
         float[] inside = shapeRow();
         for (int x = 0; x < width; x++) {
             int at = x * stride + n;
             base[x] = dest[at];
-            inside[x] = base[x] > 0 ? 1 : 0;
-            dest[at] = inside[x];
+            inside[x] = base[x] <= 0 ? 0 : shape == null ? 1 : Math.min(1, shape[x] / base[x]);
+            dest[at] = base[x] > 0 ? 1 : 0;
         }
         try {
             clip(c, dest, inside);
