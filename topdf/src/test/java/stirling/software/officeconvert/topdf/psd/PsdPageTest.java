@@ -399,6 +399,24 @@ class PsdPageTest {
     }
 
     @Test
+    void anAdjustmentClippedToATranslucentLayerChangesItsWholeColor() throws IOException {
+        PsdFixture f = new PsdFixture(1, 1);
+        f.hasMerged = false;
+        f.mode = PsdDocument.GRAY;
+        f.flat(255);
+        f.layers.add(new PsdFixture.Layer().rect(0, 0, 1, 1).fill(-1, 128).fill(0, 200));
+        PsdFixture.Layer invert = new PsdFixture.Layer().rect(0, 0, 0, 0).block("nvrt", new byte[0]);
+        invert.channels.put(-1, new byte[0]);
+        invert.channels.put(0, new byte[0]);
+        invert.clipped = true;
+        f.layers.add(invert);
+        convert(f, "clipped-translucent.psd");
+        try (PDDocument pdf = open("clipped-translucent.psd")) {
+            assertArrayEquals(new byte[] {55}, samples(image(pdf.getPage(0))));
+        }
+    }
+
+    @Test
     void sixteenBitPosterizeSplitsTheLevelsAtTheirExactEdges() throws IOException {
         PsdFixture f = new PsdFixture(2, 1);
         f.hasMerged = false;

@@ -948,7 +948,11 @@ final class Composer {
                 if (c.layer.hidden) {
                     continue;
                 }
-                clip(c, src, shape);
+                if (c instanceof Adjust a) {
+                    adjust(a, src, null, null);
+                } else {
+                    clip(c, src, shape);
+                }
             }
             if (later) {
                 restyle((Pixels) base, src);
