@@ -665,6 +665,7 @@ final class SvgFilter {
         Ctx ctx = new Ctx(d, toPixel, device, sourceGraphic.w, sourceGraphic.h, bbox, boxUnits, region);
         java.awt.Shape regionShape = toPixel.createTransformedShape(region);
         Map<String, Img> results = new HashMap<>();
+        Map<Rectangle2D, byte[]> masks = new HashMap<>();
         Img source = sourceGraphic.view();
         source.linear = false;
         source.area = regionShape;
@@ -705,7 +706,7 @@ final class SvgFilter {
             out.linear = lin;
             out.area = sub;
             out.box = box;
-            clipTo(out, sub);
+            clipTo(out, sub, masks);
             String name = SvgDoc.attr(p, "result").strip();
             last = out;
             if (!name.isEmpty() && (results.size() < MAX_RESULTS || results.containsKey(name))) {
@@ -716,7 +717,7 @@ final class SvgFilter {
             return new Img(sourceGraphic.w, sourceGraphic.h);
         }
         Img fin = last.linear ? srgbInPlace(last) : last;
-        clipTo(fin, regionShape);
+        clipTo(fin, regionShape, masks);
         return fin;
     }
 
@@ -833,20 +834,28 @@ final class SvgFilter {
         return new int[] {x0, y0, Math.max(x0, x1), Math.max(y0, y1)};
     }
 
-    private static void clipTo(Img img, java.awt.Shape area) {
+    private static void clipTo(Img img, java.awt.Shape area, Map<Rectangle2D, byte[]> masks) {
         if (area == null) {
             return;
         }
-        BufferedImage mask = new BufferedImage(img.w, img.h, BufferedImage.TYPE_BYTE_GRAY);
-        var g = mask.createGraphics();
-        try {
-            g.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON);
-            g.setColor(java.awt.Color.WHITE);
-            g.fill(area);
-        } finally {
-            g.dispose();
+        Rectangle2D key = area instanceof java.awt.geom.Area a && a.isRectangular() ? a.getBounds2D() : null;
+        byte[] m = key == null ? null : masks.get(key);
+        if (m == null || m.length != img.w * img.h) {
+            BufferedImage mask = new BufferedImage(img.w, img.h, BufferedImage.TYPE_BYTE_GRAY);
+            var g = mask.createGraphics();
+            try {
+                g.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING,
+                        java.awt.RenderingHints.VALUE_ANTIALIAS_ON);
+                g.setColor(java.awt.Color.WHITE);
+                g.fill(area);
+            } finally {
+                g.dispose();
+            }
+            m = ((java.awt.image.DataBufferByte) mask.getRaster().getDataBuffer()).getData();
+            if (key != null && masks.size() < 8) {
+                masks.put(key, m);
+            }
         }
-        byte[] m = ((java.awt.image.DataBufferByte) mask.getRaster().getDataBuffer()).getData();
         for (int i = 0; i < m.length; i++) {
             int v = m[i] & 0xFF;
             if (v == 255) {
@@ -1465,6 +1474,16 @@ final class SvgFilter {
         }
     }
 
+    private static boolean blankRow(Img img, int y) {
+        int end = (y + 1) * img.w * 4;
+        for (int i = y * img.w * 4; i < end; i++) {
+            if (img.p[i] != 0) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     private static Img transpose(Img img) {
         Img t = new Img(img.h, img.w);
         transposeInto(img, t);
@@ -1490,6 +1509,9 @@ final class SvgFilter {
         int lines = horizontal ? img.h : img.w;
         float[] line = new float[len * 4];
         for (int l = 0; l < lines; l++) {
+            if (blankRow(img, l)) {
+                continue;
+            }
             for (int i = 0; i < len; i++) {
                 int idx = horizontal ? (l * img.w + i) * 4 : (i * img.w + l) * 4;
                 System.arraycopy(img.p, idx, line, i * 4, 4);
@@ -1530,6 +1552,9 @@ final class SvgFilter {
         float[] acc = new float[(len + 1) * 4];
         float n = left + right + 1;
         for (int l = 0; l < lines; l++) {
+            if (blankRow(img, l)) {
+                continue;
+            }
             for (int i = 0; i < len; i++) {
                 int idx = horizontal ? (l * img.w + i) * 4 : (i * img.w + l) * 4;
                 System.arraycopy(img.p, idx, line, i * 4, 4);
@@ -1868,6 +1893,9 @@ final class SvgFilter {
         float[] result = new float[len];
         int[] queue = new int[len + 2 * r + 2];
         for (int l = 0; l < lines; l++) {
+            if (blankRow(img, l)) {
+                continue;
+            }
             for (int c = 0; c < 4; c++) {
                 for (int i = 0; i < len; i++) {
                     line[i] = img.p[(horizontal ? l * img.w + i : i * img.w + l) * 4 + c];
