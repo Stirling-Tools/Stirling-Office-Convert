@@ -1618,6 +1618,12 @@ final class PageSvg extends PDFGraphicsStreamEngine {
         if (paints && font instanceof PDVectorFont vector) {
             GeneralPath outline = outline(vector, font, code, trm);
             if (outline != null && outline.getCurrentPoint() != null) {
+                if (run.visible) {
+                    Run before = run;
+                    flushText();
+                    run = new Run(before.face, before.linear, before.inverse, before.ox, before.oy, before.size,
+                            before.fill, before.fillOpacity, before.stroke, before.lineWidth, gs);
+                }
                 glyphPath(run.paths, out.toSvg.createTransformedShape(outline), mode);
                 pathGlyphs++;
             }
