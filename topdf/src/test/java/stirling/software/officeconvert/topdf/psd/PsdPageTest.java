@@ -890,6 +890,31 @@ class PsdPageTest {
         }
     }
 
+    @Test
+    void aRasterLayerWithAnOpenVectorMaskGetsNoStrokeAlongTheCanvasEdge() throws IOException {
+        PsdFixture f = new PsdFixture(8, 8);
+        f.hasMerged = false;
+        f.flat(255).flat(255).flat(255);
+        f.layers.add(new PsdFixture.Layer().rect(0, 0, 8, 8).fill(-1, 255).fill(0, 255).fill(1, 255).fill(2, 255));
+        byte[] all = new byte[8 + 26];
+        all[3] = 3;
+        all[9] = 8;
+        all[11] = 1;
+        Desc stroke = new Desc("FrFX").bool("enab", true).en("Styl", "FStl", "OutF").en("PntT", "FrFl", "SClr")
+                .unit("Opct", "#Prc", 100).unit("Sz  ", "#Pxl", 1).obj("Clr ", rgb(255, 0, 0));
+        byte[] d = new Desc("null").bool("masterFXSwitch", true).obj("FrFX", stroke).bytes(true);
+        byte[] fx = new byte[d.length + 4];
+        System.arraycopy(d, 0, fx, 4, d.length);
+        f.layers.add(new PsdFixture.Layer().rect(3, 3, 5, 5).fill(-1, 255).fill(0, 0).fill(1, 0).fill(2, 0)
+                .block("vmsk", all).block("lfx2", fx));
+        convert(f, "open-mask.psd");
+        try (PDDocument pdf = open("open-mask.psd")) {
+            byte[] s = samples(image(pdf.getPage(0)));
+            assertArrayEquals(new int[] {255, 255, 255}, ints(s, 0));
+            assertArrayEquals(new int[] {255, 0, 0}, ints(s, (4 * 8 + 2) * 3));
+        }
+    }
+
     private static byte[] inside(double size, double r, double g, double b) {
         Desc stroke = new Desc("FrFX").bool("enab", true).en("Styl", "FStl", "InsF").en("PntT", "FrFl", "SClr")
                 .unit("Opct", "#Prc", 100).unit("Sz  ", "#Pxl", size).obj("Clr ", rgb(r, g, b));

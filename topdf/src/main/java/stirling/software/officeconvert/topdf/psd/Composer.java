@@ -1498,19 +1498,28 @@ final class Composer {
             x1 = (int) Math.ceil(b.getMaxX());
             y1 = (int) Math.ceil(b.getMaxY());
         }
-        VectorMask beyond = node instanceof Pixels bp && bp.vector != null
-                && bp.layer.masks.isEmpty() ? bp.vector : null;
+        VectorMask beyond = node instanceof Pixels bp && bp.vector != null && bp.layer.masks.isEmpty()
+                && (bp.layer.fill || bp.layer.solid != null) && bp.vector.outside(width, doc.height) ? bp.vector : null;
+        int cx0 = Math.max(0, x0 - e);
+        int cy0 = Math.max(0, y0 - e);
+        int cx1 = Math.min(width, x1 + e);
+        int cy1 = Math.min(doc.height, y1 + e);
         if (beyond != null) {
             java.awt.geom.Rectangle2D all = beyond.whole();
             x0 = Math.max(-e, Math.min(x0, (int) Math.floor(all.getMinX())) - e);
             y0 = Math.max(-e, Math.min(y0, (int) Math.floor(all.getMinY())) - e);
             x1 = Math.min(width + e, Math.max(x1, (int) Math.ceil(all.getMaxX())) + e);
             y1 = Math.min(doc.height + e, Math.max(y1, (int) Math.ceil(all.getMaxY())) + e);
-        } else {
-            x0 = Math.max(0, x0 - e);
-            y0 = Math.max(0, y0 - e);
-            x1 = Math.min(width, x1 + e);
-            y1 = Math.min(doc.height, y1 + e);
+            long wide = (long) Math.max(0, x1 - x0) * Math.max(0, y1 - y0);
+            if (wide > LayerEffects.MAX_PIXELS || wide > budget[0]) {
+                beyond = null;
+            }
+        }
+        if (beyond == null) {
+            x0 = cx0;
+            y0 = cy0;
+            x1 = cx1;
+            y1 = cy1;
         }
         long area = (long) Math.max(0, x1 - x0) * Math.max(0, y1 - y0);
         if (area == 0 || area > LayerEffects.MAX_PIXELS || area > budget[0]) {
@@ -1560,8 +1569,9 @@ final class Composer {
         Effects.Overlay overlay = l.overlay;
         l.fillOpacity = 255;
         l.overlay = null;
-        boolean whole = l.fill && l.vectorMask && l.solid == null && !(node instanceof Group);
+        boolean whole = l.fill && l.vectorMask && l.solid == null && node instanceof Pixels wp && wp.vector != null;
         shapeOnly = whole;
+        byte[] ring = beyond == null ? null : beyond.paint(x0, y0, x1 - x0, y1 - y0);
         try {
             for (int yy = y0; yy < y1; yy++) {
                 if ((yy & 63) == 0) {
@@ -1576,10 +1586,10 @@ final class Composer {
                     System.arraycopy(shape, from, alpha, at + from - x0, Math.max(0, to - from));
                     releaseShape(shape);
                 }
-                if (beyond != null) {
+                if (ring != null) {
                     for (int xx = x0; xx < x1; xx++) {
                         if (xx < 0 || xx >= width || yy < 0 || yy >= doc.height) {
-                            alpha[at + xx - x0] = beyond.inside(xx + 0.5, yy + 0.5) ? 1 : 0;
+                            alpha[at + xx - x0] = (ring[at + xx - x0] & 0xFF) / 255f;
                         }
                     }
                 }

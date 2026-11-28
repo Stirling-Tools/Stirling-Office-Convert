@@ -145,8 +145,26 @@ final class VectorMask {
         return area.getBounds2D();
     }
 
-    boolean inside(double x, double y) {
-        return area.contains(x, y) != invert;
+    boolean outside(int w, int h) {
+        java.awt.geom.Rectangle2D b = area.getBounds2D();
+        return !invert && !b.isEmpty() && (b.getMinX() < 0 || b.getMinY() < 0 || b.getMaxX() > w || b.getMaxY() > h)
+                && b.getMinX() > -w - 4096 && b.getMinY() > -h - 4096 && b.getMaxX() < 2L * w + 4096
+                && b.getMaxY() < 2L * h + 4096;
+    }
+
+    byte[] paint(int x0, int y0, int w, int h) {
+        BufferedImage image = new BufferedImage(Math.max(1, w), Math.max(1, h), BufferedImage.TYPE_BYTE_GRAY);
+        Graphics2D g = image.createGraphics();
+        try {
+            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE);
+            g.setColor(java.awt.Color.WHITE);
+            g.translate(-x0, -y0);
+            g.fill(area);
+        } finally {
+            g.dispose();
+        }
+        return ((DataBufferByte) image.getRaster().getDataBuffer()).getData();
     }
 
     java.awt.geom.Rectangle2D shape() {
