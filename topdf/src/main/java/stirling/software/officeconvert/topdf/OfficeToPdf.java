@@ -74,7 +74,8 @@ public final class OfficeToPdf {
                         "stw", "pages", "pub" -> DOCX;
                 case "txt", "text", "log", "asc" -> TEXT;
                 case "pptx", "pptm", "ppsx", "ppsm", "potx", "potm", "odp", "otp", "fodp", "odg", "otg", "fodg", "sxi",
-                        "sti", "sxd", "std", "key", "vsdx", "vsdm", "vssx", "vssm", "vstx", "vstm", "vsd", "vss", "vst", "vsw" -> PPTX;
+                        "sti", "sxd", "std", "key", "vsdx", "vsdm", "vssx", "vssm", "vstx", "vstm", "vsd", "vss", "vst", "vsw",
+                        "xps", "oxps" -> PPTX;
                 case "xlsx", "xlsm", "xltx", "xltm", "xls", "xlt", "xlsb", "ods", "ots", "fods", "sxc", "stc", "slk",
                         "sylk", "dif", "dbf", "numbers", "wk1", "wks", "wk3", "wk4", "123" -> XLSX;
                 case "csv" -> CSV;
@@ -91,6 +92,7 @@ public final class OfficeToPdf {
                             + " .odt, .ott, .fodt, .odm, .ods, .ots, .fods, .odp, .otp, .fodp, .odg, .otg, .fodg, .sxw, .stw,"
                             + " .sxc, .stc, .sxi, .sti, .sxd, .std, .vsdx, .vsdm, .vssx, .vssm, .vstx, .vstm, .xml, .slk,"
                             + " .dif, .dbf, .wk1, .wks, .wk3, .wk4, .123, .pages, .numbers, .key, .pub, .vsd, .vss, .vst, .vsw,"
+                            + " .xps, .oxps,"
                             + " .txt,"
                             + " .text, .log, .asc, .csv, .tsv, .tab, .html, .htm, .xhtml, .zip of HTML, .htmlz, .epub, .mobi, .azw3, .azw, .prc, .pdb, .fb2, .fbz or .json");
                 }
@@ -108,6 +110,7 @@ public final class OfficeToPdf {
                 case "mobi", "azw3", "azw", "prc", "fb2", "fbz", "htmlz" -> true;
                 case "slk", "sylk", "dif", "dbf", "pages", "numbers", "key", "wk1", "wks", "wk3", "wk4", "123" -> true;
                 case "pub", "vsd", "vss", "vst", "vsw" -> true;
+                case "xps", "oxps" -> true;
                 default -> false;
             };
         }
@@ -410,6 +413,10 @@ public final class OfficeToPdf {
             throw new UnsupportedFormatException(e.getMessage(), e);
         }
         requireContent(in, format);
+        Long xps = XpsInput.estimate(in);
+        if (xps != null) {
+            return xps;
+        }
         if (LegacyOffice.powerPoint(in)) {
             return Footprint.legacy(Files.size(in));
         }
@@ -574,6 +581,10 @@ public final class OfficeToPdf {
         Result unlocked = encryptedPackage(source, requested, sink, options, renderer);
         if (unlocked != null) {
             return unlocked;
+        }
+        Result xps = XpsInput.render(source, sink, options);
+        if (xps != null) {
+            return xps;
         }
         Result drawing = LegacyDrawingInput.render(source, sink, options);
         if (drawing != null) {

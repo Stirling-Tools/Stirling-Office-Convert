@@ -35,6 +35,7 @@ import stirling.software.officeconvert.topdf.testing.FormatPackageProbe;
 import stirling.software.officeconvert.topdf.testing.HostileFormats;
 import stirling.software.officeconvert.topdf.testing.NoNetwork;
 import stirling.software.officeconvert.topdf.vsdx.VisioHostile;
+import stirling.software.officeconvert.topdf.xps.XpsHostile;
 import stirling.software.officeconvert.topdf.xlsb.XlsbHostile;
 
 class NetworkSafetyTest {
@@ -223,6 +224,7 @@ class NetworkSafetyTest {
             docs.put("hostile.xlsb", XlsbHostile.build(net));
             docs.put("hostile95.xls", Biff5Hostile.build(net));
             docs.put("hostile.vsdx", VisioHostile.build(net));
+            docs.put("hostile.xps", XpsHostile.build(net));
             docs.put("hostile.html", hostileHtml(net));
             docs.put("hostile.json", hostileJson(net));
             TreeSet<String> refused = new TreeSet<>();

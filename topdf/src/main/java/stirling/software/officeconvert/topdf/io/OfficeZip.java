@@ -506,6 +506,12 @@ public final class OfficeZip implements Closeable {
         if (main == null) {
             main = packageRelationships().first("http://schemas.microsoft.com/visio/2010/relationships/document");
         }
+        if (main == null) {
+            main = packageRelationships().first("http://schemas.microsoft.com/xps/2005/06/fixedrepresentation");
+        }
+        if (main == null) {
+            main = packageRelationships().first("http://schemas.openxps.org/oxps/v1.0/fixedrepresentation");
+        }
         if (main == null || main.part() == null || !exists(main.part())) {
             throw new IOException("The file is not an Office document: " + NO_MAIN);
         }

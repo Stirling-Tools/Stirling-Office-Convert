@@ -360,7 +360,7 @@ final class ZipRepair {
         {"gif", "image/gif"}, {"bmp", "image/bmp"}, {"tif", "image/tiff"}, {"tiff", "image/tiff"}, {"emf", "image/x-emf"},
         {"wmf", "image/x-wmf"}, {"vml", OOXML + "vmlDrawing"}, {"bin", "application/octet-stream"}};
 
-    // A package that lost /_rels/.rels still names its main part by the usual name
+    // A package that lost /_rels/.rels still names its main part by the usual name, or holds one XPS sequence
     private boolean addPackageRelationships() {
         for (String main : new String[] {"word/document.xml", "ppt/presentation.xml", "xl/workbook.xml"}) {
             if (seen.contains(main)) {
@@ -370,7 +370,22 @@ final class ZipRepair {
                 return true;
             }
         }
-        return false;
+        String sequence = null;
+        for (String name : seen) {
+            if (name.endsWith(".fdseq")) {
+                if (sequence != null) {
+                    return false;
+                }
+                sequence = name;
+            }
+        }
+        if (sequence == null || sequence.chars().anyMatch(c -> c < 0x20 || c == '"' || c == '<' || c == '&')) {
+            return false;
+        }
+        addInline("_rels/.rels", "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
+                + "<Relationship Id=\"rId1\" Type=\"http://schemas.microsoft.com/xps/2005/06/fixedrepresentation\""
+                + " Target=\"/" + sequence.replaceFirst("^/+", "") + "\"/></Relationships>");
+        return true;
     }
 
     private void addInline(String name, String text) {

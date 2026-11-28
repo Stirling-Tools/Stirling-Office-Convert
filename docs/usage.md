@@ -26,7 +26,7 @@ For Word, PowerPoint and Excel input (`.docx .docm .dotx .dotm .pptx .pptm .ppsx
 .xltx .xltm .xlsb`, Word 6.0 to 2003 `.doc .dot`, Excel 2.0 to 2003 `.xls .xlt`, PowerPoint 97-2003 `.ppt .pps .pot`,
 `.rtf`, Word 2003 XML, XML Spreadsheet 2003 and Flat OPC `.xml`, Visio 2013 and later `.vsdx .vsdm .vssx .vstx`,
 OpenDocument `.odt .ott .fodt .odm .ods .ots .fods .odp .otp .fodp .odg .otg .fodg`, OpenOffice.org 1.x `.sxw .stw .sxc
-.stc .sxi .sti .sxd .std`, SYLK, DIF and dBASE `.slk .dif .dbf`, Lotus 1-2-3 `.wk1 .wks .wk3 .wk4 .123`, Apple iWork `.pages .numbers .key`, Publisher `.pub` and Visio 2003-2010 `.vsd .vss .vst .vsw` (from the preview they hold), plain text `.txt .text .log .asc`, tables
+.stc .sxi .sti .sxd .std`, SYLK, DIF and dBASE `.slk .dif .dbf`, Lotus 1-2-3 `.wk1 .wks .wk3 .wk4 .123`, Apple iWork `.pages .numbers .key`, Publisher `.pub` and Visio 2003-2010 `.vsd .vss .vst .vsw` (from the preview they hold), XPS and OpenXPS `.xps .oxps`, plain text `.txt .text .log .asc`, tables
 `.csv .tsv .tab`, HTML `.html .htm .xhtml` or a `.zip` of a page (with `--allow-packages`), eBooks `.epub .mobi .azw3 .azw .prc .pdb .fb2 .fbz` and this library's JSON `.json`), which converts to PDF: `--password p` (a password protected document), `--max-pages n` (default 10000, 0 = all), `--timeout s` (default 300, 0 =
 none), `--fonts dir` (repeatable; an extra folder of fonts), `--font-map Family=Installed` (repeatable; draw a
 family with an installed one, such as `Aptos=Inter`), `--font-width Family=scale` (repeatable; scale a substituted
@@ -451,6 +451,24 @@ gradients and Visio theme styles and colours resolved from the drawing's theme),
 and paragraph formatting in its text block, and embedded pictures; masters, master shapes and style sheets are
 inherited cell by cell, background pages are drawn beneath their pages, and shapes on layers that do not print are
 left out. Only cached cell values are used: no ShapeSheet formula is evaluated and no macro is run. Each Visio page keeps its own PDF page size; oversized pages are scaled to the PDF limits. Visio 2003 to 2010 drawings (`.vsd .vss .vst .vsw`) are drawn from the preview picture of the first page they keep in their summary information, as described below; `.vdx` is refused with a plain reason.
+
+XPS and OpenXPS documents (`.xps .oxps`, found by the fixed document sequence their package names under any accepted
+extension, or by its content type when the package relationships are damaged or missing) are drawn page for page straight into the PDF: every page of every fixed document at its own size, with
+its bleed and content boxes; canvases with their transforms, clips, opacity and opacity masks; paths in the
+abbreviated syntax or as path figures (lines, Beziers, quadratic curves and arcs) with dash arrays and offsets,
+joins and miter limits and separate start and end caps, triangle caps included (a dashed line uses its dash cap
+throughout, triangle dash caps drawn round); solid, linear and radial gradient brushes (pad, reflect and repeat, sRGB
+or scRGB interpolation), image brushes (JPEG, PNG, TIFF) and visual brushes, tiled or flipped; sRGB, scRGB and ICC
+(`ContextColor`) colours, solid ICC colours kept in their gray, RGB or CMYK profile from the package (gradients and
+pictures are converted to sRGB);
+and text from the package's own fonts (obfuscated fonts are restored, glyph indices, advances and offsets are kept,
+sideways and right-to-left runs and bold and italic simulations are drawn), with the `UnicodeString` as the text
+that is searched and copied. Hyperlinks become PDF links (web and mail links only outside the document), links to
+named elements and pages inside it jump there, and the document outline becomes the PDF bookmarks. Resource
+dictionaries, markup compatibility choices and interleaved parts are read; page XML that is not well-formed is
+repaired where duplicate attributes are the only fault, else drawn up to the damage. HD Photo (JPEG XR) pictures
+cannot be read and are left out with a warning; a font that cannot be read is replaced by a standard one with a
+warning. Digital signatures and print tickets are ignored.
 
 Word 97-2003 documents (`.doc`, `.dot`, found by their content whatever the extension) are read with Apache POI
 HWPF and rewritten as a WordprocessingML package that the DOCX renderer draws: text with its character and paragraph

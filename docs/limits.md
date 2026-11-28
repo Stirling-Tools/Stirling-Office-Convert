@@ -165,6 +165,27 @@ misses a drawn form. Images are charged wherever they are listed.
 | Spreadsheet cells / merged ranges | 4 M / 100,000 | truncated |
 | Spreadsheet data read before admission | 256 MB | the rest is charged conservatively |
 
+XPS and OpenXPS input has its own limits, on top of the package limits above:
+
+| Limit | Value | When reached |
+|---|---|---|
+| Documents in a sequence | 1,000 | the rest are left out |
+| Path segments in one path | 1,000,000 | the path is left out with a warning |
+| Path segments / drawn elements per page | 8,000,000 / 4,000,000 | the rest of the page is left out with a warning |
+| Glyphs in one text run | 100,000 | the rest of the run is left out |
+| Visual brush nesting | 8 | deeper visuals are not drawn |
+| Gradient repeats (reflect and repeat) | 256 | the gradient is padded past them |
+| Font part / all fonts / fonts | 64 MB / 256 MB / 2,000 | the font's text uses a standard font, with a warning |
+| Picture part / pictures | 128 MB / 20,000 | the picture is left out with a warning |
+| ICC profile / profiles | 4 MB / 64 | colours using further profiles are converted without them |
+| ICC profiles kept in the PDF | 16 MB in all | colours using further profiles are converted to sRGB |
+| Outline entries / link targets per page | 100,000 / 1,000,000 | the rest are left out |
+| Links / named elements per page | 10,000 / 100,000 | further links are not made; further names are not targets |
+| Gradient stops / dash array entries | 1,024 / 512 | further stops are ignored; a longer or near-zero dash pattern is drawn solid |
+| Resource dictionaries / visual brush drawings | 10,000 each | further ones are not read or drawn |
+| Text of one run kept as its searchable text | 10,000 characters | the rest of that run's text is not searchable |
+| Page size | 200 inches a side | the page is cut to it |
+
 The library changes this JVM-wide state, which also affects other code in the same JVM:
 
 - Apache POI's shared XML options (`POIXMLTypeLoader.DEFAULT_XML_OPTIONS`), on the first Office to PDF conversion:

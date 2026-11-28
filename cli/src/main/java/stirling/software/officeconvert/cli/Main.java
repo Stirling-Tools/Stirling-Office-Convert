@@ -554,7 +554,7 @@ public final class Main {
                         + " .stw .sxc .stc .sxi .sti .sxd .std), SYLK, DIF and dBASE tables (.slk .dif .dbf), Lotus 1-2-3"
                         + " worksheets (.wk1 .wks .wk3 .wk4 .123), Apple iWork"
                         + " files, Publisher publications and Visio 2003-2010 drawings from their preview (.pages .numbers"
-                        + " .key .pub .vsd .vss .vst .vsw), plain text (.txt .text .log .asc) and comma or"
+                        + " .key .pub .vsd .vss .vst .vsw), XPS and OpenXPS documents (.xps .oxps), plain text (.txt .text .log .asc) and comma or"
                         + " tab separated tables (.csv .tsv .tab), HTML (.html .htm .xhtml) and the JSON this tool writes (.json) convert to PDF; --password opens a protected one. A folder converts its PDFs, Office files and eBooks,"
                         + " and its .zip files with --allow-packages; --format pdf takes all but its PDFs, and its text, HTML and JSON files too. Nothing a document"
                         + " links to is fetched and no macro, field or formula is run. A .zip of an HTML page converts only"
