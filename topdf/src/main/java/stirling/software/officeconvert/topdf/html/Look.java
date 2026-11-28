@@ -350,9 +350,9 @@ final class Look {
     private static final ThreadLocal<Map<String, String>> GENERICS = ThreadLocal.withInitial(Map::of);
 
     static final Map<String, List<String>> FONTCONFIG_ORDER = Map.of(
-            "serif", List.of("Noto Serif", "DejaVu Serif", "Times New Roman", "Thorndale AMT", "Luxi Serif",
+            "serif", List.of("Times New Roman", "Liberation Serif", "Tinos", "Noto Serif", "DejaVu Serif", "Thorndale AMT", "Luxi Serif",
                     "Nimbus Roman No9 L", "Nimbus Roman", "Times"),
-            "sans-serif", List.of("Noto Sans", "DejaVu Sans", "Verdana", "Arial", "Albany AMT", "Luxi Sans",
+            "sans-serif", List.of("Arial", "Liberation Sans", "Arimo", "Noto Sans", "DejaVu Sans", "Verdana", "Albany AMT", "Luxi Sans",
                     "Nimbus Sans L", "Nimbus Sans", "Helvetica", "Lucida Sans Unicode", "Tahoma"),
             "monospace", List.of("Noto Sans Mono", "DejaVu Sans Mono", "Inconsolata", "Andale Mono", "Courier New",
                     "Cumberland AMT", "Luxi Mono", "Nimbus Mono L", "Nimbus Mono", "Nimbus Mono PS", "Courier"));
