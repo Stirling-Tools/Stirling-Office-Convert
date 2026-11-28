@@ -109,7 +109,7 @@ final class CffSubsetter {
 
     private final BitSet usedGlobal = new BitSet();
 
-    private final BitSet operands;
+    private final Positions operands;
 
     private boolean allGlobal;
 
@@ -147,14 +147,87 @@ final class CffSubsetter {
         this.in = in;
         this.backing = null;
         this.pages = null;
-        this.operands = new BitSet(in.limit());
+        this.operands = new Positions(in.limit());
     }
 
     private CffSubsetter(int length, Filler filler) {
         this.backing = new byte[length];
         this.in = ByteBuffer.wrap(backing);
         this.pages = new Pages(filler);
-        this.operands = new BitSet(length);
+        this.operands = new Positions(length);
+    }
+
+    private static final class Positions {
+
+        private final int limit;
+
+        private int[] table = new int[64];
+
+        private int size;
+
+        private BitSet bits;
+
+        Positions(int limit) {
+            this.limit = limit;
+        }
+
+        void add(int pos) {
+            if (bits != null) {
+                bits.set(pos);
+                return;
+            }
+            int mask = table.length - 1;
+            int i = slot(pos) & mask;
+            while (table[i] != 0) {
+                if (table[i] == pos + 1) {
+                    return;
+                }
+                i = (i + 1) & mask;
+            }
+            table[i] = pos + 1;
+            if (++size * 2 > table.length) {
+                grow();
+            }
+        }
+
+        boolean contains(int pos) {
+            if (bits != null) {
+                return bits.get(pos);
+            }
+            int mask = table.length - 1;
+            for (int i = slot(pos) & mask; table[i] != 0; i = (i + 1) & mask) {
+                if (table[i] == pos + 1) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private void grow() {
+            int[] old = table;
+            if ((long) old.length * 8 > limit / 8) {
+                bits = new BitSet(limit);
+                for (int v : old) {
+                    if (v != 0) {
+                        bits.set(v - 1);
+                    }
+                }
+                table = null;
+                return;
+            }
+            table = new int[old.length * 2];
+            size = 0;
+            for (int v : old) {
+                if (v != 0) {
+                    add(v - 1);
+                }
+            }
+        }
+
+        private static int slot(int pos) {
+            int h = pos * 0x9E3779B9;
+            return h ^ h >>> 16;
+        }
     }
 
     interface Filler {
@@ -344,7 +417,7 @@ final class CffSubsetter {
         }
 
         for (int pos : calls.keySet()) {
-            if (operands.get(pos)) {
+            if (operands.contains(pos)) {
                 renumber = false;
                 break;
             }
@@ -815,7 +888,7 @@ final class CffSubsetter {
         private void clear() {
             for (int k = 0; k < top; k++) {
                 if (at[k] >= 0) {
-                    operands.set(at[k]);
+                    operands.add(at[k]);
                 }
             }
             top = 0;
