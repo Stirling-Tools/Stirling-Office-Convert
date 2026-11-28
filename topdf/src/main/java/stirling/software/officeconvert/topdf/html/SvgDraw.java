@@ -90,6 +90,7 @@ final class SvgDraw {
 
     final java.util.Set<Element> activeFilters = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
     List<float[]> recolour;
+    private int markerLoops;
 
     record Paint(int rgb, float alpha, Element server, boolean none, String fallback, AffineTransform space,
             Rectangle2D box) {
@@ -742,9 +743,12 @@ final class SvgDraw {
         PDFormXObject maskForm = null;
         boolean alphaMask = false;
         if (mask != null) {
+            int loops = markerLoops;
             maskForm = maskForm(mask, e, s, bbox, ctm);
             alphaMask = SvgDoc.lower(domStyle(mask).own("mask-type", SvgDoc.attr(mask, "mask-type"))).equals("alpha");
-            if (maskForm == null) {
+            if (markerLoops > loops) {
+                maskForm = null;
+            } else if (maskForm == null) {
                 return;
             }
         }
@@ -1630,7 +1634,8 @@ final class SvgDraw {
             }
         }
         if (paint.server() != null && server == null) {
-            if (paint.fallback() == null || stops(paint.server()).size() > 0
+            boolean degenerate = bbox == null || !(bbox.getWidth() > 0) || !(bbox.getHeight() > 0);
+            if (paint.fallback() == null || stops(paint.server()).size() > 0 && !degenerate
                     && !SvgDoc.local(paint.server()).equals("pattern")) {
                 return;
             }
@@ -2171,6 +2176,26 @@ final class SvgDraw {
 
     record Repeated(List<Stop> stops, float[] geo) {}
 
+    private static double focalReach(float[] geo, Point2D p) {
+        double dx = geo[3] - geo[0];
+        double dy = geo[4] - geo[1];
+        double dr = geo[5] - geo[2];
+        double qx = p.getX() - geo[0];
+        double qy = p.getY() - geo[1];
+        double a = dx * dx + dy * dy - dr * dr;
+        double b = qx * dx + qy * dy + geo[2] * dr;
+        double c = qx * qx + qy * qy - geo[2] * geo[2];
+        if (Math.abs(a) < 1e-12) {
+            return Math.abs(b) < 1e-12 ? 1 : c / (2 * b);
+        }
+        double disc = b * b - a * c;
+        if (disc < 0) {
+            return 1;
+        }
+        double t = a < 0 ? (b - Math.sqrt(disc)) / a : (b + Math.sqrt(disc)) / a;
+        return Double.isFinite(t) ? t : 1;
+    }
+
     private Repeated repeat(List<Stop> stops, float[] geo, boolean radial, AffineTransform t, Rectangle2D bbox,
             boolean reflect) {
         if (bbox == null) {
@@ -2191,8 +2216,7 @@ final class SvgDraw {
             Point2D p = inv.transform(c, null);
             double u;
             if (radial) {
-                double r = geo[5];
-                u = Math.hypot(p.getX() - geo[3], p.getY() - geo[4]) / r;
+                u = focalReach(geo, p);
             } else {
                 double dx = geo[2] - geo[0];
                 double dy = geo[3] - geo[1];
@@ -2222,10 +2246,9 @@ final class SvgDraw {
         }
         float[] g = geo.clone();
         if (radial) {
-            g[5] = geo[5] * to;
-            g[0] = geo[3] + (geo[0] - geo[3]);
-            g[1] = geo[4] + (geo[1] - geo[4]);
-            g[2] = 0;
+            g[3] = geo[0] + (geo[3] - geo[0]) * to;
+            g[4] = geo[1] + (geo[4] - geo[1]) * to;
+            g[5] = geo[2] + (geo[5] - geo[2]) * to;
         } else {
             double dx = geo[2] - geo[0];
             double dy = geo[3] - geo[1];
@@ -2906,7 +2929,11 @@ final class SvgDraw {
     }
 
     private void drawMarker(Element m, Vertex v, boolean first, float strokeWidth) throws IOException {
-        if (groups >= MAX_GROUP_DEPTH || spent() || refersToActive(m) || !active.add(m)) {
+        if (groups >= MAX_GROUP_DEPTH || spent()) {
+            return;
+        }
+        if (refersToActive(m) || !active.add(m)) {
+            markerLoops++;
             return;
         }
         try {
