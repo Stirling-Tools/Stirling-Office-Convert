@@ -166,8 +166,19 @@ final class XpsPackage implements Closeable {
             throw new FileNotFoundException("The document has no part " + OfficeZip.canonical(part));
         }
         List<InputStream> streams = new ArrayList<>();
-        for (String p : list) {
-            streams.add(zip.open(p));
+        try {
+            for (String p : list) {
+                streams.add(zip.open(p));
+            }
+        } catch (IOException | RuntimeException e) {
+            for (InputStream in : streams) {
+                try {
+                    in.close();
+                } catch (IOException ignored) {
+                    e.addSuppressed(ignored);
+                }
+            }
+            throw e;
         }
         return new SequenceInputStream(Collections.enumeration(streams));
     }

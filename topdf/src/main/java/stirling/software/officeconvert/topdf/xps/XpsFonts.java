@@ -223,6 +223,10 @@ final class XpsFonts {
             return cids == null || gid < 0 || gid >= cids.length ? gid : cids[gid];
         }
 
+        int width(int gid) {
+            return gid >= 0 && gid < glyphs ? Math.round(advances[gid] * (1000f / unitsPerEm)) : 0;
+        }
+
         float advance(int gid) {
             return gid >= 0 && gid < glyphs ? advances[gid] / unitsPerEm : 0;
         }
@@ -421,36 +425,38 @@ final class XpsFonts {
         descriptor.setItem(COSName.TYPE, COSName.FONT_DESC);
         boolean embedded = false;
         String tag = tag();
-        if (!f.cff && !(f.noSubsetting && !f.collection && f.data != null)) {
-            try {
-                Set<Integer> gids = new HashSet<>();
-                for (int g = f.used.nextSetBit(0); g >= 0; g = f.used.nextSetBit(g + 1)) {
-                    gids.add(g);
-                }
-                TTFSubsetter subsetter = new TTFSubsetter(f.ttf, List.of("head", "hhea", "loca", "maxp", "cvt ", "prep",
-                        "glyf", "hmtx", "fpgm", "gasp"));
-                subsetter.addGlyphIds(gids);
-                ByteArrayOutputStream out = new ByteArrayOutputStream();
-                subsetter.writeToStream(out);
-                Map<Integer, Integer> newToOld = subsetter.getGIDMap();
-                int max = f.used.length() - 1;
-                byte[] map = new byte[2 * (max + 1)];
-                for (Map.Entry<Integer, Integer> e : newToOld.entrySet()) {
-                    int old = e.getValue();
-                    int now = e.getKey();
-                    if (old >= 0 && old <= max) {
-                        map[2 * old] = (byte) (now >> 8);
-                        map[2 * old + 1] = (byte) now;
+        if (!f.cff) {
+            if (!(f.noSubsetting && !f.collection && f.data != null)) {
+                try {
+                    Set<Integer> gids = new HashSet<>();
+                    for (int g = f.used.nextSetBit(0); g >= 0; g = f.used.nextSetBit(g + 1)) {
+                        gids.add(g);
                     }
+                    TTFSubsetter subsetter = new TTFSubsetter(f.ttf, List.of("head", "hhea", "loca", "maxp", "cvt ", "prep",
+                            "glyf", "hmtx", "fpgm", "gasp"));
+                    subsetter.addGlyphIds(gids);
+                    ByteArrayOutputStream out = new ByteArrayOutputStream();
+                    subsetter.writeToStream(out);
+                    Map<Integer, Integer> newToOld = subsetter.getGIDMap();
+                    int max = f.used.length() - 1;
+                    byte[] map = new byte[2 * (max + 1)];
+                    for (Map.Entry<Integer, Integer> e : newToOld.entrySet()) {
+                        int old = e.getValue();
+                        int now = e.getKey();
+                        if (old >= 0 && old <= max) {
+                            map[2 * old] = (byte) (now >> 8);
+                            map[2 * old + 1] = (byte) now;
+                        }
+                    }
+                    COSStream file = stream(out.toByteArray());
+                    file.setInt(COSName.LENGTH1, out.size());
+                    descriptor.setItem(COSName.FONT_FILE2, file);
+                    cid.setItem(COSName.CID_TO_GID_MAP, stream(map));
+                    base = tag + "+" + base;
+                    embedded = true;
+                } catch (IOException | RuntimeException e) {
+                    embedded = false;
                 }
-                COSStream file = stream(out.toByteArray());
-                file.setInt(COSName.LENGTH1, out.size());
-                descriptor.setItem(COSName.FONT_FILE2, file);
-                cid.setItem(COSName.CID_TO_GID_MAP, stream(map));
-                base = tag + "+" + base;
-                embedded = true;
-            } catch (IOException | RuntimeException e) {
-                embedded = false;
             }
             if (!embedded && !f.collection && f.data != null) {
                 COSStream file = stream(f.data);
@@ -518,10 +524,9 @@ final class XpsFonts {
 
     private static COSArray widths(Font f) {
         COSArray w = new COSArray();
-        float scale = 1000f / f.unitsPerEm;
         java.util.TreeMap<Integer, Integer> byCode = new java.util.TreeMap<>();
         for (int g = f.used.nextSetBit(0); g >= 0; g = f.used.nextSetBit(g + 1)) {
-            byCode.putIfAbsent(f.code(g), Math.round(f.advances[g] * scale));
+            byCode.putIfAbsent(f.code(g), f.width(g));
         }
         COSArray run = null;
         int next = -1;

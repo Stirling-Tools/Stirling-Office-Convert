@@ -242,6 +242,7 @@ final class XpsRenderer {
     private void destinations(int index, XpsPackage.Page p, Map<String, double[]> names, float shift) {
         String doc = pkg.documents().get(p.document()).toLowerCase(Locale.ROOT);
         String pagePart = p.part().toLowerCase(Locale.ROOT);
+        output.destination(pageKey(index), index, 0, shift);
         for (Map.Entry<String, double[]> e : names.entrySet()) {
             double[] at = e.getValue();
             float y = (float) (at[1] * POINTS) + shift;
@@ -254,7 +255,14 @@ final class XpsRenderer {
         }
     }
 
+    private static String pageKey(int index) {
+        return "\u0000" + index;
+    }
+
     void outline() {
+        for (int i = 0; i < output.pageCount(); i++) {
+            output.destination(pageKey(i), i, 0, 0);
+        }
         for (XpsPackage.OutlineEntry e : pkg.outline()) {
             String target = e.target();
             int hash = target.indexOf('#');
@@ -264,13 +272,13 @@ final class XpsRenderer {
                     page = firstPageOf(target);
                 }
                 if (page != null && page < output.pageCount()) {
-                    output.outline(e.title(), e.level(), page, 0);
+                    output.outline(e.title(), e.level(), pageKey(page));
                 }
             } else {
                 String part = target.substring(0, hash);
                 Integer page = pageIndex.get(part);
                 if (page != null && output.destinationPage(target) < 0 && page < output.pageCount()) {
-                    output.outline(e.title(), e.level(), page, 0);
+                    output.outline(e.title(), e.level(), pageKey(page));
                 } else {
                     output.outline(e.title(), e.level(), target);
                 }
@@ -794,13 +802,7 @@ final class XpsRenderer {
                     }
                 } else {
                     masked = true;
-                    Rectangle2D b = g.fill.getBounds2D();
-                    if (stroke != null) {
-                        double t = thickness(e) / 2 + 1;
-                        b = new Rectangle2D.Double(b.getX() - t, b.getY() - t, b.getWidth() + 2 * t,
-                                b.getHeight() + 2 * t);
-                    }
-                    mask(mask, clampRect(b), ctx);
+                    mask(mask, clampRect(painted(g, e, stroke != null, 1)), ctx);
                 }
             }
             boolean evenOdd = g.fill.getWindingRule() == Path2D.WIND_EVEN_ODD;
@@ -819,10 +821,14 @@ final class XpsRenderer {
                     ops.op(stroking && filling ? (evenOdd ? "B*\n" : "B\n") : stroking ? "S\n"
                             : evenOdd ? "f*\n" : "f\n");
                 }
-            } else if (fill != null && stroke != null && (opacity < 1 || masked)) {
+            } else if (fill != null && stroke != null && opacity < 1 || masked) {
                 group(opacity, ctx, sub -> {
-                    paint(fill, g.fill, 1, sub, false);
-                    stroke(e, stroke, g.strokePath(), 1, sub);
+                    if (fill != null) {
+                        paint(fill, g.fill, 1, sub, false);
+                    }
+                    if (stroke != null) {
+                        stroke(e, stroke, g.strokePath(), 1, sub);
+                    }
                 });
             } else {
                 if (fill != null) {
@@ -833,11 +839,7 @@ final class XpsRenderer {
                 }
             }
             if ((uri != null || name != null || !ctx.accumulators.isEmpty()) && ctx.toPage != null) {
-                Rectangle2D b = g.fill.getBounds2D();
-                if (stroke != null) {
-                    double t = thickness(e) / 2;
-                    b = new Rectangle2D.Double(b.getX() - t, b.getY() - t, b.getWidth() + 2 * t, b.getHeight() + 2 * t);
-                }
+                Rectangle2D b = painted(g, e, stroke != null, 0);
                 Rectangle2D onPage = ctx.pageTransform().createTransformedShape(b).getBounds2D();
                 accumulate(ctx, onPage);
                 navigate(uri, name, onPage, ctx);
@@ -845,6 +847,28 @@ final class XpsRenderer {
         } finally {
             ops.Q();
         }
+    }
+
+    private static Rectangle2D painted(XpsGeometry g, Element e, boolean stroked, double pad) {
+        Rectangle2D b = g.fill.getCurrentPoint() == null ? null : g.fill.getBounds2D();
+        if (stroked && g.strokeDiffers() && g.stroke.getCurrentPoint() != null) {
+            Rectangle2D s = g.stroke.getBounds2D();
+            if (b == null) {
+                b = s;
+            } else {
+                b.add(s);
+            }
+        }
+        if (b == null) {
+            b = new Rectangle2D.Double();
+        }
+        if (stroked) {
+            double t = pad > 0
+                    ? thickness(e) * Math.max(1, Math.min(1000, XpsXml.number(XpsXml.attr(e, "StrokeMiterLimit"), 10))) + pad
+                    : thickness(e) / 2;
+            b = new Rectangle2D.Double(b.getX() - t, b.getY() - t, b.getWidth() + 2 * t, b.getHeight() + 2 * t);
+        }
+        return b;
     }
 
     private static void accumulate(Ctx ctx, Rectangle2D r) {
@@ -895,7 +919,7 @@ final class XpsRenderer {
             page = firstPageOf(key);
         }
         if (page != null) {
-            ctx.canvas.linkToPage(x, y, w, h, page, 0);
+            ctx.canvas.linkTo(x, y, w, h, pageKey(page));
         }
     }
 
@@ -1612,17 +1636,19 @@ final class XpsRenderer {
                 return null;
             }
             Element visual;
+            Scope visualScope = brush.scope();
             String v = XpsXml.attr(b, "Visual");
             if (v != null) {
                 String key = XpsXml.staticResource(v);
-                visual = key == null || brush.scope() == null ? null : brush.scope().find(key);
+                visualScope = key == null || brush.scope() == null ? null : brush.scope().owner(key);
+                visual = visualScope == null ? null : visualScope.map().get(key);
             } else {
                 visual = property(b, "Visual");
             }
             if (visual == null) {
                 return null;
             }
-            content = visual(visual, brush.scope(), viewbox, ctx);
+            content = visual(visual, visualScope, viewbox, ctx);
             if (content == null) {
                 return null;
             }
@@ -1955,7 +1981,7 @@ final class XpsRenderer {
     }
 
     private static double rounded(XpsFonts.Font font, int gid) {
-        return Math.round(font.advance(gid) * 1000) / 1000.0;
+        return font.width(gid) / 1000.0;
     }
 
     private List<Placed> layout(XpsFonts.Font font, String unicode, String indices, double em, double ox, double oy,

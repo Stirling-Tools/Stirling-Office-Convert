@@ -4,6 +4,7 @@ import java.awt.geom.AffineTransform;
 import java.awt.geom.Path2D;
 import java.awt.geom.Point2D;
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.List;
 
 import org.w3c.dom.Element;
@@ -120,6 +121,23 @@ final class XpsGeometry {
 
     private boolean figureFilled = true;
 
+    private double[] head = new double[0];
+
+    private int headLength;
+
+    private void remember(double x1, double y1, double x2, double y2, double x, double y, boolean curve) {
+        if (headLength + 7 > head.length) {
+            head = Arrays.copyOf(head, Math.max(28, head.length * 2));
+        }
+        head[headLength++] = curve ? 1 : 0;
+        head[headLength++] = x1;
+        head[headLength++] = y1;
+        head[headLength++] = x2;
+        head[headLength++] = y2;
+        head[headLength++] = x;
+        head[headLength++] = y;
+    }
+
     private void flush() throws IOException {
         budget.spend(segments);
         segments = 0;
@@ -146,6 +164,7 @@ final class XpsGeometry {
         cy = sy = y;
         open = true;
         broken = false;
+        headLength = 0;
     }
 
     private void ensureOpen() throws IOException {
@@ -167,6 +186,9 @@ final class XpsGeometry {
         }
         if (stroked) {
             stroke.lineTo(x, y);
+            if (!broken) {
+                remember(0, 0, 0, 0, x, y, false);
+            }
         } else {
             stroke.moveTo(x, y);
             broken = true;
@@ -189,6 +211,9 @@ final class XpsGeometry {
         }
         if (stroked) {
             stroke.curveTo(x1, y1, x2, y2, x, y);
+            if (!broken) {
+                remember(x1, y1, x2, y2, x, y, true);
+            }
         } else {
             stroke.moveTo(x, y);
             broken = true;
@@ -213,11 +238,18 @@ final class XpsGeometry {
         if (separate) {
             if (stroked && broken) {
                 stroke.lineTo(sx, sy);
+                for (int i = 0; i < headLength; i += 7) {
+                    if (head[i] == 1) {
+                        stroke.curveTo(head[i + 1], head[i + 2], head[i + 3], head[i + 4], head[i + 5], head[i + 6]);
+                    } else {
+                        stroke.lineTo(head[i + 5], head[i + 6]);
+                    }
+                }
             } else if (stroked) {
                 stroke.closePath();
             } else {
                 stroke.moveTo(sx, sy);
-                }
+            }
         }
         cx = sx;
         cy = sy;

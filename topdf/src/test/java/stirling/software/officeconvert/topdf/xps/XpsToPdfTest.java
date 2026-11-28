@@ -33,6 +33,7 @@ import org.apache.pdfbox.pdmodel.interactive.action.PDActionURI;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotation;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationLink;
 import org.apache.pdfbox.pdmodel.interactive.documentnavigation.destination.PDPageDestination;
+import org.apache.pdfbox.pdmodel.interactive.documentnavigation.destination.PDPageXYZDestination;
 import org.apache.pdfbox.pdmodel.interactive.documentnavigation.outline.PDOutlineItem;
 import org.apache.pdfbox.rendering.PDFRenderer;
 import org.apache.pdfbox.text.PDFTextStripper;
@@ -413,7 +414,9 @@ class XpsToPdfTest {
         try (PDDocument pdf = Loader.loadPDF(out.toFile())) {
             int inside = pixel(pdf, 0, 150, 150).getRed();
             int edge = pixel(pdf, 0, 150, 60).getRed();
+            int strokeOnly = pixel(pdf, 0, 150, 40).getRed();
             assertTrue(inside > 100 && inside < 160, "inside " + inside);
+            assertTrue(strokeOnly > 100 && strokeOnly < 160, "stroke " + strokeOnly);
             assertTrue(Math.abs(inside - edge) < 12, inside + " vs " + edge);
         }
     }
@@ -429,6 +432,56 @@ class XpsToPdfTest {
         try (PDDocument pdf = Loader.loadPDF(out.toFile())) {
             assertTrue(pixel(pdf, 0, 20, 110).getRed() < 60);
             assertTrue(pixel(pdf, 0, 200, 110).getRed() > 200);
+        }
+    }
+
+    @Test
+    void aClosedFigureWithAnUnstrokedSegmentJoinsAtItsStart() throws IOException {
+        Path in = write("brokenjoin.xps", xps(List.of(page("<Path Stroke='#FF000000' StrokeThickness='20'"
+                + " StrokeLineJoin='Miter'><Path.Data><PathGeometry><PathFigure StartPoint='40,40' IsClosed='true'>"
+                + "<PolyLineSegment Points='200,40'/><PolyLineSegment Points='200,200' IsStroked='false'/>"
+                + "<PolyLineSegment Points='40,200'/></PathFigure></PathGeometry></Path.Data></Path>"))));
+        Path out = dir.resolve("brokenjoin.pdf");
+        convert(in, out);
+        try (PDDocument pdf = Loader.loadPDF(out.toFile())) {
+            assertTrue(pixel(pdf, 0, 33, 33).getRed() < 60);
+            assertTrue(pixel(pdf, 0, 200, 120).getRed() > 200);
+        }
+    }
+
+    @Test
+    void anOpenStrokeWithAnOpacityMaskStillPaints() throws IOException {
+        Path in = write("maskedline.xps", xps(List.of(page("<Path Stroke='#FF000000' StrokeThickness='10'>"
+                + "<Path.OpacityMask><LinearGradientBrush MappingMode='Absolute' StartPoint='0,0' EndPoint='400,0'>"
+                + "<LinearGradientBrush.GradientStops><GradientStop Color='#FF000000' Offset='0'/>"
+                + "<GradientStop Color='#FF000000' Offset='1'/></LinearGradientBrush.GradientStops>"
+                + "</LinearGradientBrush></Path.OpacityMask><Path.Data><PathGeometry>"
+                + "<PathFigure StartPoint='100,100' IsFilled='false'><PolyLineSegment Points='300,100'/></PathFigure>"
+                + "</PathGeometry></Path.Data></Path>"))));
+        Path out = dir.resolve("maskedline.pdf");
+        convert(in, out);
+        try (PDDocument pdf = Loader.loadPDF(out.toFile())) {
+            assertTrue(pixel(pdf, 0, 200, 100).getRed() < 60);
+        }
+    }
+
+    @Test
+    void aDirectPageLinkLandsOnTheTopOfABleedPage() throws IOException {
+        Path out = dir.resolve("bleedlink.pdf");
+        convert(write("bleedlink.xps", xps(List.of(page("<Path Data='M 100,100 L 200,100 200,200 100,200 Z'"
+                + " Fill='#FF0000FF' FixedPage.NavigateUri='2.fpage'/>"), "<FixedPage xmlns='" + NS + "' Width='800'"
+                + " Height='600' BleedBox='-16,-16,832,632'><Path Data='M 0,0 L 10,0 10,10 Z' Fill='#FF000000'/>"
+                + "</FixedPage>"))), out);
+        try (PDDocument pdf = Loader.loadPDF(out.toFile())) {
+            PDPageXYZDestination dest = null;
+            for (PDAnnotation a : pdf.getPage(0).getAnnotations()) {
+                if (a instanceof PDAnnotationLink l && l.getDestination() instanceof PDPageXYZDestination d) {
+                    dest = d;
+                }
+            }
+            assertNotNull(dest);
+            assertEquals(1, pdf.getPages().indexOf(dest.getPage()));
+            assertEquals(450, dest.getTop());
         }
     }
 
