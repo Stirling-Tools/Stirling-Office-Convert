@@ -156,7 +156,8 @@ final class FontScanner {
                     if (t[1] > MAX_CMAP_BYTES) {
                         throw new IOException("the " + tag.strip() + " table is too large");
                     }
-                    kept.put(tag, src.slice(t[0], (int) t[1]).bytes);
+                    byte[] bytes = src.slice(t[0], (int) t[1]).bytes;
+                    kept.put(tag, tag.equals("cmap") ? unicodeOnly(bytes) : bytes);
                 }
             }
             kept.put("CFF ", EMPTY_CFF);
@@ -176,6 +177,30 @@ final class FontScanner {
             }
             return out.array();
         }
+    }
+
+    private static final int[][] UNICODE_CMAPS = {{0, 4}, {3, 10}, {0, 3}, {3, 1}, {3, 0}, {0, 1}};
+
+    static byte[] unicodeOnly(byte[] cmap) {
+        if (cmap.length < 4) {
+            return cmap;
+        }
+        ByteBuffer b = ByteBuffer.wrap(cmap);
+        int count = Math.min(b.getShort(2) & 0xFFFF, (cmap.length - 4) / 8);
+        for (int[] want : UNICODE_CMAPS) {
+            for (int i = 0; i < count; i++) {
+                int at = 4 + 8 * i;
+                if ((b.getShort(at) & 0xFFFF) == want[0] && (b.getShort(at + 2) & 0xFFFF) == want[1]) {
+                    if (count == 1) {
+                        return cmap;
+                    }
+                    byte[] out = cmap.clone();
+                    ByteBuffer.wrap(out).putShort(2, (short) 1).put(4, cmap, at, 8);
+                    return out;
+                }
+            }
+        }
+        return cmap;
     }
 
     static int[] coverage(FontEntry entry) {
