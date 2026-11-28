@@ -17,6 +17,20 @@ class CssTest {
     private static final float VIEWPORT = 602;
 
     @Test
+    void aFontStackPrefersAnInstalledFamilyOverALookAlikeOfAnEarlierOne() {
+        try {
+            Look.drawable(f -> true);
+            Look.ownFace(f -> f.equals("Arial"));
+            assertEquals("Arial", Look.family("Verdana, Tahoma, Arial"));
+            assertEquals("Verdana", Look.family("Verdana, Tahoma"));
+            assertEquals("Arial", Look.family("Verdana, sans-serif"));
+            assertEquals("Calibri", Look.family("\"Calibri\",\"sans-serif\""));
+        } finally {
+            Look.clearDrawable();
+        }
+    }
+
+    @Test
     void markupCommentMarkersAroundAStyleSheetAreIgnored() {
         List<Css.Rule> rules = Css.rules("<!--\nP{font-size:12px}\n-->\n<!-- h1{color:red} -->", new ArrayList<>(), VIEWPORT);
         assertEquals(2, rules.size(), rules.toString());

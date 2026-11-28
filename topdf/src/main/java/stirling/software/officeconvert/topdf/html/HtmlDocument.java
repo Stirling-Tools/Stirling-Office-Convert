@@ -135,6 +135,8 @@ public final class HtmlDocument {
             if (fonts != null) {
                 Map<String, Boolean> known = new HashMap<>();
                 Look.drawable(f -> known.computeIfAbsent(f, k -> installed(fonts, k)));
+                Map<String, Boolean> own = new HashMap<>();
+                Look.ownFace(f -> own.computeIfAbsent(f, k -> ownFace(fonts, k)));
                 Look.generics(generics(fonts));
                 Glyphs.fonts(fonts);
             }
@@ -166,13 +168,37 @@ public final class HtmlDocument {
         });
     }
 
-    // Installed, or a well-known family with a look-alike installed (Arial drawn with Liberation Sans)
-    private static boolean installed(FontLibrary fonts, String family) {
+    private static final Map<String, List<String>> METRIC_TWINS = Map.ofEntries(
+            Map.entry("arial", List.of("Liberation Sans", "Arimo")),
+            Map.entry("helvetica", List.of("Liberation Sans", "Arimo", "Nimbus Sans", "TeX Gyre Heros")),
+            Map.entry("times new roman", List.of("Liberation Serif", "Tinos")),
+            Map.entry("times", List.of("Liberation Serif", "Tinos", "Nimbus Roman", "TeX Gyre Termes")),
+            Map.entry("courier new", List.of("Liberation Mono", "Cousine")),
+            Map.entry("courier", List.of("Liberation Mono", "Cousine", "Nimbus Mono PS", "TeX Gyre Cursor")),
+            Map.entry("arial narrow", List.of("Liberation Sans Narrow")),
+            Map.entry("calibri", List.of("Carlito")),
+            Map.entry("cambria", List.of("Caladea")),
+            Map.entry("georgia", List.of("Gelasio")));
+
+    private static boolean ownFace(FontLibrary fonts, String family) {
         if (fonts.exact(family, false, false) != null) {
             return true;
         }
         String mapped = fonts.substitute(family);
         if (mapped != null && fonts.exact(mapped, false, false) != null) {
+            return true;
+        }
+        for (String twin : METRIC_TWINS.getOrDefault(family.strip().toLowerCase(Locale.ROOT), List.of())) {
+            if (fonts.exact(twin, false, false) != null) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Installed, or a well-known family with a look-alike installed (Arial drawn with Liberation Sans)
+    private static boolean installed(FontLibrary fonts, String family) {
+        if (ownFace(fonts, family)) {
             return true;
         }
         for (String standIn : FontLibrary.lookAlikes(family)) {
@@ -233,6 +259,8 @@ public final class HtmlDocument {
             Set<String> loaded = new HashSet<>();
             web.families().forEach(f -> loaded.add(f.toLowerCase(Locale.ROOT)));
             Look.drawable(f -> loaded.contains(f.toLowerCase(Locale.ROOT)) || installed.test(f));
+            Predicate<String> own = Look.ownFace();
+            Look.ownFace(f -> loaded.contains(f.toLowerCase(Locale.ROOT)) || own.test(f));
         }
         boolean ownPaper = cascade.declaresPages();
         float printed = page.pageWidth - page.marginLeft - page.marginRight;

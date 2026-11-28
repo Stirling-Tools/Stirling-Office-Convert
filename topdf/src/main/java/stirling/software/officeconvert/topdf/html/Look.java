@@ -307,6 +307,17 @@ final class Look {
 
     static void clearDrawable() {
         DRAWABLE.remove();
+        OWN_FACE.remove();
+    }
+
+    private static final ThreadLocal<Predicate<String>> OWN_FACE = ThreadLocal.withInitial(() -> f -> true);
+
+    static Predicate<String> ownFace() {
+        return OWN_FACE.get();
+    }
+
+    static void ownFace(Predicate<String> test) {
+        OWN_FACE.set(test);
     }
 
     /** The first family of a CSS font stack that can be drawn, as a browser picks it. */
@@ -331,20 +342,31 @@ final class Look {
     }
 
     static String family(String list) {
-        for (String raw : Css.splitTopLevel(list, ',')) {
+        List<String> stack = Css.splitTopLevel(list, ',');
+        String standIn = null;
+        for (String raw : stack) {
             String f = QUOTES.matcher(raw.strip()).replaceAll("").strip();
             if (f.isEmpty() || f.startsWith("-") || f.equalsIgnoreCase("inherit") || f.equalsIgnoreCase("initial")) {
                 continue;
             }
-            String generic = generic(f.toLowerCase(Locale.ROOT));
+            boolean quoted = !raw.strip().equals(f);
+            String generic = quoted ? null : generic(f.toLowerCase(Locale.ROOT));
             if (generic != null) {
                 return generic;
             }
+            if (quoted && generic(f.toLowerCase(Locale.ROOT)) != null) {
+                continue;
+            }
             if (f.length() <= 64 && DRAWABLE.get().test(f)) {
-                return f;
+                if (OWN_FACE.get().test(f)) {
+                    return f;
+                }
+                if (standIn == null) {
+                    standIn = f;
+                }
             }
         }
-        return null;
+        return standIn;
     }
 
     private static final ThreadLocal<Map<String, String>> GENERICS = ThreadLocal.withInitial(Map::of);
