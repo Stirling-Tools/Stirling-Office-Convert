@@ -196,7 +196,12 @@ final class Flow {
     void children(Element parent, Look look, Frame frame, int depth) throws IOException {
         blockLook = look;
         blockFrame = frame;
-        walkChildren(parent, look, frame, depth);
+        Layout.Plan plan = forceInline > 0 || paragraphsOnly ? null : Layout.inlineBlocks(parent, look, frame.width(), ctx);
+        if (plan != null) {
+            row(plan, look, frame, depth);
+        } else {
+            walkChildren(parent, look, frame, depth);
+        }
         flush();
         if (!pendingFloats.isEmpty()) {
             // floats with no text after them still need a paragraph to hold them

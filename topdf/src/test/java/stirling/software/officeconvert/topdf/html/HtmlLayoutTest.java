@@ -949,6 +949,17 @@ class HtmlLayoutTest {
     }
 
     @Test
+    void inlineBlockColumnsOfAKnownWidthSitSideBySide() throws IOException {
+        Laid l = lay("""
+                <!doctype html><html><body><table width="100%"><tr><td align="center">
+                <div style="display:inline-block"><table><tr><td width="150">Leftcard</td></tr></table></div>
+                <div style="display:inline-block"><table><tr><td width="150">Rightcard</td></tr></table></div>
+                </td></tr></table></body></html>""");
+        assertEquals(l.word("Leftcard").top(), l.word("Rightcard").top(), 1f, l.words().toString());
+        assertTrue(l.word("Rightcard").left() > l.word("Leftcard").left() + 100, l.words().toString());
+    }
+
+    @Test
     void thePageColourReachesThePageMarginsWhateverTheBodyMargin() throws IOException {
         Laid l = lay("<html><body bgcolor=\"#ffff00\" style=\"margin:40px\"><p>Hi</p></body></html>");
         int x = Math.round(HtmlDocument.PAGE_MARGIN) + 3;
