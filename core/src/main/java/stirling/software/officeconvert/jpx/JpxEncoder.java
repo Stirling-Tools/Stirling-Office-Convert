@@ -396,15 +396,28 @@ public final class JpxEncoder {
         return new EncodeJob(planes, options).run();
     }
 
-    public static byte[] encodeAsClose(Planes source, Planes reference, long maxBytes) throws IOException {
+    public record Target(double psnr, double ssim) {}
+
+    public static Target target(Planes source, Planes reference) {
         Objects.requireNonNull(source, "source");
         Objects.requireNonNull(reference, "reference");
         double psnr = source.psnr(reference);
+        return new Target(psnr, psnr > EXACT_PSNR ? Double.NaN : source.ssim(reference));
+    }
+
+    public static byte[] encodeAsClose(Planes source, Planes reference, long maxBytes) throws IOException {
+        return encodeAsClose(source, target(source, reference), maxBytes);
+    }
+
+    public static byte[] encodeAsClose(Planes source, Target goal, long maxBytes) throws IOException {
+        Objects.requireNonNull(source, "source");
+        Objects.requireNonNull(goal, "goal");
+        double psnr = goal.psnr();
         if (psnr > EXACT_PSNR) {
             byte[] data = encode(source, Options.exact());
             return data.length < maxBytes ? data : null;
         }
-        double ssim = source.ssim(reference);
+        double ssim = goal.ssim();
         EncodeJob job = new EncodeJob(source, Options.quality(Math.max(psnr, MIN_PSNR)));
         job.prepare();
         TileDecoder.Scratch scratch = new TileDecoder.Scratch();

@@ -855,8 +855,13 @@ final class Downsample {
         if ((long) image.getWidth() * image.getHeight() * (gray ? 1 : 3) > MAX_JPX_SAMPLES) {
             return null;
         }
-        BufferedImage decoded = decodeJpeg(jpeg);
         JpxEncoder.Planes planes = JpxEncoder.planes(image);
+        JpxEncoder.Target target = target(planes, jpeg, gray);
+        return target == null ? null : JpxEncoder.encodeAsClose(planes, target, jpeg.length);
+    }
+
+    private static JpxEncoder.Target target(JpxEncoder.Planes planes, byte[] jpeg, boolean gray) throws IOException {
+        BufferedImage decoded = decodeJpeg(jpeg);
         if (decoded == null || planes.depths().length != (gray ? 1 : 3)) {
             return null;
         }
@@ -865,7 +870,7 @@ final class Downsample {
                 || reference.depths().length != planes.depths().length) {
             return null;
         }
-        return JpxEncoder.encodeAsClose(planes, reference, jpeg.length);
+        return JpxEncoder.target(planes, reference);
     }
 
     private static byte[] jpeg(BufferedImage image, float quality) throws IOException {

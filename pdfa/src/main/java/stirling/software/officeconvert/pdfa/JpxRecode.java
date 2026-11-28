@@ -57,7 +57,7 @@ final class JpxRecode {
         if (planes.depths().length != expected || !lossy && encoded.length * 8L < samples * FLAT_BITS) {
             return current;
         }
-        byte[] jpx = lossy ? matching(planes, decoded(current.getCOSObject(), planes), encoded.length)
+        byte[] jpx = lossy ? matching(planes, target(current.getCOSObject(), planes), encoded.length)
                 : JpxEncoder.encode(planes, JpxEncoder.Options.exact());
         if (jpx == null || jpx.length >= encoded.length) {
             return current;
@@ -78,9 +78,14 @@ final class JpxRecode {
         return stream(doc, jpx, planes, colourSpace).getCOSObject();
     }
 
-    private static byte[] matching(JpxEncoder.Planes planes, JpxEncoder.Planes reference, long budget)
+    private static byte[] matching(JpxEncoder.Planes planes, JpxEncoder.Target target, long budget)
             throws IOException {
-        return reference == null ? null : JpxEncoder.encodeAsClose(planes, reference, budget);
+        return target == null ? null : JpxEncoder.encodeAsClose(planes, target, budget);
+    }
+
+    private static JpxEncoder.Target target(COSStream jpeg, JpxEncoder.Planes planes) throws IOException {
+        JpxEncoder.Planes reference = decoded(jpeg, planes);
+        return reference == null ? null : JpxEncoder.target(planes, reference);
     }
 
     private static JpxEncoder.Planes decoded(COSStream jpeg, JpxEncoder.Planes like) throws IOException {
