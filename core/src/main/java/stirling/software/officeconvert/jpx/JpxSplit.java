@@ -31,6 +31,10 @@ public final class JpxSplit {
     }
 
     public static byte[][] split(byte[] data, int[][] groups, JpxImage decoded) throws IOException {
+        return split(data, groups, decoded, Long.MAX_VALUE);
+    }
+
+    public static byte[][] split(byte[] data, int[][] groups, JpxImage decoded, long maxBytes) throws IOException {
         Jp2Boxes boxes = Jp2Boxes.read(data);
         int start = boxes.codestreamStart;
         int end = boxes.codestreamEnd;
@@ -83,11 +87,16 @@ public final class JpxSplit {
             }
         }
         byte[][] out = new byte[groups.length][];
+        long total = 0;
         for (int g = 0; g < groups.length; g++) {
             out[g] = assemble(data, siz, mainSegments, tileSegments, packets, bodies, groups[g], maps[g]);
             if (out[g] == null) {
                 return null;
             }
+            total += out[g].length;
+        }
+        if (total > maxBytes) {
+            return null;
         }
         JpxRaster whole = decoded != null && decoded.reduce() == 0 ? decoded.raster() : JpxDecoder.decode(data).raster();
         return verified(whole, groups, out) ? out : null;

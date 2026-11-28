@@ -84,6 +84,17 @@ class JpxSplitTest {
     }
 
     @Test
+    void aSplitLargerThanTheBudgetIsRefused() throws IOException {
+        byte[] data = JpxEncoder.encode(withAlpha(64, 48, 3), JpxEncoder.Options.exact());
+        int[][] groups = {{0, 1, 2}, {3}};
+        byte[][] parts = JpxSplit.split(data, groups);
+        assertNotNull(parts);
+        long total = parts[0].length + parts[1].length;
+        assertNotNull(JpxSplit.split(data, groups, null, total));
+        assertNull(JpxSplit.split(data, groups, null, total - 1));
+    }
+
+    @Test
     void aGroupThatBreaksTheColourTransformIsRefused() throws IOException {
         byte[] data = JpxEncoder.encode(withAlpha(64, 64, 3), JpxEncoder.Options.exact());
         assertNull(JpxSplit.split(data, new int[][] {{1}}));

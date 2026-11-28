@@ -175,8 +175,8 @@ final class JpxImages {
         }
     }
 
-    private static Copy exactCopy(COSStream s, byte[] encoded, JpxImage jpx, COSBase colourSpace, int smaskInData)
-            throws IOException {
+    private static Copy exactCopy(COSStream s, byte[] encoded, JpxImage jpx, COSBase colourSpace, int smaskInData,
+            long budget) throws IOException {
         JpxHeader h = JpxHeader.parse(encoded);
         if (h == null || h.palette() || jpx.palette() || !plainColour(h)
                 || colourSpace == null && h.colours().isEmpty() || colourSpace != null && !plainSpace(colourSpace)) {
@@ -204,7 +204,7 @@ final class JpxImages {
         int[][] groups = alpha >= 0 ? new int[][] {colours, {alpha}} : new int[][] {colours};
         byte[][] parts;
         try {
-            parts = JpxSplit.split(encoded, groups, jpx);
+            parts = JpxSplit.split(encoded, groups, jpx, budget);
         } catch (InterruptedIOException e) {
             throw e;
         } catch (IOException | RuntimeException e) {
@@ -305,7 +305,7 @@ final class JpxImages {
         private final JpxImage jpx;
         private final COSBase colourSpace;
         private final int smaskInData;
-        private boolean tried;
+        private long tried = -1;
         private Copy copy;
 
         Candidate(COSStream s, byte[] encoded, JpxImage jpx, COSBase colourSpace, int smaskInData) {
@@ -320,9 +320,9 @@ final class JpxImages {
             if (jpx.raster().components() == used() && codestreamLength(encoded) * 0.9 > budget + WRAPPING) {
                 return null;
             }
-            if (!tried) {
-                tried = true;
-                copy = exactCopy(s, encoded, jpx, colourSpace, smaskInData);
+            if (tried < 0 || copy == null && budget > tried) {
+                tried = budget;
+                copy = exactCopy(s, encoded, jpx, colourSpace, smaskInData, budget);
             }
             return copy != null && copy.bytes() <= budget ? copy : null;
         }
