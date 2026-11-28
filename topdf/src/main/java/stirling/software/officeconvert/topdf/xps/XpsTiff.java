@@ -262,12 +262,7 @@ final class XpsTiff {
                 width++;
             }
         }
-        if (out.length == need) {
-            return out;
-        }
-        byte[] exact = new byte[need];
-        System.arraycopy(out, 0, exact, 0, Math.min(need, out.length));
-        return exact;
+        return out;
     }
 
     private static boolean eights(byte[] d, int e, int type, long cnt, boolean le) {

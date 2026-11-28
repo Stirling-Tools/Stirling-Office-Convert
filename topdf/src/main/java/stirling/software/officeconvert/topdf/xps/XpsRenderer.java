@@ -460,8 +460,16 @@ final class XpsRenderer {
 
     private Element property(Element e, String name) {
         String owner = e.getLocalName();
-        String full = propertyNames.computeIfAbsent(owner, k -> new HashMap<>())
-                .computeIfAbsent(name, k -> owner + "." + k);
+        Map<String, String> known = propertyNames.get(owner);
+        if (known == null) {
+            known = new HashMap<>();
+            propertyNames.put(owner, known);
+        }
+        String full = known.get(name);
+        if (full == null) {
+            full = owner + "." + name;
+            known.put(name, full);
+        }
         Element holder = child(e, full);
         return holder == null ? null : XpsXml.firstElement(holder);
     }
@@ -534,6 +542,22 @@ final class XpsRenderer {
 
     record Brush(String kind, XpsColor color, Element element, double opacity, Scope scope) {}
 
+    private final Map<String, XpsColor> colors = new HashMap<>();
+
+    private XpsColor color(String v, Element e) {
+        if (v == null || !v.startsWith("#")) {
+            return XpsColor.parse(v, owner(e), profiles);
+        }
+        XpsColor known = colors.get(v);
+        if (known == null) {
+            known = XpsColor.parse(v, owner(e), profiles);
+            if (known != null && colors.size() < 4096) {
+                colors.put(v, known);
+            }
+        }
+        return known;
+    }
+
     private Brush brush(Element e, String name, Scope scope) {
         Element own = property(e, name);
         String v = own == null ? XpsXml.attr(e, name) : null;
@@ -541,7 +565,7 @@ final class XpsRenderer {
         if (v != null) {
             String key = XpsXml.staticResource(v);
             if (key == null) {
-                XpsColor c = XpsColor.parse(v, owner(e), profiles);
+                XpsColor c = color(v, e);
                 return c == null ? null : new Brush("SolidColorBrush", c, null, 1, scope);
             }
             Scope where = scope == null ? null : scope.owner(key);
@@ -556,7 +580,7 @@ final class XpsRenderer {
         double op = opacity(b);
         return switch (b.getLocalName()) {
             case "SolidColorBrush" -> {
-                XpsColor c = XpsColor.parse(XpsXml.attr(b, "Color"), owner(b), profiles);
+                XpsColor c = color(XpsXml.attr(b, "Color"), b);
                 yield c == null ? null : new Brush("SolidColorBrush", c, b, op, scope);
             }
             case "LinearGradientBrush", "RadialGradientBrush", "ImageBrush", "VisualBrush" ->
