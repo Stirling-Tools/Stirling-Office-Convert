@@ -419,6 +419,27 @@ class PsdPageTest {
     }
 
     @Test
+    void aLabColorFillLayerKeepsItsLabColor() throws IOException {
+        PsdFixture f = new PsdFixture(1, 1);
+        f.hasMerged = false;
+        f.mode = PsdDocument.LAB;
+        f.flat(255).flat(128).flat(128);
+        PsdFixture.Layer fill = new PsdFixture.Layer().rect(0, 0, 0, 0);
+        fill.channels.put(-1, new byte[0]);
+        fill.channels.put(0, new byte[0]);
+        fill.channels.put(1, new byte[0]);
+        fill.channels.put(2, new byte[0]);
+        Desc lab = new Desc("LbCl").dbl("Lmnc", 50).dbl("A   ", 20).dbl("B   ", -30);
+        fill.block("SoCo", new Desc("null").obj("Clr ", lab).bytes(true));
+        f.layers.add(fill);
+        OfficeToPdf.Result r = convert(f, "lab-fill.psd");
+        assertTrue(r.warnings().stream().noneMatch(w -> w.contains("left out")), r.warnings().toString());
+        try (PDDocument pdf = open("lab-fill.psd")) {
+            assertArrayEquals(new byte[] {(byte) 128, (byte) 148, 98}, samples(image(pdf.getPage(0))));
+        }
+    }
+
+    @Test
     void aDeepKnockoutLayerShowsTheBackgroundThroughTheLayersBelowIt() throws IOException {
         PsdFixture f = new PsdFixture(2, 1);
         f.hasMerged = false;

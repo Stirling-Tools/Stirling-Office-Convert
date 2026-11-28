@@ -230,6 +230,11 @@ final class Effects {
     static float[] solidColor(Source.Cursor c, long len) throws IOException {
         byte[] b = new byte[(int) Math.min(len, 1 << 16)];
         c.fully(b);
+        Descriptor d = b.length > 8 ? Descriptor.read(b, 4) : null;
+        float[] parsed = d == null ? null : d.color("Clr ");
+        if (parsed != null) {
+            return parsed;
+        }
         double r = number(b, "Rd  ");
         double g = number(b, "Grn ");
         double bl = number(b, "Bl  ");
