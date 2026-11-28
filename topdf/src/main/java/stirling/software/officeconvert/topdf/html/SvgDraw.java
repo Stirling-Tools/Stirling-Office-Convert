@@ -2051,7 +2051,7 @@ final class SvgDraw {
                         last.rgb() & 0xFF, Math.round(last.alpha() * 255)));
             }
             double d = Math.hypot(fx - cx, fy - cy);
-            if (d > r * 0.99) {
+            if (d >= r) {
                 double k = r * 0.99 / d;
                 fx = (float) (cx + (fx - cx) * k);
                 fy = (float) (cy + (fy - cy) * k);
@@ -2401,6 +2401,10 @@ final class SvgDraw {
             canvas = cell;
             Deque<float[]> savedViewports = new ArrayDeque<>(viewports);
             groups++;
+            float outerScale = dashScale;
+            double outerLength = dashedLength;
+            dashScale = 1;
+            dashedLength = 0;
             try {
                 cell.transform(content);
                 if (vbt != null) {
@@ -2408,6 +2412,8 @@ final class SvgDraw {
                 }
                 group(contentOwner, ps, 0, 0, null);
             } finally {
+                dashScale = outerScale;
+                dashedLength = outerLength;
                 groups--;
                 canvas = saved;
                 cell.close();
@@ -2837,26 +2843,45 @@ final class SvgDraw {
         return m != null && SvgDoc.local(m).equals("marker") ? m : null;
     }
 
+    private final Map<Element, List<Element>> markerPatterns = new IdentityHashMap<>();
+
     private boolean refersToActive(Element root) {
-        int n = 0;
-        for (Element e : root.getAllElements()) {
-            if (++n > 2000) {
-                return false;
+        for (Element t : markerPatterns.computeIfAbsent(root, this::patternsUnder)) {
+            if (active.contains(t)) {
+                return true;
             }
+        }
+        return false;
+    }
+
+    private List<Element> patternsUnder(Element root) {
+        List<Element> found = new ArrayList<>();
+        Deque<Element> todo = new ArrayDeque<>();
+        todo.push(root);
+        int n = 0;
+        while (!todo.isEmpty()) {
+            if (++n > 2000) {
+                return List.of();
+            }
+            Element e = todo.pop();
+            charge(e.attributesSize() + 1L);
             for (org.jsoup.nodes.Attribute a : e.attributes()) {
                 String v = a.getValue();
                 int at = v.indexOf("url(");
                 while (at >= 0) {
                     int close = v.indexOf(')', at);
                     Element t = doc.byUrl(v.substring(at, close < 0 ? v.length() : close + 1));
-                    if (t != null && active.contains(t) && SvgDoc.local(t).equals("pattern")) {
-                        return true;
+                    if (t != null && SvgDoc.local(t).equals("pattern") && !found.contains(t)) {
+                        found.add(t);
                     }
                     at = close < 0 ? -1 : v.indexOf("url(", close);
                 }
             }
+            for (Element c : e.children()) {
+                todo.push(c);
+            }
         }
-        return false;
+        return found;
     }
 
     private void drawMarker(Element m, Vertex v, boolean first, float strokeWidth) throws IOException {

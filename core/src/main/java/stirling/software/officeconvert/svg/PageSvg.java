@@ -1540,6 +1540,9 @@ final class PageSvg extends PDFGraphicsStreamEngine {
                 textClip.append(outline, false);
             }
         }
+        if (hidden.active()) {
+            return;
+        }
         String unicode = font.toUnicode(code);
         SvgFonts.Face face = fonts.face(font);
         boolean paints = mode.isFill() || mode.isStroke();
@@ -1563,12 +1566,13 @@ final class PageSvg extends PDFGraphicsStreamEngine {
         double fillOpacity = 1;
         String strokeAttrs = "";
         double lineWidth = 0;
+        AffineTransform element = new AffineTransform(linear);
+        element.preConcatenate(AffineTransform.getTranslateInstance(m.getTranslateX(), m.getTranslateY()));
+        Rectangle2D area = out.area != null ? out.area : new Rectangle2D.Double(0, 0, width, height);
+        boolean reused = paints && mode.isFill() && run != null && run.face == face;
         if (paints) {
-            AffineTransform element = new AffineTransform(linear);
-            element.preConcatenate(AffineTransform.getTranslateInstance(m.getTranslateX(), m.getTranslateY()));
             if (mode.isFill()) {
-                Paint p = paint(false, run != null && run.face == face ? textElement(run) : element,
-                        out.area != null ? out.area : new Rectangle2D.Double(0, 0, width, height));
+                Paint p = paint(false, reused ? textElement(run) : element, area);
                 fill = p.value() == null ? "#808080" : p.value();
                 fillOpacity = p.opacity();
             }
@@ -1586,6 +1590,11 @@ final class PageSvg extends PDFGraphicsStreamEngine {
             }
         }
         if (run == null || !run.fits(face, linear, size, fill, fillOpacity, strokeAttrs, lineWidth, gs)) {
+            if (reused) {
+                Paint p = paint(false, element, area);
+                fill = p.value() == null ? "#808080" : p.value();
+                fillOpacity = p.opacity();
+            }
             flushText();
             AffineTransform inverse;
             try {

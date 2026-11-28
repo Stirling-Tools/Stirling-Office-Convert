@@ -1323,6 +1323,9 @@ final class SvgText {
             if (c.rotate != 0) {
                 canvas.transform(AffineTransform.getRotateInstance(Math.toRadians(c.rotate)));
             }
+            if (c.scaleX != 1) {
+                canvas.scale(c.scaleX, 1);
+            }
             TextStyle ts = new TextStyle(c.face, Math.max(0.01f, Math.min(10_000, c.size)), Color.BLACK, 0, 100, 0,
                     false);
             if (plain && !fill.none()) {
@@ -1347,6 +1350,9 @@ final class SvgText {
                 AffineTransform inv = AffineTransform.getTranslateInstance(c.x, c.y + c.shift);
                 if (c.rotate != 0) {
                     inv.rotate(Math.toRadians(c.rotate));
+                }
+                if (c.scaleX != 1) {
+                    inv.scale(c.scaleX, 1);
                 }
                 box = inv.createInverse().createTransformedShape(bbox).getBounds2D();
             } catch (java.awt.geom.NoninvertibleTransformException e) {
@@ -1573,6 +1579,9 @@ final class SvgText {
                 AffineTransform t = AffineTransform.getTranslateInstance(c.x, c.y + c.shift);
                 if (c.rotate != 0) {
                     t.rotate(Math.toRadians(c.rotate));
+                }
+                if (c.scaleX != 1) {
+                    t.scale(c.scaleX, 1);
                 }
                 all.append(t.createTransformedShape(outline(c)), false);
                 continue;

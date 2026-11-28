@@ -167,7 +167,7 @@ final class SvgTurbulence {
         return sum;
     }
 
-    static SvgFilter.Img render(Element p, int w, int h, AffineTransform toPixel, boolean linear) {
+    static SvgFilter.Img render(Element p, int w, int h, AffineTransform toPixel, boolean linear, Rectangle2D area) {
         float[] bf = SvgDraw.numbers(SvgDoc.attr(p, "baseFrequency"));
         double fx = bf.length > 0 ? bf[0] : 0;
         double fy = bf.length > 1 ? bf[1] : fx;
@@ -187,7 +187,8 @@ final class SvgTurbulence {
         } catch (NoninvertibleTransformException e) {
             return out;
         }
-        Rectangle2D tile = inv.createTransformedShape(new Rectangle2D.Double(0, 0, w, h)).getBounds2D();
+        Rectangle2D tile = inv.createTransformedShape(area != null && !area.isEmpty() ? area
+                : new Rectangle2D.Double(0, 0, w, h)).getBounds2D();
         Point2D.Double pt = new Point2D.Double();
         for (int y = 0; y < h; y++) {
             for (int x = 0; x < w; x++) {

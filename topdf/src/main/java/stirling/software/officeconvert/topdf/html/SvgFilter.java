@@ -212,17 +212,20 @@ final class SvgFilter {
             content.draw();
             return;
         }
-        List<Element> mine = new ArrayList<>();
-        for (Step st : steps) {
-            if (st.element() != null) {
-                if (d.feImages > 0 && d.activeFilters.contains(st.element())) {
+        if (d.feImages > 0) {
+            for (Step st : steps) {
+                if (st.element() != null && d.activeFilters.contains(st.element())) {
                     content.draw();
                     return;
                 }
+            }
+        }
+        List<Element> mine = new ArrayList<>();
+        for (Step st : steps) {
+            if (st.element() != null && d.activeFilters.add(st.element())) {
                 mine.add(st.element());
             }
         }
-        d.activeFilters.addAll(mine);
         try {
             applySteps(d, steps, e, s, bbox, content);
         } finally {
@@ -731,7 +734,9 @@ final class SvgFilter {
                 if (d.spent()) {
                     return new Img(in1.w, in1.h);
                 }
-                return SvgTurbulence.render(p, in1.w, in1.h, toPixel, lin);
+                int[] tb = bounds(sub, in1.w, in1.h);
+                return SvgTurbulence.render(p, in1.w, in1.h, toPixel, lin,
+                        new Rectangle2D.Double(tb[0], tb[1], tb[2] - tb[0], tb[3] - tb[1]));
             default:
                 return null;
         }

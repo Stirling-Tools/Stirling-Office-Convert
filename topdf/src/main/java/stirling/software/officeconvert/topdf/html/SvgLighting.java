@@ -26,10 +26,12 @@ final class SvgLighting {
             return none;
         }
         float sum = 0;
+        float magnitude = 0;
         for (float v : k) {
             sum += v;
+            magnitude += Math.abs(v);
         }
-        boolean zero = Math.abs(sum) < 1e-6f;
+        boolean zero = Math.abs(sum) <= 1e-6f * magnitude;
         float divisor = SvgDraw.number(SvgDoc.attr(p, "divisor"), zero ? 1 : sum);
         if (divisor == 0) {
             divisor = zero ? 1 : sum;
