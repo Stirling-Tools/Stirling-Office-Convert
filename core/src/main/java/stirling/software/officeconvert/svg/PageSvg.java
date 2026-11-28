@@ -1425,13 +1425,11 @@ final class PageSvg extends PDFGraphicsStreamEngine {
                 sb.append('\'').append(r.face.family).append("',");
             }
             sb.append(r.face.fallback.replace('"', '\'')).append('"');
-            if (!r.face.web()) {
-                if (r.face.bold) {
-                    sb.append(" font-weight=\"bold\"");
-                }
-                if (r.face.italic) {
-                    sb.append(" font-style=\"italic\"");
-                }
+            if (r.face.bold) {
+                sb.append(" font-weight=\"bold\"");
+            }
+            if (r.face.italic) {
+                sb.append(" font-style=\"italic\"");
             }
             boolean filled = r.mode.isFill();
             boolean stroked = r.mode.isStroke();

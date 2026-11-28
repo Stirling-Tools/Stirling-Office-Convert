@@ -208,7 +208,8 @@ final class SvgFonts {
             }
             total += b.length;
             sb.append("@font-face{font-family:'").append(f.family).append("';src:url(data:font/ttf;base64,")
-                    .append(Base64.getEncoder().encodeToString(b)).append(") format('truetype')}\n");
+                    .append(Base64.getEncoder().encodeToString(b)).append(") format('truetype')")
+                    .append(f.bold ? ";font-weight:bold" : "").append(f.italic ? ";font-style:italic" : "").append("}\n");
         }
         return sb.toString();
     }
