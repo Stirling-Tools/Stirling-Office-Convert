@@ -464,7 +464,8 @@ final class Flow {
         RunStyle s = look.run();
         RunStyle plain = new RunStyle(s.font(), s.size(), false, false, false, false, s.rgb(), -1, 0, false, 0,
                 s.scale(), false, -1);
-        float space = Measure.width("\u00a0", plain);
+        float measured = Glyphs.measured("\u00a0", s.size(), s.font(), false, false);
+        float space = measured > 0 ? measured : Measure.width("\u00a0", plain);
         RunStyle g = new RunStyle(s.font(), s.size(), false, false, false, false, s.rgb(), -1, 0, false,
                 Math.min(MAX_INLINE_GAP, pt) - space, s.scale(), false, -1);
         return new Inline.Text("\u00a0", g, null, -1);

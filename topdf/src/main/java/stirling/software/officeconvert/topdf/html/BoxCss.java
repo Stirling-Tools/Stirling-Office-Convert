@@ -189,10 +189,19 @@ final class BoxCss {
             return known.isNaN() ? null : known;
         }
         Float w = Css.length(keyword(width), 12, 0);
-        if (width.length() <= MAX_SHORTHAND_LENGTH && WIDTHS.size() < MAX_SHORTHANDS) {
+        if (width.length() <= MAX_SHORTHAND_LENGTH && WIDTHS.size() < MAX_SHORTHANDS && !relative(width)) {
             WIDTHS.put(width, w == null ? Float.NaN : w);
         }
         return w;
+    }
+
+    private static boolean relative(String width) {
+        for (int i = 0; i + 3 <= width.length(); i++) {
+            if (width.regionMatches(true, i, "rem", 0, 3)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static float border(Map<String, String> d, String side, boolean onlyDouble) {

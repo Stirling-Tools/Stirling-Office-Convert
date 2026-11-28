@@ -1084,6 +1084,39 @@ class HtmlLayoutTest {
     }
 
     @Test
+    void inlinePaddingCountsANarrowNoBreakSpaceAtItsOwnWidth() throws IOException {
+        Path fonts = Files.createDirectories(dir.resolve("narrow-fonts"));
+        Files.write(fonts.resolve("NarrowSpace.ttf"), TestFonts.withGlyphs("NarrowSpace", 'i', 0xA0));
+        OfficeToPdf.Options options = OfficeToPdf.Options.defaults()
+                .fonts(FontSet.builder().directory(fonts).systemFonts(false).build());
+        Laid l = lay("<p style=\"font-family:NarrowSpace\">alpha <code style=\"font-family:NarrowSpace;"
+                + "font-size:100pt;padding-left:2pt\">xx</code></p><p style=\"font-family:NarrowSpace\">alpha "
+                + "<code style=\"font-family:NarrowSpace;font-size:100pt\">xx</code></p>", options);
+        List<Word> ends = l.words().stream().filter(w -> w.text().endsWith("xx")).toList();
+        assertEquals(2, ends.size(), l.words().toString());
+        assertEquals(2, ends.get(0).right() - ends.get(1).right(), 0.5f, ends.toString());
+    }
+
+    @Test
+    void remBorderWidthsFollowEachDocumentsRootSize() {
+        Map<String, String> d = Map.of("border-bottom", ".25rem solid red");
+        try {
+            Css.rootSize(12);
+            assertEquals(3f, BoxCss.border(d, "bottom"), 0.001f);
+            Css.rootSize(24);
+            assertEquals(6f, BoxCss.border(d, "bottom"), 0.001f);
+            Css.rootSize(12);
+            assertEquals(3f, BoxCss.border(Map.of("border-bottom-width", ".25REM", "border-bottom-style", "solid"),
+                    "bottom"), 0.001f);
+            Css.rootSize(24);
+            assertEquals(6f, BoxCss.border(Map.of("border-bottom-width", ".25REM", "border-bottom-style", "solid"),
+                    "bottom"), 0.001f);
+        } finally {
+            Css.clearRootSize();
+        }
+    }
+
+    @Test
     void aFallbackFontDoesNotGrowCssLines() throws IOException {
         Laid l = lay("<p style=\"font-family:TestSans,TallCjk;font-size:20px;line-height:1.5;width:150px\">"
                 + "\u4e00".repeat(60) + "</p>", testFonts());
