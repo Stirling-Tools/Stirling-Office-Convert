@@ -17,6 +17,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Base64;
+import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 
@@ -29,6 +30,7 @@ import org.apache.pdfbox.pdmodel.PDResources;
 import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.apache.pdfbox.text.PDFTextStripper;
+import org.apache.pdfbox.text.TextPosition;
 import org.apache.poi.poifs.filesystem.DirectoryEntry;
 import org.apache.poi.poifs.filesystem.POIFSFileSystem;
 import org.junit.jupiter.api.Test;
@@ -118,6 +120,35 @@ class MailToPdfTest {
         assertFalse(c.text().contains("Plain text fallback"), c.text());
         assertTrue(c.text().contains("réport 2026.pdf (application/pdf, 2.0 KB)"), c.text());
         assertEquals(1, c.images());
+    }
+
+    @Test
+    void aPictureFromTheMailWidensItsTableColumnToItsOwnWidth() throws IOException {
+        ByteArrayOutputStream png = new ByteArrayOutputStream();
+        ImageIO.write(new BufferedImage(200, 40, BufferedImage.TYPE_INT_RGB), "png", png);
+        String mail = "From: a@example.org\nTo: b@example.org\nSubject: Column\nMIME-Version: 1.0\n"
+                + "Content-Type: multipart/related; boundary=\"rel\"\n\n--rel\nContent-Type: text/html\n\n"
+                + "<html><body><table width=\"95%\" cellpadding=\"0\" cellspacing=\"0\"><tr><td><img src=\"cid:wide@x\">"
+                + "</td><td>Beside the picture runs a long line of words that would take every bit of room it can get"
+                + "</td></tr></table></body></html>\n--rel\nContent-Type: image/png\nContent-ID: <wide@x>\n"
+                + "Content-Transfer-Encoding: base64\n\n"
+                + Base64.getMimeEncoder(76, "\r\n".getBytes(StandardCharsets.US_ASCII)).encodeToString(png.toByteArray())
+                + "\n--rel--\n";
+        Path in = Files.write(dir.resolve("column.eml"), ascii(mail));
+        Path out = dir.resolve("column.pdf");
+        OfficeToPdf.convert(in, out);
+        float[] x = {-1};
+        try (PDDocument doc = Loader.loadPDF(out.toFile())) {
+            new PDFTextStripper() {
+                @Override
+                protected void writeString(String text, List<TextPosition> positions) {
+                    if (x[0] < 0 && text.startsWith("Beside")) {
+                        x[0] = positions.get(0).getXDirAdj();
+                    }
+                }
+            }.getText(doc);
+        }
+        assertTrue(x[0] > 150, String.valueOf(x[0]));
     }
 
     @Test

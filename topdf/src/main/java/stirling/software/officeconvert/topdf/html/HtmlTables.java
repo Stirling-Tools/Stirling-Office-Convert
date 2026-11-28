@@ -675,8 +675,7 @@ final class HtmlTables {
             return null;
         }
         String src = img.attr("src").strip();
-        if (!src.regionMatches(true, 0, "data:image/", 0, 11) || src.regionMatches(true, 0, "data:image/svg", 0, 14)
-                || src.length() >= 1 << 20) {
+        if (src.isEmpty() || src.regionMatches(true, 0, "data:image/svg", 0, 14) || src.length() >= 1 << 20) {
             return null;
         }
         try {
