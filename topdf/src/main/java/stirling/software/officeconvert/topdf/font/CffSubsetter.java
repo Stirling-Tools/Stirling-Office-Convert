@@ -404,8 +404,9 @@ final class CffSubsetter {
             }
             fdOf[k] = fdOf(glyphs[k]);
         }
+        Scan scan = new Scan();
         for (int k = 0; k < glyphs.length; k++) {
-            Scan scan = new Scan(fds[fdOf[k]]);
+            scan.reset(fds[fdOf[k]]);
             try {
                 scan.glyph(charStrings.start(glyphs[k]), charStrings.stop(glyphs[k]));
             } catch (RuntimeException e) {
@@ -768,7 +769,7 @@ final class CffSubsetter {
 
     private final class Scan {
 
-        private final Fd fd;
+        private Fd fd;
 
         private final int[] stack = new int[MAX_STACK];
 
@@ -784,8 +785,12 @@ final class CffSubsetter {
 
         private boolean composite;
 
-        Scan(Fd fd) {
+        void reset(Fd fd) {
             this.fd = fd;
+            top = 0;
+            stems = 0;
+            done = false;
+            composite = false;
         }
 
         void glyph(int start, int end) {
