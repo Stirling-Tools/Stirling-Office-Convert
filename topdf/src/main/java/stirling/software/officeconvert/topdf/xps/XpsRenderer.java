@@ -806,7 +806,8 @@ final class XpsRenderer {
             }
             boolean evenOdd = g.fill.getWindingRule() == Path2D.WIND_EVEN_ODD;
             if (fill != null && fill.kind().equals("SolidColorBrush") && stroke != null
-                    && stroke.kind().equals("SolidColorBrush") && !g.strokeDiffers() && !ownCaps(e)) {
+                    && stroke.kind().equals("SolidColorBrush") && !g.strokeDiffers() && !ownCaps(e)
+                    && clippedMiters(e, g.fill) == null) {
                 double fa = fill.color().alpha() * fill.opacity() * opacity;
                 double sa = stroke.color().alpha() * stroke.opacity() * opacity;
                 if (fa < 1 || sa < 1) {
@@ -1009,12 +1010,194 @@ final class XpsRenderer {
             case "Bevel" -> 2;
             default -> 0;
         }).op("j\n");
-        double miter = XpsXml.number(XpsXml.attr(e, "StrokeMiterLimit"), 10) / 2;
-        ops.num(Math.max(1, Math.min(1000, miter))).op("M\n");
+        ops.num(miterLimit(e)).op("M\n");
         return caps == null ? NO_CAPS : caps;
     }
 
     private static final Caps NO_CAPS = new Caps(0, 0, 0);
+
+    private static double miterLimit(XpsElement e) {
+        return Math.max(1, Math.min(1000, XpsXml.number(XpsXml.attr(e, "StrokeMiterLimit"), 10)));
+    }
+
+    static Path2D clippedMiters(XpsElement e, Shape shape) {
+        double t = thickness(e);
+        String join = e.getAttribute("StrokeLineJoin").strip();
+        if (t <= 0 || !(join.isEmpty() || join.equals("Miter")) || dashed(e, t)) {
+            return null;
+        }
+        return clippedMiters(shape, t / 2, miterLimit(e));
+    }
+
+    static Path2D clippedMiters(Shape shape, double h, double limit) {
+        Path2D out = null;
+        double[] c = new double[6];
+        double sx = 0;
+        double sy = 0;
+        double px = 0;
+        double py = 0;
+        double ix = 0;
+        double iy = 0;
+        double fx = 0;
+        double fy = 0;
+        boolean in = false;
+        boolean first = false;
+        for (PathIterator it = shape.getPathIterator(null); !it.isDone(); it.next()) {
+            int type = it.currentSegment(c);
+            double x;
+            double y;
+            double ax;
+            double ay;
+            double bx;
+            double by;
+            switch (type) {
+                case PathIterator.SEG_MOVETO -> {
+                    sx = px = c[0];
+                    sy = py = c[1];
+                    in = false;
+                    first = false;
+                    continue;
+                }
+                case PathIterator.SEG_LINETO -> {
+                    x = c[0];
+                    y = c[1];
+                    ax = bx = x - px;
+                    ay = by = y - py;
+                }
+                case PathIterator.SEG_QUADTO -> {
+                    x = c[2];
+                    y = c[3];
+                    ax = c[0] - px;
+                    ay = c[1] - py;
+                    if (Math.hypot(ax, ay) < 1e-9) {
+                        ax = x - px;
+                        ay = y - py;
+                    }
+                    bx = x - c[0];
+                    by = y - c[1];
+                    if (Math.hypot(bx, by) < 1e-9) {
+                        bx = x - px;
+                        by = y - py;
+                    }
+                }
+                case PathIterator.SEG_CUBICTO -> {
+                    x = c[4];
+                    y = c[5];
+                    ax = c[0] - px;
+                    ay = c[1] - py;
+                    if (Math.hypot(ax, ay) < 1e-9) {
+                        ax = c[2] - px;
+                        ay = c[3] - py;
+                    }
+                    if (Math.hypot(ax, ay) < 1e-9) {
+                        ax = x - px;
+                        ay = y - py;
+                    }
+                    bx = x - c[2];
+                    by = y - c[3];
+                    if (Math.hypot(bx, by) < 1e-9) {
+                        bx = x - c[0];
+                        by = y - c[1];
+                    }
+                    if (Math.hypot(bx, by) < 1e-9) {
+                        bx = x - px;
+                        by = y - py;
+                    }
+                }
+                default -> {
+                    x = sx;
+                    y = sy;
+                    ax = bx = x - px;
+                    ay = by = y - py;
+                }
+            }
+            if (Math.hypot(ax, ay) >= 1e-9 && Math.hypot(bx, by) >= 1e-9) {
+                if (in) {
+                    out = miter(out, px, py, ix, iy, ax, ay, h, limit);
+                }
+                if (!first) {
+                    fx = ax;
+                    fy = ay;
+                    first = true;
+                }
+                ix = bx;
+                iy = by;
+                in = true;
+                px = x;
+                py = y;
+            }
+            if (type == PathIterator.SEG_CLOSE) {
+                if (in && first) {
+                    out = miter(out, sx, sy, ix, iy, fx, fy, h, limit);
+                }
+                px = sx;
+                py = sy;
+                in = false;
+                first = false;
+            }
+        }
+        return out;
+    }
+
+    private static Path2D miter(Path2D out, double px, double py, double x1, double y1, double x2, double y2, double h,
+            double limit) {
+        double l1 = Math.hypot(x1, y1);
+        double l2 = Math.hypot(x2, y2);
+        x1 /= l1;
+        y1 /= l1;
+        x2 /= l2;
+        y2 /= l2;
+        double cosHalf = Math.sqrt(Math.max(0, (1 + x1 * x2 + y1 * y2) / 2));
+        if (cosHalf * limit >= 1) {
+            return out;
+        }
+        double sign = x1 * y2 - y1 * x2 > 0 ? -1 : 1;
+        double n1x = -y1 * sign;
+        double n1y = x1 * sign;
+        double n2x = -y2 * sign;
+        double n2y = x2 * sign;
+        double bx = n1x + n2x;
+        double by = n1y + n2y;
+        double bl = Math.hypot(bx, by);
+        if (bl < 1e-9) {
+            bx = x1;
+            by = y1;
+        } else {
+            bx /= bl;
+            by /= bl;
+        }
+        double k = x1 * bx + y1 * by;
+        double s = (limit * h - h * cosHalf) / k;
+        if (!(k > 1e-9) || !(s > 0)) {
+            return out;
+        }
+        double ax = px + h * n1x;
+        double ay = py + h * n1y;
+        double cx = px + h * n2x;
+        double cy = py + h * n2y;
+        double[] q = {ax, ay, ax + s * x1, ay + s * y1, cx - s * x2, cy - s * y2, cx, cy};
+        double area = 0;
+        for (int i = 0; i < 8; i += 2) {
+            int j = (i + 2) % 8;
+            area += q[i] * q[j + 1] - q[j] * q[i + 1];
+        }
+        if (out == null) {
+            out = new Path2D.Double(Path2D.WIND_NON_ZERO);
+        }
+        if (area >= 0) {
+            out.moveTo(q[0], q[1]);
+            out.lineTo(q[2], q[3]);
+            out.lineTo(q[4], q[5]);
+            out.lineTo(q[6], q[7]);
+        } else {
+            out.moveTo(q[6], q[7]);
+            out.lineTo(q[4], q[5]);
+            out.lineTo(q[2], q[3]);
+            out.lineTo(q[0], q[1]);
+        }
+        out.closePath();
+        return out;
+    }
 
     static Path2D capShapes(Shape shape, Caps caps) {
         Path2D out = new Path2D.Double(Path2D.WIND_NON_ZERO);
@@ -1149,6 +1332,13 @@ final class XpsRenderer {
                         ops.op("f\n");
                     }
                 }
+                Path2D miters = clippedMiters(e, shape);
+                if (miters != null) {
+                    fill(ops, brush.color());
+                    if (ops.path(miters, null)) {
+                        ops.op("f\n");
+                    }
+                }
             }
             ops.Q();
             return;
@@ -1205,11 +1395,17 @@ final class XpsRenderer {
             Caps caps = strokeStyle(e, ops);
             if (caps != null && ops.path(shape, null)) {
                 ops.op("S\n");
-                if (caps.drawn()) {
+                Path2D miters = clippedMiters(e, shape);
+                if (caps.drawn() || miters != null) {
                     ops.op("/Pattern cs ").name(p).op("scn\n");
+                }
+                if (caps.drawn()) {
                     if (ops.path(capShapes(shape, caps), null)) {
                         ops.op("f\n");
                     }
+                }
+                if (miters != null && ops.path(miters, null)) {
+                    ops.op("f\n");
                 }
             }
         } finally {

@@ -450,6 +450,20 @@ class XpsToPdfTest {
     }
 
     @Test
+    void sharpMitersFollowTheXpsLimitAndAreClippedBeyondIt() throws IOException {
+        Path in = write("miters.xps", xps(List.of(page("<Path Stroke='#FF000000' StrokeThickness='10'"
+                + " Data='M 50,50 L 300,100 50,150'/><Path Stroke='#FF000000' StrokeThickness='10'"
+                + " Data='M 50,300 L 300,310 50,320'/>"))));
+        Path out = dir.resolve("miters.pdf");
+        convert(in, out);
+        try (PDDocument pdf = Loader.loadPDF(out.toFile())) {
+            assertTrue(pixel(pdf, 0, 318, 100).getRed() < 60);
+            assertTrue(pixel(pdf, 0, 340, 310).getRed() < 60);
+            assertTrue(pixel(pdf, 0, 362, 310).getRed() > 200);
+        }
+    }
+
+    @Test
     void anOpenStrokeWithAnOpacityMaskStillPaints() throws IOException {
         Path in = write("maskedline.xps", xps(List.of(page("<Path Stroke='#FF000000' StrokeThickness='10'>"
                 + "<Path.OpacityMask><LinearGradientBrush MappingMode='Absolute' StartPoint='0,0' EndPoint='400,0'>"
@@ -678,7 +692,7 @@ class XpsToPdfTest {
     }
 
     @Test
-    void theMiterLimitIsHalvedForPdf() throws IOException {
+    void theMiterLimitIsKeptForPdf() throws IOException {
         Path in = write("miter.xps", xps(List.of(page("<Path Data='M 10,10 L 100,10 10,40' Stroke='#FF000000'"
                 + " StrokeMiterLimit='8'/>"))));
         Path out = dir.resolve("miter.pdf");
@@ -688,7 +702,7 @@ class XpsToPdfTest {
             for (var it = pdf.getPage(0).getContentStreams(); it.hasNext();) {
                 all.append(new String(it.next().toByteArray(), StandardCharsets.ISO_8859_1));
             }
-            assertTrue(all.toString().contains("4 M"), all.toString());
+            assertTrue(all.toString().contains("8 M"), all.toString());
         }
     }
 
