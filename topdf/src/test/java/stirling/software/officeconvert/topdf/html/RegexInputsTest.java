@@ -86,4 +86,19 @@ class RegexInputsTest {
         }
         return m.appendTail(out).toString();
     }
+
+    @Test
+    void collapsingWhiteSpaceMatchesTheCssRules() {
+        Random random = new Random(7);
+        String alphabet = " \t\n\f\r\u00a0ab";
+        for (int k = 0; k < 20_000; k++) {
+            StringBuilder b = new StringBuilder();
+            for (int i = random.nextInt(12); i > 0; i--) {
+                b.append(alphabet.charAt(random.nextInt(alphabet.length())));
+            }
+            String raw = b.toString();
+            assertEquals(raw.replaceAll("[ \\t\\n\\f\\r]+", " "), Flow.collapse(raw, false), raw);
+            assertEquals(raw.replaceAll("[ \\t\\f\\r]+", " "), Flow.collapse(raw, true), raw);
+        }
+    }
 }

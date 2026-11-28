@@ -244,13 +244,19 @@ final class Css {
         }
     }
 
+    private static final Map<String, List<String>> BORDER_PARTS = Map.of(
+            "border-top", List.of("border-top", "border-top-style", "border-top-width", "border-top-color"),
+            "border-right", List.of("border-right", "border-right-style", "border-right-width", "border-right-color"),
+            "border-bottom", List.of("border-bottom", "border-bottom-style", "border-bottom-width",
+                    "border-bottom-color"),
+            "border-left", List.of("border-left", "border-left-style", "border-left-width", "border-left-color"));
+
     static void resetBorderSide(Map<String, String> out, String side) {
-        if (side.equals("border-top") || side.equals("border-right") || side.equals("border-bottom")
-                || side.equals("border-left")) {
-            out.remove(side);
-            out.remove(side + "-style");
-            out.remove(side + "-width");
-            out.remove(side + "-color");
+        List<String> parts = side.startsWith("border-") ? BORDER_PARTS.get(side) : null;
+        if (parts != null) {
+            for (String part : parts) {
+                out.remove(part);
+            }
         }
     }
 

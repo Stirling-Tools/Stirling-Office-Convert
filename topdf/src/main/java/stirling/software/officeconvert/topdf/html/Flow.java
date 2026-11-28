@@ -1474,6 +1474,37 @@ final class Flow {
         flush();
     }
 
+    static String collapse(String raw, boolean keepLines) {
+        StringBuilder b = null;
+        int n = raw.length();
+        for (int i = 0; i < n; i++) {
+            char c = raw.charAt(i);
+            boolean space = c == ' ' || c == '\t' || c == '\f' || c == '\r' || c == '\n' && !keepLines;
+            if (!space) {
+                if (b != null) {
+                    b.append(c);
+                }
+                continue;
+            }
+            int end = i + 1;
+            while (end < n) {
+                char d = raw.charAt(end);
+                if (d != ' ' && d != '\t' && d != '\f' && d != '\r' && (d != '\n' || keepLines)) {
+                    break;
+                }
+                end++;
+            }
+            if (b == null && (c != ' ' || end > i + 1)) {
+                b = new StringBuilder(n).append(raw, 0, i);
+            }
+            if (b != null) {
+                b.append(' ');
+            }
+            i = end - 1;
+        }
+        return b == null ? raw : b.toString();
+    }
+
     private void text(String raw, Look look) throws IOException {
         if (raw.isEmpty()) {
             return;
@@ -1482,7 +1513,7 @@ final class Flow {
         boolean keepSpaces = ws.startsWith("pre") && !ws.equals("pre-line") || ws.equals("break-spaces");
         boolean keepLines = ws.startsWith("pre") || ws.equals("break-spaces");
         if (!keepSpaces) {
-            String collapsed = raw.replaceAll(keepLines ? "[ \\t\\f\\r]+" : "[ \\t\\n\\f\\r]+", " ");
+            String collapsed = collapse(raw, keepLines);
             if (lastSpace && collapsed.startsWith(" ")) {
                 collapsed = collapsed.substring(1);
             }
