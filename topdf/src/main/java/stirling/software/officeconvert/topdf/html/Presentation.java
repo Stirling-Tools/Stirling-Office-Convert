@@ -50,7 +50,11 @@ final class Presentation {
             case "h4" -> heading(out, "1em", "1.33em");
             case "h5" -> heading(out, "0.83em", "1.67em");
             case "h6" -> heading(out, "0.67em", "2.33em");
-            case "p", "dl" -> vertical(out, "1em");
+            case "p" -> {
+                vertical(out, "1em");
+                out.put(DEFAULT_BOTTOM, "1");
+            }
+            case "dl" -> vertical(out, "1em");
             case "ul", "ol" -> {
                 vertical(out, "1em");
                 out.put("padding-inline-start", "40px");
@@ -92,9 +96,14 @@ final class Presentation {
         vertical(out, margin);
     }
 
+    static final String DEFAULT_TOP = "-oc-default-margin-top";
+
+    static final String DEFAULT_BOTTOM = "-oc-default-margin-bottom";
+
     private static void vertical(Map<String, String> out, String margin) {
         out.put("margin-top", margin);
         out.put("margin-bottom", margin);
+        out.put(DEFAULT_TOP, "1");
     }
 
     private static void attributes(Element e, Map<String, String> out) {

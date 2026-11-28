@@ -885,6 +885,14 @@ final class Cascade {
             if (marked == important) {
                 String key = marked ? d.getKey().substring(1) : d.getKey();
                 Css.resetBorderSide(out, key);
+                if (key.startsWith("margin")) {
+                    if (!key.equals("margin-bottom")) {
+                        out.remove(Presentation.DEFAULT_TOP);
+                    }
+                    if (!key.equals("margin-top")) {
+                        out.remove(Presentation.DEFAULT_BOTTOM);
+                    }
+                }
                 out.put(key, d.getValue());
             }
         }

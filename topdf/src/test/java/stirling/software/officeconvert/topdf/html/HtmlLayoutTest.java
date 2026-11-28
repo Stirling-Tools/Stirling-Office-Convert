@@ -464,7 +464,7 @@ class HtmlLayoutTest {
     @Test
     void aFloatedSidebarSitsBesideTheColumnAfterIt() throws IOException {
         Laid l = lay("""
-                <html><head><style>
+                <!doctype html><html><head><style>
                 body{margin:0} .side{float:left;width:30%;padding:10px;box-sizing:border-box;background:#203040;color:#fff}
                 .main{margin-left:32%}
                 </style></head><body><div class=side><p>Contact</p><p>Phone</p></div>
@@ -879,6 +879,22 @@ class HtmlLayoutTest {
                 </body></html>""");
         float twoToThree = l.word("Three").top() - l.word("Two").top();
         assertEquals(2 * twoToThree, l.word("Two").top() - l.word("One").top(), 1.5f, l.words().toString());
+    }
+
+    @Test
+    void withoutADoctypeACellDropsTheDefaultParagraphMarginsAtItsEdgesButKeepsSetOnes() throws IOException {
+        String page = """
+                <html><body style="margin:0"><div>A1</div>
+                <table cellpadding=0 cellspacing=0><tr><td><p>A2</p></td></tr></table><div>A3</div>
+                <table cellpadding=0 cellspacing=0><tr><td><p style="margin:10px 0">A4</p></td></tr></table>
+                <div>A5</div></body></html>""";
+        Laid quirks = lay(page);
+        float line = quirks.word("A3").top() - quirks.word("A2").top();
+        assertEquals(line, quirks.word("A2").top() - quirks.word("A1").top(), 1f, quirks.words().toString());
+        assertEquals(line + 7.5f, quirks.word("A4").top() - quirks.word("A3").top(), 1f, quirks.words().toString());
+        Laid standard = lay("<!doctype html>" + page);
+        assertEquals(line + 12, standard.word("A2").top() - standard.word("A1").top(), 1f,
+                standard.words().toString());
     }
 
     @Test

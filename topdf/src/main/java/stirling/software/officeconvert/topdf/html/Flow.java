@@ -13,6 +13,7 @@ import java.util.Set;
 import java.util.regex.Pattern;
 
 import org.jsoup.nodes.Comment;
+import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.nodes.Node;
 import org.jsoup.nodes.TextNode;
@@ -52,6 +53,10 @@ final class Flow {
     private static final int MAX_TABS_IN_A_ROW = 32;
 
     private static final float MAX_BORDER_SPACE = 31;
+
+    private boolean edgeTop;
+
+    private float quirkyMargin;
 
     private static final float MAX_SPACER = 90;
 
@@ -128,11 +133,13 @@ final class Flow {
         this.ctx = ctx;
         this.out = out;
         this.inCell = inCell;
+        this.edgeTop = inCell;
         this.paragraphsOnly = paragraphsOnly;
         this.lists = new HtmlLists(ctx);
     }
 
     void root(Element body, Look look, Frame frame) throws IOException {
+        edgeTop = true;
         blockLook = look;
         blockFrame = frame;
         if (ctx.positions()) {
@@ -888,6 +895,9 @@ final class Flow {
             top = 0;
             bottom = 0;
         }
+        if (edgeTop && d.containsKey(Presentation.DEFAULT_TOP) && quirks(e)) {
+            top = 0;
+        }
         float besideL = e == sized ? besideLeft : 0;
         float besideR = e == sized ? besideRight : 0;
         float left = Math.max(0, Math.max(0, BoxCss.length(d.get("margin-left"), em, frame.width() + besideL) - besideL)
@@ -948,7 +958,13 @@ final class Flow {
             }
         }
         margin(top);
+        if (BoxCss.border(d, "top") > 0) {
+            edgeTop = false;
+        }
         pad(BoxCss.padding(d.get("padding-top"), em, frame.width()));
+        if (tag.equals("td") || tag.equals("th")) {
+            edgeTop = true;
+        }
         if (BoxCss.isPageBreak(d.get("break-before"))) {
             pendingBreak = true;
         }
@@ -1058,8 +1074,16 @@ final class Flow {
         blockLook = outerLook;
         blockFrame = outerFrame;
         headingStyle = outerHeading;
+        if ((tag.equals("td") || tag.equals("th")) && quirkyMargin > 0 && quirkyMargin == pendingMargin) {
+            pendingSpace = Math.max(0, pendingSpace - pendingMargin);
+            pendingMargin = 0;
+        }
         pad(padBottom);
+        float was = pendingMargin;
         margin(bottom);
+        if (pendingMargin > was) {
+            quirkyMargin = d.containsKey(Presentation.DEFAULT_BOTTOM) && quirks(e) ? pendingMargin : 0;
+        }
         if (BoxCss.isPageBreak(d.get("break-after"))) {
             pendingBreak = true;
         }
@@ -1145,8 +1169,15 @@ final class Flow {
         pendingMargin = collapsed;
     }
 
+    private static boolean quirks(Element e) {
+        Document doc = e.ownerDocument();
+        return doc != null && doc.quirksMode() == Document.QuirksMode.quirks;
+    }
+
     private void pad(float p) {
         if (p > 0) {
+            edgeTop = false;
+            quirkyMargin = 0;
             pendingSpace += p;
             pendingMargin = 0;
         }
@@ -1158,6 +1189,8 @@ final class Flow {
     }
 
     private void emit(Block b) throws IOException {
+        edgeTop = false;
+        quirkyMargin = 0;
         emitted++;
         if (pendingBookmark != null) {
             Paragraph first = switch (b) {
@@ -1853,6 +1886,8 @@ final class Flow {
         p.widows = l.widows;
         p.orphans = l.orphans;
         p.shading = f.shading();
+        edgeTop = false;
+        quirkyMargin = 0;
         if (l.linePoints > 0) {
             p.lineRule = Paragraph.LineRule.AT_LEAST;
             p.lineHeight = l.linePoints;
@@ -2252,7 +2287,11 @@ final class Flow {
         pendingBreak = false;
         sectionStarted = false;
         ctx.count();
+        boolean edge = edgeTop;
+        float quirky = quirkyMargin;
         emit(p);
+        edgeTop = edge;
+        quirkyMargin = quirky;
     }
 
     private Paragraph anchorParagraph(List<Inline> drawings, float indent) {
