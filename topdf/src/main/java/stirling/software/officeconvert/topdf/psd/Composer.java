@@ -200,6 +200,8 @@ final class Composer {
 
     private static final class Group extends Node {
         final List<Node> children = new ArrayList<>();
+        float[] background;
+        int[] board;
     }
 
     private static final class Adjust extends Node {
@@ -401,6 +403,7 @@ final class Composer {
             Group g = new Group();
             g.layer = l;
             masks(g, l);
+            artboard(g, l);
             Node base = null;
             for (Layers.Layer child : l.children) {
                 Node node = build(child, depth + 1);
@@ -439,8 +442,14 @@ final class Composer {
             }
             return adjust;
         }
-        boolean pixels = !l.empty() && l.channel(0) != null && l.channel(0).length() > 2;
+        boolean softVector = l.vectorMask && l.vector != null && (l.vectorDensity < 255 || l.vectorFeather > 0);
+        boolean soft = l.solid != null
+                && (softVector || l.masks.stream().anyMatch(m -> !m.disabled && m.feather > 0));
+        boolean pixels = !soft && !l.empty() && l.channel(0) != null && l.channel(0).length() > 2;
         if (pixels) {
+            if (l.strokeApart && strokeInPixels(p, l)) {
+                l.strokeApart = false;
+            }
             boolean stroked = l.strokeApart && l.vectorStroke != null && l.vectorStroke.flag("strokeEnabled", false);
             p.vectorBaked |= (l.fill || l.solid != null) && !stroked && l.vectorDensity >= 255
                     && !(l.vectorFeather > 0);
@@ -481,6 +490,31 @@ final class Composer {
         }
         effects(l);
         return p;
+    }
+
+    private boolean strokeInPixels(Node p, Layers.Layer l) {
+        Layers.Channel t = l.channel(-1);
+        if (t == null || p.vector == null) {
+            return false;
+        }
+        java.awt.geom.Rectangle2D b = p.vector.shape();
+        int row = (int) Math.floor(b.getMinY()) - 1;
+        int col = (int) Math.floor(b.getCenterX());
+        if (b.isEmpty() || row < l.top || row >= l.bottom || col < l.left || col >= l.right) {
+            return false;
+        }
+        Plane plane = new Plane(t, l.top, l.left, l.bottom, l.right, 0);
+        if (!plane.covers(row)) {
+            return false;
+        }
+        try {
+            byte[] line = plane.line(row);
+            return line != null && plane.sample(line, col - l.left) > 0;
+        } catch (IOException e) {
+            return false;
+        } finally {
+            plane.close();
+        }
     }
 
     private Pattern pattern(Descriptor d) {
@@ -567,7 +601,9 @@ final class Composer {
 
     private float[] solid(float[] c) {
         float[] v = new float[n];
-        if (c.length == 5) {
+        if (c.length == 6 && doc.mode == PsdDocument.LAB) {
+            System.arraycopy(c, 3, v, 0, 3);
+        } else if (c.length == 5) {
             float r = (1 - c[0]) * (1 - c[3]);
             float g = (1 - c[1]) * (1 - c[3]);
             float b = (1 - c[2]) * (1 - c[3]);
@@ -600,11 +636,7 @@ final class Composer {
                     v[i] = rgbc[i];
                 }
             }
-            case PsdDocument.LAB -> {
-                v[0] = 0.3f * rgbc[0] + 0.59f * rgbc[1] + 0.11f * rgbc[2];
-                v[1] = 0.5f;
-                v[2] = 0.5f;
-            }
+            case PsdDocument.LAB -> System.arraycopy(Colors.toLab(rgbc), 0, v, 0, 3);
             default -> {
                 float g = 0.3f * rgbc[0] + 0.59f * rgbc[1] + 0.11f * rgbc[2];
                 v[0] = g;
@@ -613,8 +645,12 @@ final class Composer {
     }
 
     private void masks(Node node, Layers.Layer l) {
+        boolean real = false;
         for (Layers.Mask m : l.masks) {
-            if (m.disabled) {
+            real |= m.channel == -3 && !m.disabled;
+        }
+        for (Layers.Mask m : l.masks) {
+            if (m.disabled || real && m.fromVector && l.vectorMask && l.vector != null) {
                 continue;
             }
             Layers.Channel ch = l.channel(m.channel);
@@ -658,8 +694,37 @@ final class Composer {
         }
     }
 
+    private void artboard(Group g, Layers.Layer l) {
+        Descriptor d = l.artboard == null || l.artboard.length < 8 ? null : Descriptor.read(l.artboard, 4);
+        Descriptor r = d == null ? null : d.object("artboardRect");
+        if (r == null) {
+            return;
+        }
+        int type = (int) d.number("artboardBackgroundType", 3);
+        float[] c = switch (type) {
+            case 1 -> new float[] {1, 1, 1};
+            case 2 -> new float[] {0, 0, 0};
+            case 4 -> d.color("Clr ");
+            default -> null;
+        };
+        if (c == null) {
+            return;
+        }
+        g.background = solid(c);
+        g.board = new int[] {(int) Math.round(r.number("Left", 0)), (int) Math.round(r.number("Top ", 0)),
+            (int) Math.round(r.number("Rght", 0)), (int) Math.round(r.number("Btom", 0))};
+    }
+
     private void children(Node group, float[] dest) throws IOException {
-        List<Node> list = ((Group) group).children;
+        Group board = (Group) group;
+        if (board.background != null && y >= board.board[1] && y < board.board[3]) {
+            for (int x = Math.max(0, board.board[0]); x < Math.min(width, board.board[2]); x++) {
+                int at = x * stride;
+                System.arraycopy(board.background, 0, dest, at, n);
+                dest[at + n] = 1;
+            }
+        }
+        List<Node> list = board.children;
         float[] savedShallow = shallowBase;
         boolean root = group == top;
         boolean own = false;
@@ -767,7 +832,8 @@ final class Composer {
             return;
         }
         float opacity = l.opacity / 255f * (base instanceof Group ? l.fillOpacity / 255f : 1);
-        if (base instanceof Group g && l.blend == Blend.PASS_THROUGH && (l.fillOpacity >= 255 || !adjusts(g))) {
+        if (base instanceof Group g && l.blend == Blend.PASS_THROUGH && (l.fillOpacity >= 255 || !adjusts(g))
+                && (base.clipped.isEmpty() || !adjusts(g))) {
             if (base.clipped.isEmpty()) {
                 LayerEffects fx = base.fx;
                 float fxOpacity = l.opacity / 255f;
@@ -976,6 +1042,8 @@ final class Composer {
         }
         Pixels p = (Pixels) node;
         float fill = l.fillOpacity / 255f;
+        float base = l.interior ? 1 : fill;
+        float scale = l.interior ? fill : 1;
         if (p.color != null) {
             for (int i = 0; i < n; i++) {
                 p.color[i].read(out, i, stride, 0);
@@ -1059,12 +1127,12 @@ final class Composer {
                 float cb = out[c0 + i];
                 float b = Blend.whole(overlay.blend()) && rgb ? Colors.clamp(mixed[i])
                         : Blend.separable(overlay.blend()) ? Blend.channel(overlay.blend(), cb, tint[i]) : tint[i];
-                float mine = a * fill;
+                float mine = a * base;
                 float fx = a * strength;
                 float total = fx + mine * (1 - strength);
                 out[c0 + i] = total <= 0 ? cb : (b * fx + cb * mine * (1 - strength)) / total;
             }
-            out[at] = a * fill + (1 - fill) * a * strength;
+            out[at] = (a * base + (1 - base) * a * strength) * scale;
         }
         if (ramp != null) {
             release(ramp);
@@ -1273,7 +1341,8 @@ final class Composer {
             y = 0;
             close(copy);
         }
-        node.fx = LayerEffects.build(alpha, x0, y0, w, h, l.stroke, l.shadow, doc.globalAngle);
+        node.fx = LayerEffects.build(alpha, x0, y0, w, h, l.stroke, l.shadow, doc.globalAngle,
+                l.fillOpacity >= 255);
     }
 
     private static boolean extent(Group g, int[] b) {

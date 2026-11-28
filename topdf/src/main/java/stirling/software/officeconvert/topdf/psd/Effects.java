@@ -106,21 +106,31 @@ final class Effects {
             return Blend.NORMAL;
         }
         return switch (mode) {
-            case "Mltp" -> Blend.MULTIPLY;
-            case "Scrn" -> Blend.SCREEN;
-            case "Ovrl" -> Blend.OVERLAY;
-            case "Drkn" -> Blend.DARKEN;
-            case "Lghn" -> Blend.LIGHTEN;
-            case "SftL" -> Blend.SOFT_LIGHT;
-            case "HrdL" -> Blend.HARD_LIGHT;
-            case "Dfrn" -> Blend.DIFFERENCE;
-            case "Xclu" -> Blend.EXCLUSION;
-            case "CDdg" -> Blend.COLOR_DODGE;
-            case "CBrn" -> Blend.COLOR_BURN;
-            case "H   " -> Blend.HUE;
-            case "Strt" -> Blend.SATURATION;
-            case "Clr " -> Blend.COLOR;
-            case "Lmns" -> Blend.LUMINOSITY;
+            case "Mltp", "multiply" -> Blend.MULTIPLY;
+            case "Scrn", "screen" -> Blend.SCREEN;
+            case "Ovrl", "overlay" -> Blend.OVERLAY;
+            case "Drkn", "darken" -> Blend.DARKEN;
+            case "Lghn", "lighten" -> Blend.LIGHTEN;
+            case "SftL", "softLight" -> Blend.SOFT_LIGHT;
+            case "HrdL", "hardLight" -> Blend.HARD_LIGHT;
+            case "Dfrn", "difference" -> Blend.DIFFERENCE;
+            case "Xclu", "exclusion" -> Blend.EXCLUSION;
+            case "CDdg", "colorDodge" -> Blend.COLOR_DODGE;
+            case "CBrn", "colorBurn" -> Blend.COLOR_BURN;
+            case "H   ", "hue" -> Blend.HUE;
+            case "Strt", "saturation" -> Blend.SATURATION;
+            case "Clr ", "color" -> Blend.COLOR;
+            case "Lmns", "luminosity" -> Blend.LUMINOSITY;
+            case "linearBurn" -> Blend.LINEAR_BURN;
+            case "darkerColor" -> Blend.DARKER_COLOR;
+            case "linearDodge" -> Blend.LINEAR_DODGE;
+            case "lighterColor" -> Blend.LIGHTER_COLOR;
+            case "vividLight" -> Blend.VIVID_LIGHT;
+            case "linearLight" -> Blend.LINEAR_LIGHT;
+            case "pinLight" -> Blend.PIN_LIGHT;
+            case "hardMix" -> Blend.HARD_MIX;
+            case "blendSubtraction" -> Blend.SUBTRACT;
+            case "blendDivide" -> Blend.DIVIDE;
             default -> Blend.NORMAL;
         };
     }

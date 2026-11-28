@@ -240,8 +240,12 @@ final class Descriptor {
                     (int) (c.number("Strt", 0) / 100 * 65535), (int) (c.number("Brgh", 0) / 100 * 65535), 0});
             }
             case "LbCl" -> {
-                return Colors.lab((float) c.number("Lmnc", 0), (float) c.number("A   ", 0),
-                        (float) c.number("B   ", 0));
+                float l = (float) c.number("Lmnc", 0);
+                float a = (float) c.number("A   ", 0);
+                float b = (float) c.number("B   ", 0);
+                float[] rgb = Colors.lab(l, a, b);
+                return new float[] {rgb[0], rgb[1], rgb[2], Colors.clamp(l / 100), Colors.clamp((a + 128) / 255),
+                    Colors.clamp((b + 128) / 255)};
             }
             default -> {
                 return null;

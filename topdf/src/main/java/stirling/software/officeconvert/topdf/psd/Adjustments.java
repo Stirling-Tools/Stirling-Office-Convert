@@ -21,7 +21,7 @@ abstract class Adjustments {
         try {
             return switch (key) {
                 case "nvrt" -> new Luts(identity(mode, v -> 1 - v), null);
-                case "post" -> posterize(data, mode);
+                case "post" -> posterize(data, mode, depth);
                 case "thrs" -> threshold(data, mode);
                 case "levl" -> levels(data, mode);
                 case "curv" -> curves(data, mode);
@@ -74,9 +74,20 @@ abstract class Adjustments {
         return lut[i] + (lut[i + 1] - lut[i]) * f;
     }
 
-    private static Adjustments posterize(byte[] data, int mode) {
+    private static Adjustments posterize(byte[] data, int mode, int depth) {
         int levels = Math.max(2, Math.min(255, ByteBuffer.wrap(data).getShort() & 0xFFFF));
-        return new Luts(identity(mode, v -> (float) Math.floor(v * levels * 255f / 256f) / (levels - 1)), null);
+        float scale = levels * (depth == 8 ? 255f / 256f : 65535f / 65536f);
+        int n = channels(mode);
+        return new Adjustments() {
+            @Override
+            void apply(float[] buf, int at, int count, float[] out) {
+                for (int i = 0; i < count; i++) {
+                    float v = buf[at + i];
+                    float step = Math.min(levels - 1, (float) Math.floor(Colors.clamp(v) * scale + 1e-5f));
+                    out[i] = i < n ? step / (levels - 1) : v;
+                }
+            }
+        };
     }
 
     private static Adjustments threshold(byte[] data, int mode) {

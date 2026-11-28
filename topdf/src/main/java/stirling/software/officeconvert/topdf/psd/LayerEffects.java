@@ -49,7 +49,7 @@ final class LayerEffects {
     }
 
     static LayerEffects build(float[] alpha, int left, int top, int width, int height, Stroke stroke, Shadow shadow,
-            double globalAngle) {
+            double globalAngle, boolean opaque) {
         byte[] s = null;
         boolean under = false;
         if (stroke != null && stroke.size() > 0) {
@@ -57,7 +57,7 @@ final class LayerEffects {
             for (float a : alpha) {
                 peak = Math.max(peak, a);
             }
-            float interior = peak >= 0.999f ? 1 : 0;
+            float interior = peak >= 0.999f && opaque ? 1 : 0;
             float[] shape = alpha;
             if (peak < 0.999f) {
                 shape = new float[alpha.length];
@@ -84,8 +84,8 @@ final class LayerEffects {
         byte[] sh = null;
         if (shadow != null) {
             double angle = Math.toRadians(shadow.global() ? globalAngle : shadow.angle());
-            int dx = (int) Math.round(-Math.cos(angle) * shadow.distance());
-            int dy = (int) Math.round(Math.sin(angle) * shadow.distance());
+            int dx = (int) Math.floor(-Math.cos(angle) * shadow.distance() + 0.5 + 1e-9);
+            int dy = (int) Math.floor(Math.sin(angle) * shadow.distance() + 0.5 + 1e-9);
             float spread = Math.max(0, Math.min(1, shadow.spread()));
             float grow = shadow.size() * spread;
             float[] grown = alpha;
@@ -105,23 +105,11 @@ final class LayerEffects {
             }
             float[] base = new float[width * height];
             for (int y = 0; y < height; y++) {
-                int sy = y - dy;
-                if (sy < 0 || sy >= height) {
-                    continue;
-                }
                 for (int x = 0; x < width; x++) {
-                    int sx = x - dx;
-                    if (sx >= 0 && sx < width) {
-                        base[y * width + x] = grown[sy * width + sx];
-                    }
+                    base[y * width + x] = sample(grown, width, height, x - dx, y - dy);
                 }
             }
-            int radius = Math.max(0, Math.round(shadow.size() * (1 - spread) / 3));
-            if (radius > 0) {
-                for (int pass = 0; pass < 3; pass++) {
-                    blur(base, width, height, radius);
-                }
-            }
+            gauss(base, width, height, shadow.size() * (1 - spread) * 0.4);
             sh = new byte[width * height];
             for (int i = 0; i < sh.length; i++) {
                 sh[i] = (byte) Math.round(clamp(base[i]) * 255);
@@ -141,6 +129,30 @@ final class LayerEffects {
 
     private static float clamp(float v) {
         return v > 0 ? v < 1 ? v : 1 : 0;
+    }
+
+    private static float sample(float[] a, int w, int h, int x, int y) {
+        return x < 0 || y < 0 || x >= w || y >= h ? 0 : a[y * w + x];
+    }
+
+    static void gauss(float[] a, int w, int h, double sigma) {
+        if (!(sigma > 0.2)) {
+            return;
+        }
+        double ideal = Math.sqrt(12 * sigma * sigma / 3 + 1);
+        int lower = (int) Math.floor(ideal);
+        if (lower % 2 == 0) {
+            lower--;
+        }
+        int upper = lower + 2;
+        double m = (12 * sigma * sigma - 3 * lower * lower - 4 * 3 * lower - 3 * 3) / (-4.0 * lower - 4);
+        long small = Math.round(m);
+        for (int pass = 0; pass < 3; pass++) {
+            int r = ((pass < small ? lower : upper) - 1) / 2;
+            if (r > 0) {
+                blur(a, w, h, r);
+            }
+        }
     }
 
     static void blur(float[] a, int w, int h, int r) {

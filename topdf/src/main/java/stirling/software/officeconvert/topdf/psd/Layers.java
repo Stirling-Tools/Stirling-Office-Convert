@@ -73,6 +73,10 @@ final class Layers {
         byte[] generator;
         byte[] pattern;
         boolean strokeApart;
+
+        boolean interior;
+
+        byte[] artboard;
         byte[] gradient;
         Descriptor vectorStroke;
         Effects.Overlay overlay;
@@ -312,6 +316,7 @@ final class Layers {
                 g.shadow = l.shadow;
                 g.knockout = l.knockout;
                 g.blendClipped = l.blendClipped;
+                g.artboard = l.artboard;
                 current = stack.pop();
                 current.children.add(g);
             } else {
@@ -367,8 +372,9 @@ final class Layers {
             m.invert = (mf & 4) != 0;
             m.fromVector = (mf & 8) != 0;
             l.masks.add(m);
+            Mask real = null;
             if (maskLen >= 36 && l.channel(-3) != null) {
-                Mask real = new Mask();
+                real = new Mask();
                 int rf = c.u8();
                 real.fill = c.u8();
                 real.top = c.i32();
@@ -393,6 +399,10 @@ final class Layers {
                 }
                 if ((params & 8) != 0 && maskEnd - c.position() >= 8) {
                     l.vectorFeather = Double.longBitsToDouble(c.u32() << 32 | c.u32());
+                }
+                if (real != null && m.fromVector) {
+                    real.density = m.density;
+                    real.feather = m.feather;
                 }
             }
         }
@@ -463,6 +473,8 @@ final class Layers {
             }
         } else if (key == tag("iOpa") && len >= 1) {
             l.fillOpacity = c.u8();
+        } else if (key == tag("infx") && len >= 1) {
+            l.interior = c.u8() != 0;
         } else if (key == tag("clbl") && len >= 1) {
             l.blendClipped = c.u8() != 0;
         } else if (key == tag("knko") && len >= 1) {
@@ -508,6 +520,9 @@ final class Layers {
             l.pattern = payload(c, len);
         } else if (key == tag("GdFl") || key == tag("PtFl")) {
             l.fill = true;
+        } else if ((key == tag("artb") || key == tag("artd") || key == tag("abdd")) && l.artboard == null
+                && len <= Adjustments.MAX_BYTES && keep(len)) {
+            l.artboard = payload(c, len);
         } else if (key == tag("vowv")) {
             l.strokeApart = true;
         } else if (key == tag("CgEd") && len <= Adjustments.MAX_BYTES && keep(len)) {

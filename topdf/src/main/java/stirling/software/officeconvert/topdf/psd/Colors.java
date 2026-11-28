@@ -53,6 +53,30 @@ final class Colors {
         return new float[] {encode(r), encode(g), encode(bl)};
     }
 
+    static float[] toLab(float[] rgb) {
+        double r = decode(rgb[0]);
+        double g = decode(rgb[1]);
+        double b = decode(rgb[2]);
+        double x = (0.4360747 * r + 0.3850649 * g + 0.1430804 * b) / 0.9642;
+        double y = 0.2225045 * r + 0.7168786 * g + 0.0606169 * b;
+        double z = (0.0139322 * r + 0.0971045 * g + 0.7141733 * b) / 0.8249;
+        double fx = f(x);
+        double fy = f(y);
+        double fz = f(z);
+        return new float[] {clamp((float) ((116 * fy - 16) / 100)), clamp((float) ((500 * (fx - fy) + 128) / 255)),
+            clamp((float) ((200 * (fy - fz) + 128) / 255))};
+    }
+
+    private static double decode(float v) {
+        double c = clamp(v);
+        return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    }
+
+    private static double f(double t) {
+        double d = 6.0 / 29;
+        return t > d * d * d ? Math.cbrt(t) : t / (3 * d * d) + 4.0 / 29;
+    }
+
     private static double finv(double t) {
         return t > 6.0 / 29 ? t * t * t : 3 * (6.0 / 29) * (6.0 / 29) * (t - 4.0 / 29);
     }
