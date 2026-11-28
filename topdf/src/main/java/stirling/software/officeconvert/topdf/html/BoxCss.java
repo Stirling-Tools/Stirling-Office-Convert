@@ -175,10 +175,34 @@ final class BoxCss {
         return parsed;
     }
 
+    private static final Map<String, String[]> SIDES = Map.of(
+            "top", new String[] {"border-top-style", "border-top", "border-top-width"},
+            "right", new String[] {"border-right-style", "border-right", "border-right-width"},
+            "bottom", new String[] {"border-bottom-style", "border-bottom", "border-bottom-width"},
+            "left", new String[] {"border-left-style", "border-left", "border-left-width"});
+
+    private static final Map<String, Float> WIDTHS = new ConcurrentHashMap<>();
+
+    private static Float width(String width) {
+        Float known = WIDTHS.get(width);
+        if (known != null) {
+            return known.isNaN() ? null : known;
+        }
+        Float w = Css.length(keyword(width), 12, 0);
+        if (width.length() <= MAX_SHORTHAND_LENGTH && WIDTHS.size() < MAX_SHORTHANDS) {
+            WIDTHS.put(width, w == null ? Float.NaN : w);
+        }
+        return w;
+    }
+
     private static float border(Map<String, String> d, String side, boolean onlyDouble) {
-        String style = d.get("border-" + side + "-style");
-        String all = d.get("border-" + side);
-        String width = d.get("border-" + side + "-width");
+        String[] keys = SIDES.get(side);
+        if (keys == null) {
+            keys = new String[] {"border-" + side + "-style", "border-" + side, "border-" + side + "-width"};
+        }
+        String style = d.get(keys[0]);
+        String all = d.get(keys[1]);
+        String width = d.get(keys[2]);
         if (all != null) {
             Shorthand parsed = shorthand(all);
             width = width == null ? parsed.width() : width;
@@ -191,8 +215,7 @@ final class BoxCss {
                 || onlyDouble && !style.equalsIgnoreCase("double")) {
             return 0;
         }
-        Float w = width == null ? Float.valueOf(style.equalsIgnoreCase("double") ? DOUBLE_LEAST : 0.75f)
-                : Css.length(keyword(width), 12, 0);
+        Float w = width == null ? Float.valueOf(style.equalsIgnoreCase("double") ? DOUBLE_LEAST : 0.75f) : width(width);
         return w == null ? 0.75f : Math.max(0, Math.min(12, w));
     }
 
