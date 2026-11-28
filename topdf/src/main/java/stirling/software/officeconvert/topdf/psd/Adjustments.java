@@ -22,7 +22,7 @@ abstract class Adjustments {
             return switch (key) {
                 case "nvrt" -> new Luts(identity(mode, v -> 1 - v), null);
                 case "post" -> posterize(data, mode, depth);
-                case "thrs" -> threshold(data, mode);
+                case "thrs" -> threshold(data, mode, depth);
                 case "levl" -> levels(data, mode);
                 case "curv" -> curves(data, mode);
                 case "hue2" -> hueSaturation(data, mode);
@@ -90,7 +90,7 @@ abstract class Adjustments {
         };
     }
 
-    private static Adjustments threshold(byte[] data, int mode) {
+    private static Adjustments threshold(byte[] data, int mode, int depth) {
         if (mode != PsdDocument.RGB && mode != PsdDocument.GRAY && mode != PsdDocument.DUOTONE) {
             return null;
         }
@@ -99,7 +99,7 @@ abstract class Adjustments {
             @Override
             void apply(float[] buf, int at, int n, float[] out) {
                 float lum = n >= 3 ? 0.3f * buf[at] + 0.59f * buf[at + 1] + 0.11f * buf[at + 2] : buf[at];
-                float v = Math.round(lum * 255) >= level ? 1 : 0;
+                float v = (n >= 3 && depth > 8 ? lum * 255 : Math.round(lum * 255)) >= level ? 1 : 0;
                 for (int i = 0; i < n; i++) {
                     out[i] = v;
                 }

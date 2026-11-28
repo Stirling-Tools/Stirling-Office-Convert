@@ -417,6 +417,33 @@ class PsdPageTest {
     }
 
     @Test
+    void sixteenBitColorThresholdComparesTheUnroundedLuminance() throws IOException {
+        PsdFixture f = new PsdFixture(1, 1);
+        f.hasMerged = false;
+        f.depth = 16;
+        f.flat(0).flat(0).flat(0);
+        PsdFixture.Layer picture = new PsdFixture.Layer().rect(0, 0, 1, 1);
+        picture.channels.put(0, new byte[0]);
+        picture.channels.put(1, new byte[0]);
+        picture.channels.put(2, new byte[0]);
+        picture.encoded.put(0, new byte[] {0, 0, 0x72, 0x72});
+        picture.encoded.put(1, new byte[] {0, 0, 0x6E, 0x6E});
+        picture.encoded.put(2, new byte[] {0, 0, (byte) 0x8E, (byte) 0x8D});
+        f.layers.add(picture);
+        PsdFixture.Layer threshold = new PsdFixture.Layer().rect(0, 0, 0, 0).block("thrs", new byte[] {0, 115, 0, 0});
+        threshold.channels.put(-1, new byte[0]);
+        threshold.channels.put(0, new byte[0]);
+        threshold.channels.put(1, new byte[0]);
+        threshold.channels.put(2, new byte[0]);
+        f.layers.add(threshold);
+        OfficeToPdf.Result r = convert(f, "threshold16.psd");
+        assertTrue(r.warnings().stream().noneMatch(w -> w.contains("damaged")), r.warnings().toString());
+        try (PDDocument pdf = open("threshold16.psd")) {
+            assertArrayEquals(new byte[6], samples(image(pdf.getPage(0))));
+        }
+    }
+
+    @Test
     void sixteenBitPosterizeSplitsTheLevelsAtTheirExactEdges() throws IOException {
         PsdFixture f = new PsdFixture(2, 1);
         f.hasMerged = false;
@@ -424,13 +451,15 @@ class PsdPageTest {
         f.depth = 16;
         f.flat(0);
         PsdFixture.Layer picture = new PsdFixture.Layer().rect(0, 0, 1, 2);
-        picture.channels.put(0, new byte[] {0x55, 0x56, 0x55, 0x54});
+        picture.channels.put(0, new byte[0]);
+        picture.encoded.put(0, new byte[] {0, 0, 0x55, 0x56, 0x55, 0x54});
         f.layers.add(picture);
         PsdFixture.Layer posterize = new PsdFixture.Layer().rect(0, 0, 0, 0).block("post", new byte[] {0, 3, 0, 0});
         posterize.channels.put(-1, new byte[0]);
         posterize.channels.put(0, new byte[0]);
         f.layers.add(posterize);
-        convert(f, "posterize16.psd");
+        OfficeToPdf.Result r = convert(f, "posterize16.psd");
+        assertTrue(r.warnings().stream().noneMatch(w -> w.contains("damaged")), r.warnings().toString());
         try (PDDocument pdf = open("posterize16.psd")) {
             assertArrayEquals(new byte[] {(byte) 0x80, 0, 0, 0}, samples(image(pdf.getPage(0))));
         }
