@@ -20,6 +20,8 @@ final class UofText {
 
     static final int MAX_NODES = 2_000_000;
 
+    private static final int RUN_CHECK_CHARS = 1 << 16;
+
     private final Element root;
 
     private final UofParts parts;
@@ -303,7 +305,16 @@ final class UofText {
 
     private void run(StringBuilder b, Element r, List<String> after, int depth) throws IOException {
         String rPr = "<w:rPr>" + runProps(Uof.kid(r, "句属性")) + "</w:rPr>";
+        int checked = b.length();
+        int children = 0;
         for (Element k : Uof.kids(r)) {
+            if ((++children & 1023) == 0) {
+                OfficeZip.checkNotInterrupted();
+            }
+            if (b.length() - checked > RUN_CHECK_CHARS) {
+                grow(b);
+                checked = b.length();
+            }
             switch (Uof.name(k)) {
                 case "文本串" -> {
                     String t = k.getTextContent();

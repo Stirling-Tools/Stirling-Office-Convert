@@ -403,6 +403,17 @@ class ChineseFormatsHostileTest {
     }
 
     @Test
+    void aUofRunRepeatingALongFontNameIsRefusedWithinBounds() {
+        String name = "A".repeat(4_096);
+        String xml = UOF + "vnd.uof.text\"><uof:文字处理><字:主体><字:段落><字:句><字:句属性><字:字体 字:西文字体引用=\""
+                + name + "\"/></字:句属性>" + "<字:制表符/>".repeat(100_000) + "</字:句></字:段落></字:主体>"
+                + "</uof:文字处理></uof:UOF>";
+        Allocation.Measured m = Allocation.measure(() -> convert("tabs.uot", xml.getBytes(StandardCharsets.UTF_8)));
+        assertInstanceOf(IOException.class, m.failure());
+        assertTrue(m.failure().getMessage().contains("too large"), m.failure().getMessage());
+    }
+
+    @Test
     void wpsFilesWithMacrosConvertWithoutRunningOrCarryingThem() throws IOException {
         ByteArrayOutputStream docx = new ByteArrayOutputStream();
         try (XWPFDocument doc = new XWPFDocument()) {
