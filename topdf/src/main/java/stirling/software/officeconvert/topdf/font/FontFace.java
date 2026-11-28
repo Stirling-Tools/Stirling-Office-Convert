@@ -100,6 +100,11 @@ public final class FontFace {
         return widths != null;
     }
 
+    public float[] officeLine() {
+        return substituted() && original != null && original.winAscent() + original.winDescent() > 0
+                ? new float[] {original.winAscent(), original.winDescent()} : null;
+    }
+
     public boolean keepsWidths() {
         return !substituted() || emulated() || OfficeFonts.compatible(requestedFamily(), family());
     }

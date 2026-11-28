@@ -96,7 +96,18 @@ record FontMeasure(int unitsPerEm, int digit, int winAscent, int winDescent, int
             FontFace standIn = calibri ? null : fonts.find(family, false, false);
             return standIn != null && standIn.keepsWidths() ? known.withHinting(standIn) : known;
         }
-        return of(fonts.find(family == null ? "Calibri" : family, bold, italic), null, true);
+        FontFace standIn = fonts.find(family == null ? "Calibri" : family, bold, italic);
+        return withOfficeLine(of(standIn, null, true), standIn.eastAsian() ? standIn.officeLine() : null);
+    }
+
+    private static FontMeasure withOfficeLine(FontMeasure m, float[] line) {
+        if (line == null) {
+            return m;
+        }
+        int ascent = Math.round(line[0] * m.unitsPerEm);
+        int descent = Math.round(line[1] * m.unitsPerEm);
+        return new FontMeasure(m.unitsPerEm, m.digit, ascent, descent, ascent, -descent, 0, false, true, m.hinting,
+                m.estimated, m.screenDigits, m.screenLines);
     }
 
     static FontMeasure of(FontFace face) {
