@@ -16,7 +16,6 @@ public final class JpxSplit {
     private static final int PLT = 0xFF58;
     private static final int QCD = 0xFF5C;
     private static final int QCC = 0xFF5D;
-    private static final int CRG = 0xFF63;
     private static final int COM = 0xFF64;
     private static final int SOT = 0xFF90;
     private static final int SOD = 0xFF93;
@@ -326,7 +325,7 @@ public final class JpxSplit {
                 out.write(data, from, to - from);
                 return true;
             }
-            case TLM, PLM, PLT, CRG -> {
+            case TLM, PLM, PLT -> {
                 return true;
             }
             default -> {

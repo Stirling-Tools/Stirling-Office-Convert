@@ -1,6 +1,7 @@
 package stirling.software.officeconvert.jpx;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.Arrays;
@@ -48,7 +49,7 @@ class BlockEncoderTest {
             if (e.passes() > 0) {
                 int[] all = decode(e, w, h, orient, e.passes(), e.data.length);
                 for (int i = 0; i < v.length; i++) {
-                    assertTrue(Math.abs(all[i] / 2) == Math.abs(v[i]), "lossless value " + i);
+                    assertEquals(v[i], all[i] / 2, "lossless value " + i);
                 }
             }
         }

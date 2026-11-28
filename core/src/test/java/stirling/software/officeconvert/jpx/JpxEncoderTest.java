@@ -1,7 +1,9 @@
 package stirling.software.officeconvert.jpx;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -218,5 +220,66 @@ class JpxEncoderTest {
                 new int[] {8}, null, JpxEncoder.Colour.GREY, -1));
         assertThrows(IllegalArgumentException.class, () -> new JpxEncoder.Planes(10, 10, new int[][] {new int[100]},
                 new int[] {17}, null, JpxEncoder.Colour.GREY, -1));
+    }
+
+    @Test
+    void exactModeRefusesSamplesItCannotKeep() {
+        java.awt.color.ColorSpace grey = java.awt.color.ColorSpace.getInstance(java.awt.color.ColorSpace.CS_GRAY);
+        java.awt.image.ComponentColorModel cm = new java.awt.image.ComponentColorModel(grey, false, false,
+                java.awt.Transparency.OPAQUE, java.awt.image.DataBuffer.TYPE_FLOAT);
+        java.awt.image.BufferedImage img = new java.awt.image.BufferedImage(cm, cm.createCompatibleWritableRaster(8, 8),
+                false, null);
+        img.getRaster().setSample(3, 3, 0, 0.123456f);
+        assertThrows(IllegalArgumentException.class, () -> JpxEncoder.encode(img, JpxEncoder.Options.exact()));
+        assertDoesNotThrow(() -> JpxEncoder.encode(img, JpxEncoder.Options.rate(1)));
+    }
+
+    @Test
+    void samplesChangedAfterCheckingAreRefused() {
+        int[] row = new int[16];
+        JpxEncoder.Planes p = new JpxEncoder.Planes(4, 4, new int[][] {row}, new int[] {1}, null,
+                JpxEncoder.Colour.GREY, -1);
+        row[5] = 2;
+        assertThrows(IllegalArgumentException.class, () -> JpxEncoder.encode(p, JpxEncoder.Options.exact()));
+        p.samples()[0][5] = 3;
+        assertThrows(IllegalArgumentException.class, () -> JpxEncoder.encode(p, JpxEncoder.Options.rate(1)));
+    }
+
+    @Test
+    void aNegativeMeasuredPsnrStillSearches() {
+        JpxEncoder.Planes source = new JpxEncoder.Planes(1, 1, new int[][] {{1}, {0}}, new int[] {1, 16}, null,
+                JpxEncoder.Colour.GREY, 1);
+        JpxEncoder.Planes reference = new JpxEncoder.Planes(1, 1, new int[][] {{1}, {65535}}, new int[] {1, 16},
+                null, JpxEncoder.Colour.GREY, 1);
+        assertTrue(source.psnr(reference) < 0);
+        assertDoesNotThrow(() -> JpxEncoder.encodeAsClose(source, reference, 1 << 20));
+    }
+
+    @Test
+    void subsampledPicturesAreComparedOnTheirOwnGrids() throws IOException {
+        JpxEncoder.Planes source = subsampled(64, 64, new int[] {1, 2, 2}, new int[] {1, 2, 2}, 8, 5);
+        int[][] s = source.samples();
+        for (int c = 0; c < s.length; c++) {
+            s[c] = s[c].clone();
+            for (int i = 0; i < s[c].length; i += 7) {
+                s[c][i] = Math.clamp(s[c][i] + 9, 0, 255);
+            }
+        }
+        JpxEncoder.Planes reference = new JpxEncoder.Planes(64, 64, s, source.depths(), null, source.colour(), -1,
+                source.dx(), source.dy());
+        byte[] data = JpxEncoder.encodeAsClose(source, reference, 1 << 20);
+        assertNotNull(data);
+        assertEquals(3, nativeSamples(data).length);
+    }
+
+    @Test
+    void colourOutsideThePartOneSetIsBrandedJpx() throws IOException {
+        JpxEncoder.Planes cmyk = photo(16, 16, 4, 8, 2);
+        JpxEncoder.Planes tagged = new JpxEncoder.Planes(16, 16, cmyk.samples(), cmyk.depths(), null,
+                JpxEncoder.Colour.CMYK, -1);
+        assertEquals("jpx ", new String(JpxEncoder.encode(tagged, JpxEncoder.Options.exact()), 20, 4,
+                java.nio.charset.StandardCharsets.US_ASCII));
+        assertEquals("jp2 ", new String(JpxEncoder.encode(photo(16, 16, 3, 8, 2), JpxEncoder.Options.exact()), 20, 4,
+                java.nio.charset.StandardCharsets.US_ASCII));
     }
 }

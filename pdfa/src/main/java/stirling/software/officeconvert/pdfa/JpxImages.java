@@ -10,11 +10,13 @@ import java.io.IOException;
 import java.io.InterruptedIOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.Map;
 
 import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSBase;
+import org.apache.pdfbox.cos.COSInteger;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSStream;
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -217,6 +219,9 @@ final class JpxImages {
         int[][] sizes = new int[parts.length][];
         for (int i = 0; i < parts.length; i++) {
             sizes[i] = JpxDecoder.size(parts[i]);
+            if (!onReferenceGrid(parts[i], sizes[i]) || !sameDepths(parts[i])) {
+                return null;
+            }
             wrapped[i] = JpxHeader.wrap(parts[i], sizes[i][0], sizes[i][1]);
             JpxHeader w = JpxHeader.parse(wrapped[i]);
             if (w == null || !w.allowedInPdfA(colourSpace != null || i > 0)) {
@@ -224,6 +229,37 @@ final class JpxImages {
             }
         }
         return new Copy(wrapped, sizes, n);
+    }
+
+    private static boolean onReferenceGrid(byte[] codestream, int[] size) {
+        ByteBuffer b = ByteBuffer.wrap(codestream);
+        return b.capacity() >= 42 && b.getInt(8) - b.getInt(16) == size[0] && b.getInt(12) - b.getInt(20) == size[1];
+    }
+
+    private static boolean sameDepths(byte[] codestream) {
+        ByteBuffer b = ByteBuffer.wrap(codestream);
+        int components = b.getShort(40) & 0xFFFF;
+        if (b.capacity() < 42 + 3 * components) {
+            return false;
+        }
+        for (int i = 1; i < components; i++) {
+            if (b.get(42 + 3 * i) != b.get(42)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static COSArray matte(COSStream s, int colours) {
+        COSBase matte = s.getDictionaryObject(COSName.getPDFName("Matte"));
+        if (matte instanceof COSArray m && m.size() == colours) {
+            return m;
+        }
+        COSArray black = new COSArray();
+        for (int i = 0; i < colours; i++) {
+            black.add(COSInteger.ZERO);
+        }
+        return black;
     }
 
     private static boolean uniform(JpxImage jpx, int[] colours) {
@@ -271,9 +307,8 @@ final class JpxImages {
             mask.setInt(COSName.WIDTH, copy.sizes()[1][0]);
             mask.setInt(COSName.HEIGHT, copy.sizes()[1][1]);
             mask.setItem(COSName.COLORSPACE, COSName.DEVICEGRAY);
-            COSBase matte = s.getDictionaryObject(COSName.getPDFName("Matte"));
-            if (smaskInData == 2 && matte instanceof COSArray m && m.size() == copy.colours()) {
-                mask.setItem(COSName.getPDFName("Matte"), m);
+            if (smaskInData == 2) {
+                mask.setItem(COSName.getPDFName("Matte"), matte(s, copy.colours()));
             }
             s.setItem(COSName.SMASK, mask);
         }

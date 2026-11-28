@@ -98,6 +98,10 @@ class JpxImagesTest {
     }
 
     private Path page(byte[] jpx, int width, int height, boolean smaskInData, COSBase colourSpace) throws Exception {
+        return page(jpx, width, height, smaskInData ? 1 : 0, colourSpace);
+    }
+
+    private Path page(byte[] jpx, int width, int height, int smaskInData, COSBase colourSpace) throws Exception {
         Path in = dir.resolve("jpx.pdf");
         try (PDDocument d = new PDDocument()) {
             PDPage p = Samples.page(d);
@@ -110,8 +114,8 @@ class JpxImagesTest {
             img.setItem(COSName.FILTER, COSName.JPX_DECODE);
             img.setInt(COSName.WIDTH, width);
             img.setInt(COSName.HEIGHT, height);
-            if (smaskInData) {
-                img.setInt(COSName.getPDFName("SMaskInData"), 1);
+            if (smaskInData > 0) {
+                img.setInt(COSName.getPDFName("SMaskInData"), smaskInData);
             }
             if (colourSpace != null) {
                 img.setItem(COSName.COLORSPACE, colourSpace);
@@ -576,6 +580,85 @@ class JpxImagesTest {
                 JpxRaster kept = JpxDecoder.decode(samples(image, true)).raster();
                 for (int c = 1; c < kept.components(); c++) {
                     assertEquals(kept.depth(0), kept.depth(c));
+                }
+            }
+        }
+    }
+
+    @Test
+    void premultipliedAlphaGetsABlackMatteWhenTheFileGivesNone() throws Exception {
+        JpxEncoder.Planes source = texturedWithAlpha(new int[] {8, 8, 8, 8}, new int[] {30, 120, 220});
+        Path in = page(JpxEncoder.encode(source, JpxEncoder.Options.rate(0.4)), 320, 240, 2, null);
+        Path out = dir.resolve("2b-matte.pdf");
+        PdfToPdfA.convert(in, out, PdfToPdfA.Options.defaults().level(PdfALevel.A2B));
+        VeraPdf.assertCompliant(out, PdfALevel.A2B);
+        try (PDDocument d = Loader.loadPDF(out.toFile())) {
+            COSStream mask = (COSStream) largestImage(d).getDictionaryObject(COSName.SMASK);
+            COSArray matte = (COSArray) mask.getDictionaryObject(COSName.getPDFName("Matte"));
+            assertEquals(3, matte.size());
+            for (int i = 0; i < 3; i++) {
+                assertEquals(0f, ((org.apache.pdfbox.cos.COSNumber) matte.getObject(i)).floatValue());
+            }
+        }
+    }
+
+    @Test
+    void anAlphaFirstSplitKeepsAllThreeColours() throws Exception {
+        JpxEncoder.Planes last = texturedWithAlpha(new int[] {8, 8, 8, 8}, new int[] {30, 120, 220});
+        int[][] s = last.samples();
+        JpxEncoder.Planes first = new JpxEncoder.Planes(320, 240, new int[][] {s[3], s[0], s[1], s[2]},
+                new int[] {8, 8, 8, 8}, null, JpxEncoder.Colour.SRGB, 0);
+        byte[] jp2 = JpxEncoder.encode(first, JpxEncoder.Options.rate(0.4));
+        JpxRaster original = JpxDecoder.decode(jp2).raster();
+        Path in = page(jp2, 320, 240, true);
+        Path out = dir.resolve("2b-alpha-first.pdf");
+        PdfToPdfA.convert(in, out, PdfToPdfA.Options.defaults().level(PdfALevel.A2B));
+        VeraPdf.assertCompliant(out, PdfALevel.A2B);
+        try (PDDocument d = Loader.loadPDF(out.toFile())) {
+            COSStream image = largestImage(d);
+            COSStream mask = (COSStream) image.getDictionaryObject(COSName.SMASK);
+            assertEquals(COSName.JPX_DECODE, image.getDictionaryObject(COSName.FILTER));
+            JpxRaster kept = JpxDecoder.decode(samples(image, true)).raster();
+            JpxRaster alpha = JpxDecoder.decode(samples(mask, true)).raster();
+            for (int y = 0; y < 240; y += 3) {
+                for (int x = 0; x < 320; x += 3) {
+                    for (int c = 0; c < 3; c++) {
+                        assertEquals(original.sample(c + 1, x, y), kept.sample(c, x, y));
+                    }
+                    assertEquals(original.sample(0, x, y), alpha.sample(0, x, y));
+                }
+            }
+        }
+    }
+
+    @Test
+    void aSubsampledAlphaIsNotSplitIntoAMismatchedHeader() throws Exception {
+        JpxEncoder.Planes full = texturedWithAlpha(new int[] {8, 8, 8, 8}, new int[] {30, 120, 220});
+        int[][] s = full.samples();
+        int[] half = new int[160 * 120];
+        for (int y = 0; y < 120; y++) {
+            for (int x = 0; x < 160; x++) {
+                half[y * 160 + x] = s[3][2 * y * 320 + 2 * x];
+            }
+        }
+        JpxEncoder.Planes sub = new JpxEncoder.Planes(320, 240, new int[][] {s[0], s[1], s[2], half},
+                new int[] {8, 8, 8, 8}, null, JpxEncoder.Colour.SRGB, 3, new int[] {1, 1, 1, 2},
+                new int[] {1, 1, 1, 2});
+        Path in = page(JpxEncoder.encode(sub, JpxEncoder.Options.rate(0.4)), 320, 240, true);
+        Path out = dir.resolve("2b-sub-alpha.pdf");
+        PdfToPdfA.convert(in, out, PdfToPdfA.Options.defaults().level(PdfALevel.A2B));
+        VeraPdf.assertCompliant(out, PdfALevel.A2B);
+        try (PDDocument d = Loader.loadPDF(out.toFile())) {
+            COSStream image = largestImage(d);
+            COSStream mask = (COSStream) image.getDictionaryObject(COSName.SMASK);
+            for (COSStream st : new COSStream[] {image, mask}) {
+                if (COSName.JPX_DECODE.equals(st.getDictionaryObject(COSName.FILTER))) {
+                    byte[] data = samples(st, true);
+                    int ihdr = new String(data, java.nio.charset.StandardCharsets.ISO_8859_1).indexOf("ihdr") + 4;
+                    int jp2c = new String(data, java.nio.charset.StandardCharsets.ISO_8859_1).indexOf("jp2c") + 4;
+                    java.nio.ByteBuffer b = java.nio.ByteBuffer.wrap(data);
+                    assertEquals(b.getInt(jp2c + 8) - b.getInt(jp2c + 16), b.getInt(ihdr + 4));
+                    assertEquals(b.getInt(jp2c + 12) - b.getInt(jp2c + 20), b.getInt(ihdr));
                 }
             }
         }

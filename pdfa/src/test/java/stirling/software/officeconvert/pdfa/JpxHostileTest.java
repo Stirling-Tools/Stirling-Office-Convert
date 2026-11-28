@@ -132,7 +132,7 @@ class JpxHostileTest {
     }
 
     @Test
-    void referencesInsideAJp2FileAreNeverFollowed() throws Exception {
+    void referencesInsideAJp2FileNeverReachTheOutput() throws Exception {
         Path secret = secret();
         String uri = secret.toUri().toString();
         byte[] xml = ("<?xml version=\"1.0\"?><!DOCTYPE x [<!ENTITY e SYSTEM \"" + uri + "\">"

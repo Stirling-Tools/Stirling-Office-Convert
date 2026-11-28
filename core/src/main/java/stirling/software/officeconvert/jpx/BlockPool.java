@@ -46,6 +46,7 @@ final class BlockPool {
                 interrupted(Thread.currentThread());
                 job.run(coder, own);
             }
+            interrupted(Thread.currentThread());
             return;
         }
         Thread owner = Thread.currentThread();
@@ -61,6 +62,7 @@ final class BlockPool {
         drain(jobs, next, stop, failure, owner, coder, own);
         for (Helper h : helpers) {
             if (h.claimed.compareAndSet(false, true)) {
+                h.jobs = null;
                 continue;
             }
             h.join();
@@ -102,7 +104,7 @@ final class BlockPool {
 
         final AtomicBoolean claimed = new AtomicBoolean();
 
-        private final List<Job> jobs;
+        private List<Job> jobs;
         private final AtomicInteger next;
         private final AtomicBoolean stop;
         private final AtomicReference<Throwable> failure;

@@ -3,6 +3,7 @@ package stirling.software.officeconvert.pdfa;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InterruptedIOException;
 import java.io.OutputStream;
 
 import org.apache.pdfbox.cos.COSBase;
@@ -24,6 +25,28 @@ final class JpxRecode {
 
     static PDImageXObject smaller(PDDocument doc, BufferedImage image, PDImageXObject current, boolean lossy)
             throws IOException {
+        try {
+            return attempt(doc, image, current, lossy);
+        } catch (InterruptedIOException e) {
+            throw e;
+        } catch (IOException e) {
+            return current;
+        }
+    }
+
+    static COSStream smaller(PDDocument doc, JpxEncoder.Planes planes, COSStream current, COSBase colourSpace)
+            throws IOException {
+        try {
+            return attempt(doc, planes, current, colourSpace);
+        } catch (InterruptedIOException e) {
+            throw e;
+        } catch (IOException e) {
+            return current;
+        }
+    }
+
+    private static PDImageXObject attempt(PDDocument doc, BufferedImage image, PDImageXObject current, boolean lossy)
+            throws IOException {
         long samples = (long) image.getWidth() * image.getHeight() * image.getRaster().getNumBands();
         if (samples > MAX_SAMPLES) {
             return current;
@@ -42,7 +65,7 @@ final class JpxRecode {
         return stream(doc, jpx, planes, current.getCOSObject().getDictionaryObject(COSName.COLORSPACE));
     }
 
-    static COSStream smaller(PDDocument doc, JpxEncoder.Planes planes, COSStream current, COSBase colourSpace)
+    private static COSStream attempt(PDDocument doc, JpxEncoder.Planes planes, COSStream current, COSBase colourSpace)
             throws IOException {
         long samples = (long) planes.width() * planes.height() * planes.depths().length;
         if (samples > MAX_SAMPLES || current.getLength() * 8 < samples * FLAT_BITS) {

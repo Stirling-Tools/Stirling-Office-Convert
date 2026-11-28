@@ -63,6 +63,7 @@ final class EncodeJob {
     private boolean saturated;
 
     EncodeJob(JpxEncoder.Planes planes, JpxEncoder.Options options) {
+        planes.checkRanges();
         this.planes = planes;
         this.options = options;
         reversible = options.lossless();
@@ -511,15 +512,19 @@ final class EncodeJob {
 
     private byte[] boxes(long codestream) {
         JpxEncoder.Colour colour = planes.colour();
+        byte[] icc = colour.icc();
+        boolean partOne = icc == null ? colour.enumerated() == JpxEncoder.Colour.SRGB.enumerated()
+                || colour.enumerated() == JpxEncoder.Colour.GREY.enumerated()
+                || colour.enumerated() == JpxEncoder.Colour.SYCC.enumerated() : JpxEncoder.restrictedIcc(icc);
         Markers m = new Markers();
         m.u32(12);
         m.tag("jP  ");
         m.u32(0x0D0A870A);
         m.u32(20);
         m.tag("ftyp");
-        m.tag("jp2 ");
+        m.tag(partOne ? "jp2 " : "jpx ");
         m.u32(0);
-        m.tag("jp2 ");
+        m.tag(partOne ? "jp2 " : "jpx ");
         boolean mixed = false;
         for (int c = 1; c < comps; c++) {
             mixed |= planes.depth(c) != planes.depth(0) || planes.isSigned(c) != planes.isSigned(0);
@@ -541,7 +546,6 @@ final class EncodeJob {
                 h.u8(planes.depth(c) - 1 | (planes.isSigned(c) ? 0x80 : 0));
             }
         }
-        byte[] icc = colour.icc();
         if (icc == null) {
             h.u32(15);
             h.tag("colr");
@@ -552,7 +556,7 @@ final class EncodeJob {
         } else {
             h.u32(11 + icc.length);
             h.tag("colr");
-            h.u8(JpxEncoder.restrictedIcc(icc) ? 2 : 3);
+            h.u8(partOne ? 2 : 3);
             h.u8(0);
             h.u8(0);
             h.raw(icc);

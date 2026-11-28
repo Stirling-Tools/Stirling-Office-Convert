@@ -72,8 +72,16 @@ class JpxSplitTest {
                 bad[at] = (byte) rnd.nextInt(256);
             }
             try {
-                byte[][] parts = JpxSplit.split(bad, new int[][] {{0, 1, 2}, {3}});
+                int[][] groups = {{0, 1, 2}, {3}};
+                byte[][] parts = JpxSplit.split(bad, groups);
                 if (parts != null) {
+                    int[][] whole = JpxEncoderTest.nativeSamples(bad);
+                    for (int g = 0; g < groups.length; g++) {
+                        int[][] part = JpxEncoderTest.nativeSamples(parts[g]);
+                        for (int k = 0; k < groups[g].length; k++) {
+                            assertArrayEquals(whole[groups[g][k]], part[k]);
+                        }
+                    }
                     split++;
                 }
             } catch (IOException e) {
@@ -92,6 +100,24 @@ class JpxSplitTest {
         long total = parts[0].length + parts[1].length;
         assertNotNull(JpxSplit.split(data, groups, null, total));
         assertNull(JpxSplit.split(data, groups, null, total - 1));
+    }
+
+    @Test
+    void aCodestreamWithComponentRegistrationIsRefused() throws IOException {
+        byte[] data = JpxEncoder.encode(withAlpha(48, 40, 3), JpxEncoder.Options.exact().withCodestream(true));
+        int at = 4 + ((data[4] & 0xFF) << 8 | data[5] & 0xFF);
+        byte[] crg = new byte[4 + 4 * 4];
+        crg[0] = (byte) 0xFF;
+        crg[1] = 0x63;
+        crg[3] = (byte) (crg.length - 2);
+        crg[7] = 1;
+        byte[] with = new byte[data.length + crg.length];
+        System.arraycopy(data, 0, with, 0, at);
+        System.arraycopy(crg, 0, with, at, crg.length);
+        System.arraycopy(data, at, with, at + crg.length, data.length - at);
+        assertNotNull(JpxEncoderTest.nativeSamples(with));
+        assertNull(JpxSplit.split(with, new int[][] {{0, 1, 2}, {3}}));
+        assertNotNull(JpxSplit.split(data, new int[][] {{0, 1, 2}, {3}}));
     }
 
     @Test

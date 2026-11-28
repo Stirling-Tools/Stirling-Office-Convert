@@ -114,7 +114,7 @@ Every page render goes through one guarded renderer, so these limits hold for pa
 | Decoded image size | 256 MB, counting the raster PDFBox builds | the image is drawn at the smallest subsampling (up to 1/16) that fits; beyond that it is left out |
 | JPEG 2000 samples | 2^26, judged from the codestream the decoder reads; decoding needs about 6 bytes of working memory per sample (some 400 MB at the limit), outside the 256 MB decoded-image figure | the image is left out |
 | Decoded stream size | 256 MB | a content stream is emptied, an image refused |
-| JPEG 2000 re-encoding in PDF/A parts 2 to 4 and the optimizer | 2^22 samples (width × height × components); the attempt holds about 20 bytes per sample | the picture is stored as JPEG or lossless, as before |
+| JPEG 2000 re-encoding in PDF/A parts 2 to 4 and the optimizer | 2^22 samples (width × height × components); the attempt holds about 20 bytes per sample | the picture is stored as JPEG or lossless, as before; the optimizer keeps the original stream when neither saves enough |
 | Path segments in PDF/A flattening (fill, stroke and clip paths) | 100,000 | flattening fails |
 | Transparency group nesting in PDF/A flattening | 64 | flattening fails |
 | PDF/A flattening raster | 40 M pixels | the resolution is lowered |

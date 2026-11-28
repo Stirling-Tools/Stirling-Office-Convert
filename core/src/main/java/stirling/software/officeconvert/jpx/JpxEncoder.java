@@ -1,5 +1,6 @@
 package stirling.software.officeconvert.jpx;
 
+import java.awt.Graphics2D;
 import java.awt.color.ColorSpace;
 import java.awt.color.ICC_ColorSpace;
 import java.awt.color.ICC_Profile;
@@ -87,17 +88,8 @@ public final class JpxEncoder {
                 if (depths[c] < 1 || depths[c] > 16) {
                     throw new IllegalArgumentException("Component depths run from 1 to 16 bits, was " + depths[c]);
                 }
-                boolean sign = signed != null && signed[c];
-                int lo = sign ? -(1 << (depths[c] - 1)) : 0;
-                int hi = sign ? (1 << (depths[c] - 1)) - 1 : (1 << depths[c]) - 1;
-                int[] plane = samples[c];
-                for (int i = 0; i < pixels; i++) {
-                    if (plane[i] < lo || plane[i] > hi) {
-                        throw new IllegalArgumentException("Component " + c + " has a sample of " + plane[i]
-                                + ", outside " + lo + " to " + hi);
-                    }
-                }
             }
+            ranges(width, height, samples, depths, signed, dx, dy);
             if (alpha < -1 || alpha >= n) {
                 throw new IllegalArgumentException("The alpha component must be a component or -1, was " + alpha);
             }
@@ -137,6 +129,27 @@ public final class JpxEncoder {
 
         public int height(int c) {
             return Math.ceilDiv(height, dy[c]);
+        }
+
+        void checkRanges() {
+            ranges(width, height, samples, depths, signed, dx, dy);
+        }
+
+        private static void ranges(int width, int height, int[][] samples, int[] depths, boolean[] signed, int[] dx,
+                int[] dy) {
+            for (int c = 0; c < samples.length; c++) {
+                long pixels = (long) Math.ceilDiv(width, dx[c]) * Math.ceilDiv(height, dy[c]);
+                boolean sign = signed != null && signed[c];
+                int lo = sign ? -(1 << (depths[c] - 1)) : 0;
+                int hi = sign ? (1 << (depths[c] - 1)) - 1 : (1 << depths[c]) - 1;
+                int[] plane = samples[c];
+                for (int i = 0; i < pixels; i++) {
+                    if (plane[i] < lo || plane[i] > hi) {
+                        throw new IllegalArgumentException("Component " + c + " has a sample of " + plane[i]
+                                + ", outside " + lo + " to " + hi);
+                    }
+                }
+            }
         }
 
         private static int[] ones(int n) {
@@ -313,9 +326,17 @@ public final class JpxEncoder {
 
     private static final double RESOLUTION = 0.05;
 
+    private static final double MIN_PSNR = 1;
+
     private JpxEncoder() {}
 
     public static byte[] encode(BufferedImage image, Options options) throws IOException {
+        Objects.requireNonNull(image, "image");
+        Objects.requireNonNull(options, "options");
+        if (options.lossless() && wide(image)) {
+            throw new IllegalArgumentException(
+                    "Exact JPEG 2000 cannot keep floating-point or wider than 16-bit samples");
+        }
         return encode(planes(image), options);
     }
 
@@ -334,7 +355,7 @@ public final class JpxEncoder {
             return data.length < maxBytes ? data : null;
         }
         double ssim = source.ssim(reference);
-        EncodeJob job = new EncodeJob(source, Options.quality(psnr));
+        EncodeJob job = new EncodeJob(source, Options.quality(Math.max(psnr, MIN_PSNR)));
         job.prepare();
         byte[] best = null;
         double failed = Double.NEGATIVE_INFINITY;
@@ -376,39 +397,36 @@ public final class JpxEncoder {
     private static Planes decoded(byte[] data, Planes like) throws IOException {
         JpxRaster r = JpxDecoder.decode(data).raster();
         int n = r.components();
-        int w = r.width();
-        int h = r.height();
-        int[][] s = new int[n][w * h];
+        if (n != like.count()) {
+            throw new IOException("The JPEG 2000 copy decodes to " + n + " components");
+        }
+        int[][] s = new int[n][];
         for (int c = 0; c < n; c++) {
-            boolean signed = r.signed(c);
-            int shift = signed ? 1 << (r.depth(c) - 1) : 0;
+            int w = like.width(c);
+            int h = like.height(c);
+            if (r.width(c) != w || r.height(c) != h) {
+                throw new IOException("The JPEG 2000 copy decodes to a different grid");
+            }
+            int shift = r.signed(c) ? 1 << (r.depth(c) - 1) : 0;
+            s[c] = new int[w * h];
             for (int y = 0; y < h; y++) {
                 for (int x = 0; x < w; x++) {
-                    s[c][y * w + x] = r.imageSample(c, x, y) - shift;
+                    s[c][y * w + x] = r.sample(c, x, y) - shift;
                 }
             }
         }
-        return new Planes(w, h, s, like.depths, like.signed, like.colour, like.alpha);
+        return new Planes(like.width, like.height, s, like.depths, like.signed, like.colour, like.alpha, like.dx,
+                like.dy);
     }
 
     public static Planes planes(BufferedImage image) {
         BufferedImage img = image;
         ColorModel cm = img.getColorModel();
-        if (cm instanceof IndexColorModel) {
-            BufferedImage rgb = new BufferedImage(img.getWidth(), img.getHeight(),
-                    cm.hasAlpha() ? BufferedImage.TYPE_INT_ARGB : BufferedImage.TYPE_INT_RGB);
-            rgb.createGraphics().drawImage(img, 0, 0, null);
-            img = rgb;
+        if (cm instanceof IndexColorModel || wide(img)) {
+            img = redrawn(img, cm.hasAlpha());
             cm = img.getColorModel();
         }
-        if (wide(img)) {
-            BufferedImage rgb = new BufferedImage(img.getWidth(), img.getHeight(),
-                    cm.hasAlpha() ? BufferedImage.TYPE_INT_ARGB : BufferedImage.TYPE_INT_RGB);
-            rgb.createGraphics().drawImage(img, 0, 0, null);
-            img = rgb;
-            cm = img.getColorModel();
-        }
-                if (cm.isAlphaPremultiplied()) {
+        if (cm.isAlphaPremultiplied()) {
             img = copy(img);
             img.coerceData(false);
             cm = img.getColorModel();
@@ -442,6 +460,18 @@ public final class JpxEncoder {
         }
         int alpha = cm.hasAlpha() ? bands - 1 : -1;
         return new Planes(w, h, samples, depths, null, colour, alpha);
+    }
+
+    private static BufferedImage redrawn(BufferedImage img, boolean alpha) {
+        BufferedImage rgb = new BufferedImage(img.getWidth(), img.getHeight(),
+                alpha ? BufferedImage.TYPE_INT_ARGB : BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = rgb.createGraphics();
+        try {
+            g.drawImage(img, 0, 0, null);
+        } finally {
+            g.dispose();
+        }
+        return rgb;
     }
 
     private static boolean wide(BufferedImage img) {
