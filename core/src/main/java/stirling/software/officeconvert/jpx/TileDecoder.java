@@ -81,7 +81,15 @@ final class TileDecoder {
         this.scratch = scratch;
     }
 
-    void decode(int t) throws IOException {
+    record Parsed(TileComponent[] comps, CodingDefaults cod, byte[] body) {
+
+        boolean mct() {
+            return cod.mct() && comps.length >= 3 && sameSize(comps);
+        }
+    }
+
+    static Parsed parse(Codestream cs, int t, int reduce, long maxSamples) throws IOException {
+        Siz siz = cs.siz;
         TileStream ts = cs.tiles[t];
         MarkerSet tile = ts.markers;
         MarkerSet main = cs.main;
@@ -98,17 +106,21 @@ final class TileDecoder {
         if (samples > maxSamples) {
             throw new JpxException("JPEG 2000 tile is too large");
         }
-        if (ts.present()) {
-            byte[][] holder = new byte[1][];
-            int[] range = ts.body(cs.data, holder);
-            PacketReader reader = new PacketReader(comps, holder[0], range[0], range[1],
-                    ts.separateHeaders() ? ts.headers() : null, cod.sop(), cod.eph());
-            List<Poc> pocs = tile.pocs.isEmpty() ? main.pocs : tile.pocs;
-            Progression.run(comps, siz, rect, cod.layers(), cod.order(), pocs, reader);
-            reconstruct(comps, cod, holder[0]);
-        } else {
-            reconstruct(comps, cod, new byte[0]);
+        if (!ts.present()) {
+            return new Parsed(comps, cod, new byte[0]);
         }
+        byte[][] holder = new byte[1][];
+        int[] range = ts.body(cs.data, holder);
+        PacketReader reader = new PacketReader(comps, holder[0], range[0], range[1],
+                ts.separateHeaders() ? ts.headers() : null, cod.sop(), cod.eph());
+        List<Poc> pocs = tile.pocs.isEmpty() ? main.pocs : tile.pocs;
+        Progression.run(comps, siz, rect, cod.layers(), cod.order(), pocs, reader);
+        return new Parsed(comps, cod, holder[0]);
+    }
+
+    void decode(int t) throws IOException {
+        Parsed p = parse(cs, t, reduce, maxSamples);
+        reconstruct(p.comps(), p.cod(), p.body());
     }
 
     private void reconstruct(TileComponent[] comps, CodingDefaults cod, byte[] source) throws IOException {

@@ -2,11 +2,13 @@ package stirling.software.officeconvert.jpx;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
+import java.util.Random;
 
 import org.junit.jupiter.api.Test;
 
@@ -126,5 +128,56 @@ class JpxSplitTest {
         assertNull(JpxSplit.split(data, new int[][] {{1}}));
         assertNull(JpxSplit.split(data, new int[][] {{0, 0, 1}}));
         assertNull(JpxSplit.split(data, new int[][] {{}}));
+    }
+
+    private static Codestream codestream(byte[] data) throws IOException {
+        Jp2Boxes boxes = Jp2Boxes.read(data);
+        return Codestream.parse(data, boxes.codestreamStart, boxes.codestreamEnd);
+    }
+
+    @Test
+    void partsAcceptedWithoutDecodingDecodeExactly() throws IOException {
+        Random r = new Random(11);
+        JpxEncoder.Options[] options = {JpxEncoder.Options.exact(), JpxEncoder.Options.rate(0.7),
+            JpxEncoder.Options.quality(33).withTileSize(64), JpxEncoder.Options.exact().withLayers(3)
+                    .withOrder(JpxEncoder.Order.RLCP).withBlockSize(16),
+            JpxEncoder.Options.rate(1.5).withLayers(2).withOrder(JpxEncoder.Order.CPRL).withCodestream(true)};
+        int accepted = 0;
+        for (int k = 0; k < 20; k++) {
+            boolean grey = k % 3 == 0;
+            JpxEncoder.Planes p = withAlpha(40 + r.nextInt(150), 30 + r.nextInt(120), grey ? 1 : 3);
+            byte[] data = JpxEncoder.encode(p, options[k % options.length]);
+            int[][] groups = grey ? new int[][] {{0}, {1}} : new int[][] {{0, 1, 2}, {3}};
+            byte[][] parts = JpxSplit.split(data, groups);
+            assertNotNull(parts);
+            if (JpxSplit.sameDecode(codestream(data), groups, parts)) {
+                accepted++;
+            }
+            int[][] whole = JpxEncoderTest.nativeSamples(data);
+            for (int g = 0; g < groups.length; g++) {
+                int[][] part = JpxEncoderTest.nativeSamples(parts[g]);
+                for (int i = 0; i < groups[g].length; i++) {
+                    assertArrayEquals(whole[groups[g][i]], part[i]);
+                }
+            }
+        }
+        assertEquals(20, accepted);
+    }
+
+    @Test
+    void aChangedPartIsNotAcceptedWithoutDecoding() throws IOException {
+        byte[] data = JpxEncoder.encode(withAlpha(120, 90, 3), JpxEncoder.Options.rate(1));
+        int[][] groups = {{0, 1, 2}, {3}};
+        byte[][] parts = JpxSplit.split(data, groups);
+        assertNotNull(parts);
+        Codestream whole = codestream(data);
+        assertTrue(JpxSplit.sameDecode(whole, groups, parts));
+        for (int at : new int[] {parts[0].length - 40, parts[0].length / 2}) {
+            byte[][] changed = {parts[0].clone(), parts[1]};
+            changed[0][at] ^= 0x10;
+            assertFalse(JpxSplit.sameDecode(whole, groups, changed));
+        }
+        byte[][] swapped = {parts[1], parts[0]};
+        assertFalse(JpxSplit.sameDecode(whole, groups, swapped));
     }
 }

@@ -97,8 +97,152 @@ public final class JpxSplit {
         if (total > maxBytes) {
             return null;
         }
+        if (sameDecode(cs, groups, out)) {
+            return out;
+        }
         JpxRaster whole = decoded != null && decoded.reduce() == 0 ? decoded.raster() : JpxDecoder.decode(data).raster();
         return verified(whole, groups, out) ? out : null;
+    }
+
+    static boolean sameDecode(Codestream whole, int[][] groups, byte[][] parts) {
+        try {
+            for (int g = 0; g < groups.length; g++) {
+                if (!sameDecode(whole, groups[g], parts[g])) {
+                    return false;
+                }
+            }
+            return true;
+        } catch (IOException | RuntimeException e) {
+            return false;
+        }
+    }
+
+    private static boolean sameDecode(Codestream whole, int[] group, byte[] part) throws IOException {
+        if (part.length < 2 || u16(part, 0) != SOC) {
+            return false;
+        }
+        Codestream cs = Codestream.parse(part, 0, part.length);
+        Siz a = whole.siz;
+        Siz b = cs.siz;
+        if (b.components() != group.length || a.width() != b.width() || a.height() != b.height() || a.x0() != b.x0()
+                || a.y0() != b.y0() || a.tileWidth() != b.tileWidth() || a.tileHeight() != b.tileHeight()
+                || a.tileX0() != b.tileX0() || a.tileY0() != b.tileY0() || a.tiles() != b.tiles()
+                || whole.tiles.length != cs.tiles.length) {
+            return false;
+        }
+        long total = 0;
+        for (int i = 0; i < group.length; i++) {
+            int c = group[i];
+            if (a.depth()[c] != b.depth()[i] || a.signed()[c] != b.signed()[i] || a.dx()[c] != b.dx()[i]
+                    || a.dy()[c] != b.dy()[i]) {
+                return false;
+            }
+            total += (Siz.ceilDiv(b.width(), b.dx()[i]) - Siz.ceilDiv(b.x0(), b.dx()[i]))
+                    * (Siz.ceilDiv(b.height(), b.dy()[i]) - Siz.ceilDiv(b.y0(), b.dy()[i]));
+        }
+        ImageGrid grid = ImageGrid.of(b, 0);
+        long samples = Math.max(total, (long) grid.width() * grid.height() * group.length);
+        if (samples > JpxOptions.DEFAULT_MAX_SAMPLES) {
+            return false;
+        }
+        boolean colours = group.length >= 3 && group[0] == 0 && group[1] == 1 && group[2] == 2;
+        boolean touches = false;
+        for (int c : group) {
+            touches |= c < 3;
+        }
+        byte[][] scratch = {new byte[8192], new byte[8192]};
+        for (int t = 0; t < cs.tiles.length; t++) {
+            if (whole.tiles[t].present() != cs.tiles[t].present()) {
+                return false;
+            }
+            TileDecoder.Parsed pa = TileDecoder.parse(whole, t, 0, JpxOptions.DEFAULT_MAX_SAMPLES);
+            TileDecoder.Parsed pb = TileDecoder.parse(cs, t, 0, JpxOptions.DEFAULT_MAX_SAMPLES);
+            boolean mct = pa.mct();
+            if (pb.mct() != (mct && colours) || mct && touches && !colours) {
+                return false;
+            }
+            for (int i = 0; i < group.length; i++) {
+                if (!sameComponent(pa.comps()[group[i]], pa.body(), pb.comps()[i], pb.body(), scratch)) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    private static boolean sameComponent(TileComponent a, byte[] as, TileComponent b, byte[] bs, byte[][] scratch) {
+        if (a.x0 != b.x0 || a.y0 != b.y0 || a.x1 != b.x1 || a.y1 != b.y1 || a.roi != b.roi || a.top != b.top
+                || a.style.blockStyle() != b.style.blockStyle() || a.style.reversible() != b.style.reversible()
+                || a.resolutions.length != b.resolutions.length) {
+            return false;
+        }
+        for (int r = 0; r < a.resolutions.length; r++) {
+            Resolution ra = a.resolutions[r];
+            Resolution rb = b.resolutions[r];
+            if (ra.x0 != rb.x0 || ra.y0 != rb.y0 || ra.x1 != rb.x1 || ra.y1 != rb.y1 || ra.precincts() != rb.precincts()
+                    || ra.bands.length != rb.bands.length) {
+                return false;
+            }
+            for (int k = 0; k < ra.bands.length; k++) {
+                Band ba = ra.bands[k];
+                Band bb = rb.bands[k];
+                if (ba.orient != bb.orient || ba.x0 != bb.x0 || ba.y0 != bb.y0 || ba.x1 != bb.x1 || ba.y1 != bb.y1
+                        || ba.magnitudeBits != bb.magnitudeBits
+                        || Float.floatToIntBits(ba.step) != Float.floatToIntBits(bb.step)) {
+                    return false;
+                }
+            }
+            for (int k = 0; k < ra.precincts(); k++) {
+                Precinct pa = ra.existing(k);
+                Precinct pb = rb.existing(k);
+                if (pa == null || pb == null) {
+                    if (pa != pb) {
+                        return false;
+                    }
+                    continue;
+                }
+                for (int band = 0; band < ra.bands.length; band++) {
+                    CodeBlock[] ca = pa.bands()[band].blocks;
+                    CodeBlock[] cb = pb.bands()[band].blocks;
+                    if (ca.length != cb.length) {
+                        return false;
+                    }
+                    for (int j = 0; j < ca.length; j++) {
+                        if (!sameBlock(ca[j], as, cb[j], bs, scratch)) {
+                            return false;
+                        }
+                    }
+                }
+            }
+        }
+        return true;
+    }
+
+    private static boolean sameBlock(CodeBlock a, byte[] as, CodeBlock b, byte[] bs, byte[][] scratch) {
+        if (a.x0 != b.x0 || a.y0 != b.y0 || a.x1 != b.x1 || a.y1 != b.y1 || a.included != b.included
+                || a.passes != b.passes || a.zeroPlanes != b.zeroPlanes || a.segments.size() != b.segments.size()) {
+            return false;
+        }
+        for (int i = 0; i < a.segments.size(); i++) {
+            Segment sa = a.segments.get(i);
+            Segment sb = b.segments.get(i);
+            int n = sa.length();
+            if (sa.firstPass != sb.firstPass || sa.passes != sb.passes || n != sb.length()) {
+                return false;
+            }
+            byte[] x = sa.bytes(as, scratch[0]);
+            byte[] y = sb.bytes(bs, scratch[1]);
+            if (x.length > scratch[0].length) {
+                scratch[0] = x;
+            }
+            if (y.length > scratch[1].length) {
+                scratch[1] = y;
+            }
+            if (!java.util.Arrays.equals(x, 0, n, y, 0, n)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static int[] map(int[] group, int n) {
