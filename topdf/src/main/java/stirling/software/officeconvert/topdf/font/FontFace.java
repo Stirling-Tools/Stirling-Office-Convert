@@ -403,6 +403,24 @@ public final class FontFace {
         return stretch == 1 ? k : Math.round(k * stretch);
     }
 
+    public int pairKerning(int left, int right) {
+        if (symbols != null) {
+            return 0;
+        }
+        int k = program.pairKerning(program.glyph(mapped(left)), program.glyph(mapped(right)));
+        return stretch == 1 ? k : Math.round(k * stretch);
+    }
+
+    public float subscriptOffset() {
+        int v = symbols != null ? 0 : program.scriptOffsets()[0];
+        return v > 0 ? v / (float) unitsPerEm() : 0.2f;
+    }
+
+    public float superscriptOffset() {
+        int v = symbols != null ? 0 : program.scriptOffsets()[1];
+        return v > 0 ? v / (float) unitsPerEm() : 0.4f;
+    }
+
     public float width(CharSequence text, float size) {
         long units = 0;
         for (int i = 0; i < text.length(); ) {

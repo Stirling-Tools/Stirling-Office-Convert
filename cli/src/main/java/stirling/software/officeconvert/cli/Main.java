@@ -204,7 +204,7 @@ public final class Main {
         List<Path> targets = Targets.of(files, a.output(), batch.mode().rewritesPdf() ? batch.mode().suffix() : a.format(),
                 a.inputs().stream().anyMatch(Files::isDirectory));
         Guard guard = new Guard(files, a.overwrite());
-        Conversion conversion = conversion(batch);
+        Conversion conversion = conversion(batch, guard);
         for (int k = 0; k < files.size(); k++) {
             Path in = files.get(k);
             Path target = targets.get(k);
@@ -254,7 +254,7 @@ public final class Main {
         return failures;
     }
 
-    private static Conversion conversion(Batch batch) {
+    private static Conversion conversion(Batch batch, Guard guard) {
         Args a = batch.args();
         OfficeToPdf.Options office = a.office();
         return switch (batch.mode()) {
@@ -279,7 +279,7 @@ public final class Main {
                     return new Outcome(officeToPdf(in, target, page).warnings(), List.of());
                 }
                 OfficeConvert.run(office.timeout(), () -> {
-                    pdfToOffice(in, target, batch.settings());
+                    pdfToOffice(in, target, batch.settings().writable(guard::writable));
                     return null;
                 });
                 return notes(List.of());
@@ -571,7 +571,7 @@ public final class Main {
                         + " cookies kept only with --allow-cookies. Fetching stops after 60 s, 64 MB or 300 requests."
                         + System.lineSeparator()
                         + "The output's extension picks the format: .docx, .odt, .fodt, .xml (flat ODT), .rtf,"
-                        + " .txt, .html (one file, pictures inline), .json (the document model), .md, .epub, .azw3, .pptx, .odp, .ppt, .xlsx, .ods or .csv (cell values only); --format names it for a directory of outputs."
+                        + " .txt, .html (one file, pictures inline), .json (the document model), .md, .epub, .azw3, .pptx, .odp, .ppt, .xlsx, .ods, .csv (cell values only) or .svg (one file per page, name-N.svg past one page, text as text in the PDF's own fonts); --format names it for a directory of outputs."
                         + System.lineSeparator()
                         + "--pdfa makes an archival PDF/A copy of each PDF (in.pdfa.pdf unless -o names it): fonts are embedded,"
                         + " scripts and actions removed, colours given an sRGB output intent; 1a and 1b draw transparency as pictures;"

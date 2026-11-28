@@ -78,6 +78,10 @@ final class WarmUp {
                     + "<table border=\"1\"><tr><th>Warm</th><td>up</td></tr></table></body></html>")
                     .getBytes(StandardCharsets.UTF_8);
         }
+        if (format == Format.SVG) {
+            return ("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"40\" height=\"20\"><rect width=\"40\" height=\"20\""
+                    + " fill=\"#36c\"/><text x=\"2\" y=\"14\">Warm up</text></svg>").getBytes(StandardCharsets.UTF_8);
+        }
         if (format == Format.JSON) {
             return ("{\"format\":\"stirling-office-convert\",\"version\":1,\"body\":[{\"type\":\"paragraph\","
                     + "\"content\":[{\"type\":\"text\",\"text\":\"Warm up\"}]}]}").getBytes(StandardCharsets.UTF_8);

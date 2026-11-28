@@ -38,7 +38,7 @@ final class Footprint {
             }
         }
         long markup = switch (format) {
-            case DOCX, TEXT, HTML, EPUB, JSON -> xml * 8 + media / 2;
+            case DOCX, TEXT, HTML, EPUB, JSON, SVG -> xml * 8 + media / 2;
             case PPTX -> xml * 7 + media * 2;
             case XLSX, CSV, TSV -> {
                 Tree parsed = treeBytes(zip);

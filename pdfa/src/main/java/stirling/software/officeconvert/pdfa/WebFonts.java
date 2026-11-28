@@ -379,6 +379,11 @@ public final class WebFonts {
 
     private static CodeToGlyph glyphs(PDFont font, CodeToGlyph cidToGid, CodeToGlyph simple) {
         if (font instanceof PDType0Font t0) {
+            org.apache.fontbox.cmap.CMap cmap = t0.getCMap();
+            String name = cmap == null ? null : cmap.getName();
+            if ("Identity-H".equals(name) || "Identity-V".equals(name)) {
+                return cidToGid::gid;
+            }
             return code -> cidToGid.gid(t0.codeToCID(code));
         }
         return simple;

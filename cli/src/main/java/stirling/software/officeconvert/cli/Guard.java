@@ -38,6 +38,13 @@ final class Guard {
         return null;
     }
 
+    boolean writable(Path target) {
+        if (inputKeys.contains(Targets.key(target)) || same(target, inputs)) {
+            return false;
+        }
+        return overwrite || !Files.exists(target, LinkOption.NOFOLLOW_LINKS);
+    }
+
     void wrote(Path target) {
         produced.add(target);
         producedKeys.add(Targets.key(target));

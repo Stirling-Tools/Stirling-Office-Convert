@@ -27,7 +27,7 @@ For Word, PowerPoint and Excel input (`.docx .docm .dotx .dotm .pptx .pptm .ppsx
 `.rtf`, Word 2003 XML, XML Spreadsheet 2003 and Flat OPC `.xml`, Visio 2013 and later `.vsdx .vsdm .vssx .vstx`,
 OpenDocument `.odt .ott .fodt .odm .ods .ots .fods .odp .otp .fodp .odg .otg .fodg`, OpenOffice.org 1.x `.sxw .stw .sxc
 .stc .sxi .sti .sxd .std`, SYLK, DIF and dBASE `.slk .dif .dbf`, Lotus 1-2-3 `.wk1 .wks .wk3 .wk4 .123`, Apple iWork `.pages .numbers .key`, Publisher `.pub` and Visio 2003-2010 `.vsd .vss .vst .vsw` (from the preview they hold), plain text `.txt .text .log .asc`, tables
-`.csv .tsv .tab`, HTML `.html .htm .xhtml` or a `.zip` of a page (with `--allow-packages`), eBooks `.epub .mobi .azw3 .azw .prc .pdb .fb2 .fbz` and this library's JSON `.json`), which converts to PDF: `--password p` (a password protected document), `--max-pages n` (default 10000, 0 = all), `--timeout s` (default 300, 0 =
+`.csv .tsv .tab`, HTML `.html .htm .xhtml` or a `.zip` of a page (with `--allow-packages`), eBooks `.epub .mobi .azw3 .azw .prc .pdb .fb2 .fbz`, SVG drawings `.svg .svgz` and this library's JSON `.json`), which converts to PDF: `--password p` (a password protected document), `--max-pages n` (default 10000, 0 = all), `--timeout s` (default 300, 0 =
 none), `--fonts dir` (repeatable; an extra folder of fonts), `--font-map Family=Installed` (repeatable; draw a
 family with an installed one, such as `Aptos=Inter`), `--font-width Family=scale` (repeatable; scale a substituted
 family's widths, 0.5 to 2), `--no-system-fonts` (only the given fonts and the bundled Liberation Sans, for
@@ -44,7 +44,7 @@ when everything converted, 1 when something failed or was skipped or a folder he
 mistake in the arguments. Warnings (substituted fonts, skipped active content, pictures that could not be
 drawn) print to stderr as `warning: <file>: <message>` unless `-q`.
 The output file's extension picks the format: `.docx`, `.odt`, `.fodt`, `.xml` (flat ODT), `.rtf`, `.txt`,
-`.html`, `.json`, `.md`, `.epub`, `.azw3`, `.pptx`, `.odp`, `.ppt`, `.xlsx` or `.ods` (see Other formats). For a folder of PDFs, `--format ext` names it; `--sheets
+`.html`, `.json`, `.md`, `.epub`, `.azw3`, `.pptx`, `.odp`, `.ppt`, `.xlsx`, `.ods` or `.svg` (see Other formats). For a folder of PDFs, `--format ext` names it; `--sheets
 page|table|single` sets a spreadsheet's layout. Each file prints its time and the heap in use when it finished.
 `--pdfa 1a|1b|2a|2b|2u|3a|3b|3u|4` makes an archival PDF/A copy of each PDF instead (see PDF to PDF/A): `in.pdfa.pdf` beside the
 input, or the `-o` file or folder; it takes `--password`, `--timeout`, `--fonts`, `--font-map` and
@@ -616,6 +616,23 @@ epigraphs, poems, citations, tables, embedded pictures, cover and notes; a DOCTY
 256 MB (Kindle) and 128 MB (FictionBook) with 64 MB of text. An eBook only ever draws what the book file holds. HTML files are limited to 64 MB, and parsing, the cascade, SVG
 painting and nesting each work within fixed budgets so a hostile page cannot hang or exhaust the converter.
 
+SVG (`.svg`, or gzipped `.svgz`) is drawn as one page of the drawing's size (its `width` and `height`, else its
+`viewBox`, in CSS pixels at 96 per inch) as PDF vector graphics and text: shapes and paths, strokes with dashes, joins
+and markers, linear and radial gradients (focal radius, `spreadMethod`, `color-interpolation`) as PDF shadings with
+their stop opacities as soft masks, patterns as tiling patterns, clip paths (text included) and masks (luminance and
+alpha) as PDF clips and soft masks, `opacity`, `mix-blend-mode` and `isolation` as transparency groups, `use`,
+`symbol`, nested `svg`, `switch`, style sheets (`<style>` with selectors, `!important`, `@media` and `@font-face`
+from `data:` URIs) and `style` attributes, and `data:` pictures (PNG, JPEG, GIF, WebP, BMP and SVG). Text stays
+searchable text in the requested font (with fallback per character) with per-character `x`, `y`, `dx`, `dy` and
+`rotate`, kerning, `text-anchor`, `baseline-shift`, `dominant-baseline`, letter and word spacing, `textLength`,
+`textPath`, `tref` and decorations. Only an element with a `filter` becomes a picture, drawn at 180 dpi: the blur,
+offset, flood, composite, merge, blend, colour matrix, component transfer, morphology, tile, turbulence and drop
+shadow primitives and the CSS filter functions are drawn; others leave the element out. Nothing outside the file is
+read: linked pictures, fonts, style sheets and `use` targets in other files or on the web are left out with a warning,
+and no DTD is loaded nor any entity expanded. Scripts, event attributes, `foreignObject` and animation are ignored,
+and the PDF gets no links, actions or JavaScript. Vertical writing, lighting,
+convolution and displacement filters, and `feImage` are not drawn. Drawings over 200 inches on a side are scaled to fit.
+
 JSON (`.json`) is the document model that PDF to JSON writes ([format](json-format.md)), hand written or edited;
 it is replayed into a WordprocessingML package and drawn. Unknown fields are ignored, a value of the wrong type fails
 the conversion with its name, and pictures that cannot be read are left out with a warning.
@@ -638,6 +655,7 @@ PdfToHtml.convertFixed(pdf, Path.of("page.html"), FixedHtml.Options.defaults());
 PdfToJson.convert(pdf, Path.of("out.json"), options);      // the document model as JSON
 PdfToEpub.convert(pdf, Path.of("out.epub"), options);      // a reflowing EPUB 3 book
 PdfToAzw3.convert(pdf, Path.of("out.azw3"), options);      // the same book for Kindle (KF8)
+PdfToSvg.convert(pdf, Path.of("out.svg"), PdfToSvg.Options.defaults().fonts(WebFonts::toTrueType)); // each page as SVG
 ```
 
 - ODT and flat ODT carry what the DOCX carries: styles, lists, tables with merged cells, pictures (cropped and turned
@@ -675,6 +693,18 @@ PdfToAzw3.convert(pdf, Path.of("out.azw3"), options);      // the same book for 
   `Options.fonts(FontSource)` lets the caller turn the PDF's own fonts into web fonts for `Text.LIVE` (for example
   `WebFonts::toTrueType` from the `pdfa` module), so live text is drawn in the document's real faces; each font is
   asked for once, and fonts over 4 MB or past 32 MB in total, or that fail, fall back to the family name.
+- SVG keeps each page as it looks, as vectors and text: `out.svg` for a one-page range, else `out-1.svg`, `out-2.svg`
+  and so on beside it; a `.zip` target (or `PdfToSvg.writeZip`) holds `page-N.svg` files, and `writePage` writes one
+  page to a stream. Paths keep their fills, strokes, dashes, joins, clipping and even-odd rules; axial and radial
+  shadings become SVG gradients and the other shadings pictures; pictures are `data:` URIs, JPEGs kept as they are and
+  soft masks as SVG masks; tiling patterns, transparency groups, soft masks, constant opacity and blend modes become their SVG
+  equivalents; web links stay clickable. Text is real `<text>`, each character at the PDF's position, selectable and
+  searchable. With `Options.fonts(FontSource)` (for example `WebFonts::toTrueType`) the embedded fonts become web
+  fonts subset to the page; every glyph is checked against the web font, and one whose text does not draw the same
+  glyph (no Unicode, a ligature, or a code that shares its Unicode with another glyph) is drawn as its outline with its
+  text kept invisible over it. Type 3 glyphs are drawn as their own graphics. Without a font source, embedded fonts
+  are drawn as outlines; fonts that are not embedded are named for the viewer to substitute. Renderers that do not
+  load `@font-face` fonts (resvg, for one) draw the text in a substitute font.
 - JSON is the document model itself, the format [described here](json-format.md): everything the DOCX carries, as
   data a program can read, change and convert back to PDF (or, through it, to anything else).
 
@@ -943,6 +973,10 @@ further; the JDK default is 240 MB.
 ## Changes
 
 ### Unreleased
+
+- PDF to SVG: `PdfToSvg` and the CLI's `.svg` output write each page as SVG vectors and selectable text in the PDF's
+  own fonts.
+- SVG and SVGZ convert to PDF (`OfficeToPdf.Format.SVG`) as vector graphics and searchable text.
 
 - Word 97-2003 `.doc` output is removed: `OfficeConvert.Format.of("x.doc")` throws `IllegalArgumentException`,
   `OfficeConvert.convert` to a `.doc` name throws `UnsupportedFormatException`, and the CLI's `--format doc` exits

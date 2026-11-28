@@ -23,7 +23,7 @@ class OutputFormatTest {
         assertEquals("pdf", OutputFormat.known("pdf"));
         assertEquals("ods", OutputFormat.known("ods"));
         assertEquals("unknown output format 'foo': use docx, odt, fodt, xml, rtf, txt, html, json, md, epub, azw3,"
-                + " pptx, odp, ppt, xlsx, ods or csv (pdf for Office input)",
+                + " pptx, odp, ppt, xlsx, ods, csv or svg (pdf for Office input)",
                 assertThrows(Usage.class, () -> OutputFormat.known("foo")).getMessage());
     }
 

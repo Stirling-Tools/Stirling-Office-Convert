@@ -160,7 +160,12 @@ misses a drawn form. Images are charged wherever they are listed.
 | CSS rules / style sheet characters (inline `<style>` included) | 200,000 / 8 MB | the rest is dropped with a warning |
 | CSS selector match work (weighted by selector complexity) | 10 M | later elements keep default styles, with a warning |
 | CSS `@import` depth / at-rule nesting | 8 / 16 | ignored deeper |
-| SVG elements / depth / pixels | 20,000 / 48 / 4 M | further elements and deeper ones are skipped; larger pictures are scaled down |
+| SVG elements / depth / pixels (inline in HTML) | 20,000 / 48 / 4 M | further elements and deeper ones are skipped; larger pictures are scaled down |
+| SVG file: drawn elements / drawn nesting / `use` depth / transparency groups | 200,000 / 64 / 24 / 24 | further elements are skipped; deeper groups are drawn without their effect |
+| SVG file: size / elements parsed / nesting | 64 MB (unpacked, SVGZ too) / 1,000,000 / 1,000 | larger or deeper files are refused |
+| SVG file: work / filter picture / filter steps | 400 M units (path data, text, pixels) / 2 M pixels / 16 | the rest of the drawing is left out; filtered elements are drawn at a lower resolution or unfiltered |
+| PDF to SVG: operators / forms / elements per page | 5 M / 50,000 / 400,000 | the rest of the page is left out |
+| PDF to SVG: web fonts | 4 MB each, 64 MB per document | larger fonts are drawn as outlines |
 | ODS repeated rows and columns | 8–192 MB of work | truncated with a warning |
 | Spreadsheet cells / merged ranges | 4 M / 100,000 | truncated |
 | Spreadsheet data read before admission | 256 MB | the rest is charged conservatively |
