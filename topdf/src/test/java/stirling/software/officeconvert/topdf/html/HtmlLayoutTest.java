@@ -201,6 +201,23 @@ class HtmlLayoutTest {
     }
 
     @Test
+    void inlinePaddingTakesItsOwnWidthEvenInMonospace() throws IOException {
+        Laid plain = lay("""
+                <html><body><p>The <code>email</code> package</p></body></html>""");
+        Laid padded = lay("""
+                <html><body><p>The <code style="padding:0 20px">email</code> package</p></body></html>""");
+        assertEquals(15f, left(padded, "email") - left(plain, "email"), 1f, padded.words().toString());
+        Laid thin = lay("""
+                <html><body><p>The <code style="padding:0 1px">email</code> package</p></body></html>""");
+        assertEquals(0.75f, left(thin, "email") - left(plain, "email"), 0.6f, thin.words().toString());
+    }
+
+    private static float left(Laid l, String text) {
+        return l.words().stream().filter(w -> w.text().replace("\u00a0", "").strip().equals(text)).findFirst()
+                .orElseThrow(() -> new AssertionError(text + " not found in " + l.words())).left();
+    }
+
+    @Test
     void anImageInputIsDrawnAsItsPicture() throws IOException {
         Laid l = lay("""
                 <html><body><form><input type="IMAGE" src="http://example.invalid/b.png" alt="Website Maintenance">
