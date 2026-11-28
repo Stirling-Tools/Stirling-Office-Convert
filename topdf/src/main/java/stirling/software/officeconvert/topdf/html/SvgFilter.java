@@ -684,7 +684,7 @@ final class SvgFilter {
                 float rx = r.length > 0 ? r[0] : 0;
                 float ry = r.length > 1 ? r[1] : rx;
                 if (rx < 0 || ry < 0 || rx == 0 && ry == 0) {
-                    return rx == 0 && ry == 0 ? in1 : new Img(in1.w, in1.h);
+                    return in1;
                 }
                 double[] k = scales(toPixel);
                 boolean dilate = SvgDoc.lower(SvgDoc.attr(p, "operator")).equals("dilate");

@@ -1735,7 +1735,9 @@ final class SvgDraw {
         float limit = number(s.get("stroke-miterlimit"), 4);
         cs.setMiterLimit(limit >= 1 ? Math.min(limit, 1000) : 4);
         float[] dash = dashes(s);
-        if (dash != null) {
+        if (dash != null && !Float.isFinite(dashScale) && dash[0] == 0 && dash.length > 1 && dash[1] > 0) {
+            cs.setLineDashPattern(new float[] {0, (float) Math.max(1, dashedLength * 2 + 1)}, 0);
+        } else if (dash != null) {
             float offset = length(s.get("stroke-dashoffset"), s.fontSize, diagonal(), 0);
             double period = 0;
             for (int i = 0; i < dash.length; i++) {
@@ -1869,7 +1871,8 @@ final class SvgDraw {
         Element cur = e;
         String own = SvgDoc.local(e);
         for (int i = 0; i < 16 && cur != null; i++) {
-            if (SvgDoc.has(cur, attr) && (!GEOMETRY.contains(attr) || SvgDoc.local(cur).equals(own))) {
+            if (SvgDoc.has(cur, attr) && (!GEOMETRY.contains(attr) || SvgDoc.local(cur).equals(own)
+                    && validCoordinate(SvgDoc.attr(cur, attr)))) {
                 return cur;
             }
             Element next = doc.target(cur);
@@ -1883,6 +1886,14 @@ final class SvgDraw {
             cur = next;
         }
         return null;
+    }
+
+    private static boolean validCoordinate(String v) {
+        String t = v.strip();
+        if (t.endsWith("%")) {
+            return Float.isFinite(number(t.substring(0, t.length() - 1), Float.NaN));
+        }
+        return Float.isFinite(length(t, 16, 1, Float.NaN));
     }
 
     private String chainedAttr(Element e, String attr, String fallback) {

@@ -164,15 +164,22 @@ final class SvgLighting {
         float surface = SvgDraw.number(SvgDoc.attr(p, "surfaceScale"), 1);
         float constant = SvgDraw.number(SvgDoc.attr(p, specular ? "specularConstant" : "diffuseConstant"), 1);
         float exponent = SvgDraw.number(SvgDoc.attr(p, "specularExponent"), 1);
-        if (constant < 0 || specular && (exponent < 1 || exponent > 128)) {
+        if (specular && constant < 0 || source == null) {
             return out;
         }
+        if (constant < 0) {
+            for (int i = 0; i < out.p.length; i += 4) {
+                out.p[i + 3] = 1;
+            }
+            return out;
+        }
+        exponent = Math.max(1, Math.min(128, exponent));
         String colour = ps.own("lighting-color", "white");
         int rgb;
         if (colour.equalsIgnoreCase("currentcolor")) {
             rgb = ps.color;
         } else {
-            Integer parsed = Css.color(colour);
+            Integer parsed = Css.opaque(SvgDraw.percentAlpha(colour));
             rgb = parsed == null || parsed < 0 ? 0xFFFFFF : parsed;
         }
         float[] lc = {((rgb >> 16) & 0xFF) / 255f, ((rgb >> 8) & 0xFF) / 255f, (rgb & 0xFF) / 255f};
@@ -180,14 +187,6 @@ final class SvgLighting {
             for (int i = 0; i < 3; i++) {
                 lc[i] = SvgFilter.linear(lc[i]);
             }
-        }
-        if (source == null) {
-            if (!specular) {
-                for (int i = 0; i < out.p.length; i += 4) {
-                    out.p[i + 3] = 1;
-                }
-            }
-            return out;
         }
         String kind = SvgDoc.local(source).toLowerCase(Locale.ROOT);
         AffineTransform toPixel = c.toPixel();
