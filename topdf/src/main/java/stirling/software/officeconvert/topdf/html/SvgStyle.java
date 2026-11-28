@@ -123,7 +123,7 @@ final class SvgStyle {
         if (cv != null && cv.strip().equalsIgnoreCase("initial")) {
             c = 0;
         } else if (cv != null) {
-            Integer parsed = Css.color(cv);
+            Integer parsed = Css.color(SvgDraw.percentAlpha(cv));
             if (parsed != null && parsed >= 0) {
                 c = parsed;
             }

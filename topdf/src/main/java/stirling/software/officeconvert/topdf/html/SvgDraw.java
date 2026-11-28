@@ -1540,7 +1540,28 @@ final class SvgDraw {
         return new Paint(c, Css.alpha(colour), null, false);
     }
 
+    private static final Map<String, String> SYSTEM_COLOURS = Map.ofEntries(Map.entry("activeborder", "#c0c0c0"),
+            Map.entry("activecaption", "#000080"), Map.entry("appworkspace", "#808080"),
+            Map.entry("background", "#008080"), Map.entry("buttonface", "#c0c0c0"),
+            Map.entry("buttonhighlight", "#ffffff"), Map.entry("buttonshadow", "#808080"),
+            Map.entry("buttontext", "#000000"), Map.entry("captiontext", "#ffffff"),
+            Map.entry("graytext", "#808080"), Map.entry("highlight", "#000080"),
+            Map.entry("highlighttext", "#ffffff"), Map.entry("inactiveborder", "#c0c0c0"),
+            Map.entry("inactivecaption", "#808080"), Map.entry("inactivecaptiontext", "#c0c0c0"),
+            Map.entry("infobackground", "#ffffe1"), Map.entry("infotext", "#000000"),
+            Map.entry("menu", "#c0c0c0"), Map.entry("menutext", "#000000"), Map.entry("scrollbar", "#c0c0c0"),
+            Map.entry("threeddarkshadow", "#000000"), Map.entry("threedface", "#c0c0c0"),
+            Map.entry("threedhighlight", "#ffffff"), Map.entry("threedlightshadow", "#dfdfdf"),
+            Map.entry("threedshadow", "#808080"), Map.entry("window", "#ffffff"),
+            Map.entry("windowframe", "#000000"), Map.entry("windowtext", "#000000"));
+
     static String percentAlpha(String v) {
+        if (v.length() <= 20 && v.indexOf('(') < 0) {
+            String system = SYSTEM_COLOURS.get(v.strip().toLowerCase(Locale.ROOT));
+            if (system != null) {
+                return system;
+            }
+        }
         int open = v.indexOf('(');
         int close = v.lastIndexOf(')');
         if (open < 0 || close < open || v.length() > 200) {
