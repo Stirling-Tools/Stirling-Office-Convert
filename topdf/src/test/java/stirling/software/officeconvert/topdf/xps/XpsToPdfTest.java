@@ -467,6 +467,40 @@ class XpsToPdfTest {
     }
 
     @Test
+    void batchedRectanglesKeepTheirPaintingOrder() throws IOException {
+        StringBuilder body = new StringBuilder();
+        for (int y = 0; y < 40; y++) {
+            body.append("<Path Fill='#FF0000' Data='M 20,").append(20 + y).append(" V ").append(21 + y)
+                    .append(" H 120 V ").append(20 + y).append(" Z'/>");
+        }
+        body.append("<Path Fill='#0000FF' Data='M 60,0 L 200,0 200,100 60,100 Z'/>");
+        body.append("<Path Fill='#FF0000' Data='M 150,40 H 190 V 50 H 150 Z'/>");
+        body.append("<Path Fill='#000000' Data='M 300,10 L 360,10 330,60 Z'/>");
+        body.append("<Path Fill='#FFFFFF' Data='M 400,10 H 460 V 60 H 400 Z'/>");
+        body.append("<Path Fill='#000000' Data='M 300,110 L 360,110 330,160 Z'/>");
+        body.append("<Path Fill='#FFFFFF' Data='M 500,10 L 560,10 530,60 Z'/>");
+        body.append("<Canvas Clip='M 500,100 H 700 V 200 H 500 Z'><Path Fill='#000000'"
+                + " Data='M 520,120 H 540 V 140 H 520 Z'/></Canvas>");
+        body.append("<Path Fill='#000000' Data='M 600,300 H 640 V 340 H 600 Z'/>");
+        Path in = write("boxes.xps", xps(List.of(page(body.toString()))));
+        Path out = dir.resolve("boxes.pdf");
+        convert(in, out);
+        try (PDDocument pdf = Loader.loadPDF(out.toFile())) {
+            Color red = pixel(pdf, 0, 40, 40);
+            Color blue = pixel(pdf, 0, 100, 40);
+            Color top = pixel(pdf, 0, 170, 45);
+            assertTrue(red.getRed() > 200 && red.getBlue() < 60, red.toString());
+            assertTrue(blue.getBlue() > 200 && blue.getRed() < 60, blue.toString());
+            assertTrue(top.getRed() > 200 && top.getBlue() < 60, top.toString());
+            assertTrue(pixel(pdf, 0, 40, 65).getGreen() > 200);
+            assertTrue(pixel(pdf, 0, 330, 125).getRed() < 60);
+            assertTrue(pixel(pdf, 0, 330, 25).getRed() < 60);
+            assertTrue(pixel(pdf, 0, 530, 130).getRed() < 60);
+            assertTrue(pixel(pdf, 0, 620, 320).getRed() < 60);
+        }
+    }
+
+    @Test
     void sharpMitersFollowTheXpsLimitAndAreClippedBeyondIt() throws IOException {
         Path in = write("miters.xps", xps(List.of(page("<Path Stroke='#FF000000' StrokeThickness='10'"
                 + " Data='M 50,50 L 300,100 50,150'/><Path Stroke='#FF000000' StrokeThickness='10'"

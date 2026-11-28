@@ -7,6 +7,7 @@ import java.awt.geom.Rectangle2D;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.util.ArrayDeque;
+import java.util.Arrays;
 import java.util.Deque;
 import java.util.IdentityHashMap;
 import java.util.Map;
@@ -50,6 +51,28 @@ final class XpsOps {
     private final double[] coords = new double[6];
 
     private final float[] fillRgb = new float[3];
+
+    static final int MAX_BOXES = 4096;
+
+    private double[] boxes = new double[0];
+
+    private final float[] boxRgb = new float[3];
+
+    private static final int SLOTS = 2 * MAX_BOXES;
+
+    private double[] slotX0;
+
+    private double[] slotX1;
+
+    private int[] slotBox;
+
+    private int[] slotGeneration;
+
+    private int generation = 1;
+
+    private int boxCount;
+
+    private boolean flushing;
 
     private final float[] strokeRgb = new float[3];
 
@@ -110,12 +133,107 @@ final class XpsOps {
             pending--;
             return;
         }
+        if (boxCount > 0 && !flushing) {
+            flushBoxes();
+        }
         fill = null;
         strokeColor = null;
         op("Q\n");
     }
 
+    void box(double x0, double y0, double x1, double y1, float[] rgb) throws IOException {
+        if (boxCount > 0 && (boxRgb[0] != rgb[0] || boxRgb[1] != rgb[1] || boxRgb[2] != rgb[2])) {
+            flushBoxes();
+        }
+        if (boxCount == 0) {
+            System.arraycopy(rgb, 0, boxRgb, 0, 3);
+        }
+        if (slotBox == null) {
+            slotX0 = new double[SLOTS];
+            slotX1 = new double[SLOTS];
+            slotBox = new int[SLOTS];
+            slotGeneration = new int[SLOTS];
+        }
+        int slot = slot(x0, x1);
+        if (slotGeneration[slot] == generation) {
+            int i = 4 * slotBox[slot];
+            if (boxes[i + 3] == y0) {
+                boxes[i + 3] = y1;
+                return;
+            }
+        }
+        if (boxCount == MAX_BOXES) {
+            flushBoxes();
+            System.arraycopy(rgb, 0, boxRgb, 0, 3);
+            slot = slot(x0, x1);
+        }
+        int i = 4 * boxCount;
+        if (i + 4 > boxes.length) {
+            boxes = Arrays.copyOf(boxes, Math.min(4 * MAX_BOXES, Math.max(256, boxes.length * 2)));
+        }
+        boxes[i] = x0;
+        boxes[i + 1] = y0;
+        boxes[i + 2] = x1;
+        boxes[i + 3] = y1;
+        slotX0[slot] = x0;
+        slotX1[slot] = x1;
+        slotBox[slot] = boxCount;
+        slotGeneration[slot] = generation;
+        boxCount++;
+    }
+
+    private int slot(double x0, double x1) {
+        long h = Double.doubleToLongBits(x0) * 31 + Double.doubleToLongBits(x1);
+        h ^= h >>> 33;
+        h *= 0xff51afd7ed558ccdL;
+        h ^= h >>> 33;
+        h *= 0xc4ceb9fe1a85ec53L;
+        h ^= h >>> 33;
+        int s = (int) h & (SLOTS - 1);
+        while (slotGeneration[s] == generation && (slotX0[s] != x0 || slotX1[s] != x1)) {
+            s = (s + 1) & (SLOTS - 1);
+        }
+        return s;
+    }
+
+    private void flushBoxes() throws IOException {
+        if (boxCount == 0 || flushing) {
+            return;
+        }
+        flushing = true;
+        boolean was = quiet;
+        quiet = true;
+        try {
+            fillColor(boxRgb);
+            for (int b = 0; b < boxCount; b++) {
+                int i = 4 * b;
+                double x0 = boxes[i];
+                double y0 = boxes[i + 1];
+                double x1 = boxes[i + 2];
+                double y1 = boxes[i + 3];
+                num(x0).num(y0).op("m\n");
+                num(x1).num(y0).op("l\n");
+                num(x1).num(y1).op("l\n");
+                num(x0).num(y1).op("l\n");
+                op("h\n");
+            }
+            op("f\n");
+        } finally {
+            quiet = was;
+            flushing = false;
+            boxCount = 0;
+            if (generation == Integer.MAX_VALUE) {
+                Arrays.fill(slotGeneration, 0);
+                generation = 0;
+            }
+            generation++;
+        }
+    }
+
     void begin() throws IOException {
+        if (boxCount > 0 && !flushing) {
+            flushBoxes();
+        }
         if (pending == 0) {
             return;
         }
@@ -158,6 +276,9 @@ final class XpsOps {
     }
 
     private XpsOps num(double v, int unit, int places) throws IOException {
+        if (boxCount > 0 && !flushing) {
+            flushBoxes();
+        }
         guard();
         if (!Double.isFinite(v)) {
             v = 0;
@@ -189,6 +310,9 @@ final class XpsOps {
     }
 
     XpsOps integer(long v) throws IOException {
+        if (boxCount > 0 && !flushing) {
+            flushBoxes();
+        }
         guard();
         if (len + 24 > buf.length) {
             flush();
@@ -222,6 +346,9 @@ final class XpsOps {
     }
 
     XpsOps op(String s) throws IOException {
+        if (boxCount > 0 && !flushing) {
+            flushBoxes();
+        }
         boolean paint = paints(s);
         boolean was = quiet;
         quiet |= paint;
@@ -247,6 +374,9 @@ final class XpsOps {
     }
 
     XpsOps name(COSName n) throws IOException {
+        if (boxCount > 0 && !flushing) {
+            flushBoxes();
+        }
         guard();
         put('/');
         op(n.getName());
@@ -255,6 +385,9 @@ final class XpsOps {
     }
 
     void hex4(int v) throws IOException {
+        if (boxCount > 0 && !flushing) {
+            flushBoxes();
+        }
         guard();
         final String digits = "0123456789ABCDEF";
         put(digits.charAt((v >> 12) & 0xF));
@@ -278,6 +411,7 @@ final class XpsOps {
 
     void close() throws IOException {
         try {
+            flushBoxes();
             while (!saved.isEmpty()) {
                 Q();
             }
@@ -354,6 +488,9 @@ final class XpsOps {
     }
 
     void fillColor(float[] rgb) throws IOException {
+        if (boxCount > 0 && !flushing) {
+            flushBoxes();
+        }
         if (fill != null && fillSpace == null && fill[0] == rgb[0] && fill[1] == rgb[1] && fill[2] == rgb[2]) {
             return;
         }
@@ -370,6 +507,9 @@ final class XpsOps {
     }
 
     void strokeColor(float[] rgb) throws IOException {
+        if (boxCount > 0 && !flushing) {
+            flushBoxes();
+        }
         if (strokeColor != null && strokeSpace == null && strokeColor[0] == rgb[0] && strokeColor[1] == rgb[1]
                 && strokeColor[2] == rgb[2]) {
             return;
@@ -381,6 +521,9 @@ final class XpsOps {
     }
 
     void fillColor(COSName space, float[] c) throws IOException {
+        if (boxCount > 0 && !flushing) {
+            flushBoxes();
+        }
         if (fill != null && space.equals(fillSpace) && java.util.Arrays.equals(fill, c)) {
             return;
         }
@@ -394,6 +537,9 @@ final class XpsOps {
     }
 
     void strokeColor(COSName space, float[] c) throws IOException {
+        if (boxCount > 0 && !flushing) {
+            flushBoxes();
+        }
         if (strokeColor != null && space.equals(strokeSpace) && java.util.Arrays.equals(strokeColor, c)) {
             return;
         }
@@ -406,7 +552,10 @@ final class XpsOps {
         strokeSpace = space;
     }
 
-    void forgetColors() {
+    void forgetColors() throws IOException {
+        if (boxCount > 0 && !flushing) {
+            flushBoxes();
+        }
         fill = null;
         strokeColor = null;
     }

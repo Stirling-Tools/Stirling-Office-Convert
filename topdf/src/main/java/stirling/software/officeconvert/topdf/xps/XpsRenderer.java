@@ -833,7 +833,10 @@ final class XpsRenderer {
                     }
                 });
             } else {
-                if (fill != null) {
+                double[] box = fill != null && stroke == null && opacity >= 1 ? box(fill, g) : null;
+                if (box != null) {
+                    ops.box(box[0], box[1], box[2], box[3], fill.color().rgb());
+                } else if (fill != null) {
                     paint(fill, g.fill, opacity, ctx, false);
                 }
                 if (stroke != null) {
@@ -849,6 +852,73 @@ final class XpsRenderer {
         } finally {
             ops.Q();
         }
+    }
+
+    private final double[] boxCoords = new double[6];
+
+    private final double[] boxX = new double[5];
+
+    private final double[] boxY = new double[5];
+
+    private final double[] boxFound = new double[4];
+
+    private double[] box(Brush fill, XpsGeometry g) {
+        if (!fill.kind().equals("SolidColorBrush") || fill.color().alpha() * fill.opacity() < 1
+                || profiles.space(fill.color()) != null) {
+            return null;
+        }
+        double[] c = boxCoords;
+        double[] x = boxX;
+        double[] y = boxY;
+        int n = 0;
+        boolean closed = false;
+        for (PathIterator it = g.fill.getPathIterator(null); !it.isDone(); it.next()) {
+            int type = it.currentSegment(c);
+            if (closed) {
+                return null;
+            }
+            if (type == PathIterator.SEG_MOVETO) {
+                if (n != 0) {
+                    return null;
+                }
+            } else if (type == PathIterator.SEG_CLOSE) {
+                closed = true;
+                continue;
+            } else if (type != PathIterator.SEG_LINETO) {
+                return null;
+            }
+            if (n > 0 && c[0] == x[n - 1] && c[1] == y[n - 1]) {
+                continue;
+            }
+            if (n == 5) {
+                return null;
+            }
+            x[n] = c[0];
+            y[n] = c[1];
+            n++;
+        }
+        if (n == 5 && x[4] == x[0] && y[4] == y[0]) {
+            n = 4;
+        } else if (n != 4 || !closed) {
+            return null;
+        }
+        boolean horizontalFirst = y[0] == y[1] && x[1] == x[2] && y[2] == y[3] && x[3] == x[0];
+        boolean verticalFirst = x[0] == x[1] && y[1] == y[2] && x[2] == x[3] && y[3] == y[0];
+        if (!horizontalFirst && !verticalFirst) {
+            return null;
+        }
+        double x0 = Math.min(x[0], x[2]);
+        double x1 = Math.max(x[0], x[2]);
+        double y0 = Math.min(y[0], y[2]);
+        double y1 = Math.max(y[0], y[2]);
+        if (!(x1 > x0) || !(y1 > y0) || !Double.isFinite(x1 - x0) || !Double.isFinite(y1 - y0)) {
+            return null;
+        }
+        boxFound[0] = x0;
+        boxFound[1] = y0;
+        boxFound[2] = x1;
+        boxFound[3] = y1;
+        return boxFound;
     }
 
     private static Rectangle2D painted(XpsGeometry g, XpsElement e, boolean stroked, double pad) {
