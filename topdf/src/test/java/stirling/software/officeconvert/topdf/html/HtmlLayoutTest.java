@@ -825,6 +825,16 @@ class HtmlLayoutTest {
     }
 
     @Test
+    void aFullWidthBodyColourCoversTheGapsBetweenItsBlocks() throws IOException {
+        Laid l = lay("""
+                <!doctype html><html style="background:#0000ff"><body style="background:#ffffff;margin:0">
+                <p style="margin:0 0 80px">First</p><p>Second</p></body></html>""");
+        Word first = l.word("First");
+        int gap = Math.round(first.top() + 40);
+        assertEquals(0xFFFFFF, l.first().getRGB(Math.round(first.left()) + 5, gap) & 0xFFFFFF);
+    }
+
+    @Test
     void thePageColourReachesThePageMarginsWhateverTheBodyMargin() throws IOException {
         Laid l = lay("<html><body bgcolor=\"#ffff00\" style=\"margin:40px\"><p>Hi</p></body></html>");
         int x = Math.round(HtmlDocument.PAGE_MARGIN) + 3;

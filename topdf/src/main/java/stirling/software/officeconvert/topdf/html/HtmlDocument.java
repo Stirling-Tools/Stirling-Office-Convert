@@ -318,6 +318,11 @@ public final class HtmlDocument {
         List<Inline> fixedLayer = new ArrayList<>(Backgrounds.paint(Backgrounds.url(htmlStyle) != null ? htmlStyle
                 : bodyStyle, bodyLook, ctx.images(), 0, 0, page.pageWidth, page.pageHeight, false));
         int canvas = canvasColor(htmlStyle, bodyStyle);
+        int bodyFill = bodyBoxColor(htmlStyle, bodyStyle, canvas);
+        if (bodyFill >= 0 && fullWidth(bodyStyle)) {
+            canvas = bodyFill == 0xFFFFFF ? -1 : bodyFill;
+            bodyFill = -1;
+        }
         ctx.canvas(canvas);
         if (canvas >= 0) {
             fixedLayer.add(0, new Inline.Shape(page.marginLeft - inset[0], page.marginTop,
@@ -339,7 +344,7 @@ public final class HtmlDocument {
             ctx.scrolling(1);
         }
         new Flow(ctx, writer::block, false).root(body, bodyLook,
-                new Flow.Frame(0, 0, width, bodyBoxColor(htmlStyle, bodyStyle, canvas)));
+                new Flow.Frame(0, 0, width, bodyFill));
         String author = null;
         Element meta = doc.selectFirst("meta[name=author]");
         if (meta != null) {
@@ -366,6 +371,22 @@ public final class HtmlDocument {
             color = Css.color(bodyStyle.get("background-color"));
         }
         return color == null || color < 0 || color == 0xFFFFFF ? -1 : color;
+    }
+
+    private static boolean fullWidth(Map<String, String> bodyStyle) {
+        for (String side : new String[] {"margin-left", "margin-right"}) {
+            Float v = Css.length(bodyStyle.getOrDefault(side, "8px").strip(), 12, 0);
+            if (v == null || v != 0f) {
+                return false;
+            }
+        }
+        for (String key : new String[] {"width", "max-width"}) {
+            String v = bodyStyle.getOrDefault(key, "").strip().toLowerCase(Locale.ROOT);
+            if (!v.isEmpty() && !v.equals("auto") && !v.equals("none") && !v.equals("100%")) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static int bodyBoxColor(Map<String, String> htmlStyle, Map<String, String> bodyStyle, int canvas) {
