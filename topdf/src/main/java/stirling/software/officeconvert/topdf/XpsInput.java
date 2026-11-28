@@ -33,9 +33,10 @@ final class XpsInput {
         return n.endsWith(".xps") || n.endsWith(".oxps");
     }
 
-    private static boolean is(Path source) throws IOException {
-        if (sniff(source)) {
-            return true;
+    private static Long probe(Path source) throws IOException {
+        long[] size = {-1};
+        if (sniff(source, size)) {
+            return size[0] >= 0 ? size[0] : footprint(source);
         }
         if (named(source) && !OfficeToPdf.container(source)) {
             throw new UnsupportedFormatException("The file is not an XPS document: it is not a zip package");
@@ -44,10 +45,10 @@ final class XpsInput {
             throw new UnsupportedFormatException("The file is not an XPS document: its package names no fixed"
                     + " document sequence");
         }
-        return false;
+        return null;
     }
 
-    private static boolean sniff(Path source) {
+    private static boolean sniff(Path source, long[] size) {
         try (ZipFile z = new ZipFile(source.toFile(), ZipFile.OPEN_READ, StandardCharsets.UTF_8)) {
             ZipEntry rels = null;
             for (var e = z.entries(); e.hasMoreElements();) {
@@ -58,18 +59,24 @@ final class XpsInput {
                     break;
                 }
             }
+            boolean xps;
             if (rels == null) {
-                return declaresSequence(z);
-            }
-            try (InputStream in = z.getInputStream(rels)) {
-                String text = text(in.readNBytes(64 << 10));
-                return text.contains(XpsToPdf.XPS_REPRESENTATION) || text.contains(XpsToPdf.OXPS_REPRESENTATION);
-            } catch (ZipException damaged) {
-                if (declaresSequence(z)) {
-                    return true;
+                xps = declaresSequence(z);
+            } else {
+                try (InputStream in = z.getInputStream(rels)) {
+                    String text = text(in.readNBytes(64 << 10));
+                    xps = text.contains(XpsToPdf.XPS_REPRESENTATION) || text.contains(XpsToPdf.OXPS_REPRESENTATION);
+                } catch (ZipException damaged) {
+                    if (!declaresSequence(z)) {
+                        throw damaged;
+                    }
+                    xps = true;
                 }
-                throw damaged;
             }
+            if (xps) {
+                size[0] = footprint(source, z);
+            }
+            return xps;
         } catch (ZipException e) {
             return XpsToPdf.isRepaired(source);
         } catch (IOException | RuntimeException e) {
@@ -109,14 +116,22 @@ final class XpsInput {
     }
 
     static Long estimate(Path source) throws IOException {
-        return is(source) ? footprint(source) : null;
+        return probe(source);
     }
 
     private static long footprint(Path source) throws IOException {
+        try (ZipFile z = new ZipFile(source.toFile())) {
+            return footprint(source, z);
+        } catch (IOException | RuntimeException e) {
+            return 2 * Admission.BASE_BYTES + Files.size(source) * 8;
+        }
+    }
+
+    private static long footprint(Path source, ZipFile z) throws IOException {
         long page = 0;
         long fonts = 0;
         long pictures = 0;
-        try (ZipFile z = new ZipFile(source.toFile())) {
+        try {
             for (var e = z.entries(); e.hasMoreElements();) {
                 ZipEntry entry = e.nextElement();
                 long size = Math.max(0, entry.getSize());
@@ -129,7 +144,7 @@ final class XpsInput {
                     pictures = Math.max(pictures, size);
                 }
             }
-        } catch (IOException | RuntimeException e) {
+        } catch (RuntimeException e) {
             return 2 * Admission.BASE_BYTES + Files.size(source) * 8;
         }
         long decode = Math.min(Math.max(pictures * 16, 0), 4 * PictureDecoder.DECODE_PIXELS);
@@ -138,10 +153,11 @@ final class XpsInput {
     }
 
     static Result render(Path source, OutputStream sink, Options options) throws IOException {
-        if (!is(source)) {
+        Long need = probe(source);
+        if (need == null) {
             return null;
         }
-        try (Admission.Ticket _ = Admission.jvm().enter(footprint(source));
+        try (Admission.Ticket _ = Admission.jvm().enter(need);
                 PdfOutput output = new PdfOutput(options.fontLibrary(), options.maxScratchBytes())) {
             XpsToPdf.Outcome outcome = XpsToPdf.convert(source, output, options.fontLibrary(), options.maxPages());
             OfficeToPdf.stopIfInterrupted();
