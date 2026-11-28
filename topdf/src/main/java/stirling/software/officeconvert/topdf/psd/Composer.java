@@ -206,6 +206,7 @@ final class Composer {
         boolean vectorBaked;
         LayerEffects fx;
         Gradient strokeGradient;
+        Gradient glowGradient;
     }
 
     private static final class Group extends Node {
@@ -1573,9 +1574,30 @@ final class Composer {
     private void drawGlow(float[] dest, Node node, float layerOpacity, float[] clip) {
         LayerEffects fx = node.fx;
         LayerEffects.Shadow g = node.layer.glow;
-        if (fx != null && g != null && fx.glow != null) {
-            drawEffect(dest, fx, fx.glow, g.color(), g.opacity(), g.blend(), layerOpacity, null, clip);
+        if (fx == null || g == null || fx.glow == null) {
+            return;
         }
+        Descriptor d = node.layer.glowGradient;
+        if (d == null) {
+            drawEffect(dest, fx, fx.glow, g.color(), g.opacity(), g.blend(), layerOpacity, null, clip);
+            return;
+        }
+        if (node.glowGradient == null) {
+            node.glowGradient = Gradient.of(d, n, this::solid);
+            if (node.glowGradient == null) {
+                drawEffect(dest, fx, fx.glow, g.color(), g.opacity(), g.blend(), layerOpacity, null, clip);
+                return;
+            }
+        }
+        float[] src = buffer();
+        for (int x = 0; x < width; x++) {
+            int at = x * stride;
+            float v = fx.at(fx.glow, x, y);
+            float a = v <= 0 ? 0 : node.glowGradient.at(1 - v, src, at, n);
+            src[at + n] = a * g.opacity();
+        }
+        composite(dest, src, g.blend(), layerOpacity, clip);
+        release(src);
     }
 
     private void drawBevel(float[] dest, Node node, float layerOpacity, float[] clip) {

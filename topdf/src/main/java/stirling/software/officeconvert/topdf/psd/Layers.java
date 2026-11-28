@@ -86,6 +86,7 @@ final class Layers {
         LayerEffects.Shadow shadow;
         LayerEffects.Bevel bevel;
         LayerEffects.Shadow glow;
+        Descriptor glowGradient;
         LayerEffects.Shadow innerShadow;
         LayerEffects.Shadow innerGlow;
         float[] solid;
@@ -322,6 +323,7 @@ final class Layers {
                 g.shadow = l.shadow;
                 g.bevel = l.bevel;
                 g.glow = l.glow;
+                g.glowGradient = l.glowGradient;
                 g.innerShadow = l.innerShadow;
                 g.innerGlow = l.innerGlow;
                 g.knockout = l.knockout;
@@ -512,6 +514,7 @@ final class Layers {
                 l.shadow = found.shadow();
                 l.bevel = found.bevel();
                 l.glow = found.glow();
+                l.glowGradient = found.glowGradient();
                 l.innerShadow = found.innerShadow();
                 l.innerGlow = found.innerGlow();
             }

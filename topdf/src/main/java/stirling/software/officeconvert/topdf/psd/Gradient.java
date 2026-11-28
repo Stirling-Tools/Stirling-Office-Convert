@@ -114,6 +114,12 @@ final class Gradient {
         return last.value();
     }
 
+    float at(double t, float[] out, int offset, int n) {
+        int i = (int) Math.round(Math.max(0, Math.min(1, t)) * (SAMPLES - 1));
+        System.arraycopy(colors[i], 0, out, offset, n);
+        return alphas[i];
+    }
+
     void row(int y, int width, double left, double top, double right, double bottom, float[] out, int stride, int n) {
         double w = Math.max(1, right - left);
         double h = Math.max(1, bottom - top);

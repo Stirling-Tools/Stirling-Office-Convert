@@ -631,6 +631,29 @@ class PsdPageTest {
     }
 
     @Test
+    void aGradientOuterGlowTakesItsColourFromTheGradient() throws IOException {
+        PsdFixture f = new PsdFixture(16, 16);
+        f.hasMerged = false;
+        f.flat(255).flat(255).flat(255);
+        Desc stop0 = new Desc("Clrt").obj("Clr ", rgb(0, 0, 255)).lng("Lctn", 0).lng("Mdpn", 50);
+        Desc stop1 = new Desc("Clrt").obj("Clr ", rgb(0, 0, 255)).lng("Lctn", 4096).lng("Mdpn", 50);
+        Desc glow = new Desc("OrGl").bool("enab", true).bool("present", true).en("Md  ", "BlnM", "Nrml")
+                .obj("Grad", new Desc("Grdn").list("Clrs", stop0, stop1)).unit("Opct", "#Prc", 100)
+                .unit("blur", "#Pxl", 3).unit("Ckmt", "#Prc", 50);
+        byte[] d = new Desc("null").bool("masterFXSwitch", true).obj("OrGl", glow).bytes(true);
+        byte[] fx = new byte[d.length + 4];
+        System.arraycopy(d, 0, fx, 4, d.length);
+        f.layers.add(new PsdFixture.Layer().rect(4, 4, 12, 12).fill(-1, 255).fill(0, 200).fill(1, 200).fill(2, 200)
+                .block("lfx2", fx));
+        OfficeToPdf.Result r = convert(f, "gradient-glow.psd");
+        assertFalse(r.warnings().stream().anyMatch(w -> w.contains("glow")), r.warnings().toString());
+        try (PDDocument pdf = open("gradient-glow.psd")) {
+            int[] beside = ints(samples(image(pdf.getPage(0))), (8 * 16 + 3) * 3);
+            assertTrue(beside[0] < 255 && beside[2] == 255, Arrays.toString(beside));
+        }
+    }
+
+    @Test
     void aPatternTooLargeToHoldIsLeftOutWithAWarning() throws IOException {
         PsdFixture f = new PsdFixture(2, 1);
         f.hasMerged = false;
