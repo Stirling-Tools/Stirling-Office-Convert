@@ -285,7 +285,12 @@ final class PageSvg extends PDFGraphicsStreamEngine {
         if (alpha <= 0) {
             return;
         }
-        sync();
+        String outer = "";
+        if (blend != null) {
+            outer = openBlend(blend, gs.getCurrentClippingPaths(), out);
+        } else {
+            sync();
+        }
         StringBuilder sb = out.sb;
         sb.append("<g");
         if (alpha < 1) {
@@ -296,15 +301,8 @@ final class PageSvg extends PDFGraphicsStreamEngine {
         if (mask != null) {
             sb.append(" mask=\"url(#").append(mask).append(")\"");
         }
-        if (blend != null || isolated) {
-            sb.append(" style=\"");
-            if (blend != null) {
-                sb.append("mix-blend-mode:").append(blend).append(';');
-            }
-            if (isolated) {
-                sb.append("isolation:isolate");
-            }
-            sb.append('"');
+        if (isolated) {
+            sb.append(" style=\"isolation:isolate\"");
         }
         sb.append(">\n");
         out.levels.push(new Level(gs.getCurrentClippingPaths().size()));
@@ -315,7 +313,7 @@ final class PageSvg extends PDFGraphicsStreamEngine {
             depth--;
             flushText();
             closeLevel(out);
-            out.sb.append("</g>\n");
+            out.sb.append("</g>").append(outer).append('\n');
         }
     }
 
@@ -613,15 +611,40 @@ final class PageSvg extends PDFGraphicsStreamEngine {
         return identity ? null : sb.toString();
     }
 
+    private String openBlend(String blend, List<Path2D> clips, Out o) {
+        syncFor(List.of(), o);
+        o.sb.append("<g style=\"mix-blend-mode:").append(blend).append("\">");
+        StringBuilder close = new StringBuilder("</g>");
+        Level level = o.levels.peek();
+        for (int i = level.base; i < clips.size(); i++) {
+            String id = clip(clips.get(i));
+            if (id != null) {
+                o.sb.append("<g clip-path=\"url(#").append(id).append(")\">");
+                close.append("</g>");
+            }
+        }
+        return close.toString();
+    }
+
     private boolean emit(CharSequence element) {
         if (++elements > MAX_ELEMENTS) {
             return false;
         }
-        sync();
         PDGraphicsState gs = getGraphicsState();
         String mask = gs.getSoftMask() == null ? null : softMask(gs.getSoftMask());
         String blend = blend(gs.getBlendMode());
         StringBuilder sb = out.sb;
+        if (blend != null) {
+            String close = openBlend(blend, gs.getCurrentClippingPaths(), out);
+            if (mask != null) {
+                sb.append("<g mask=\"url(#").append(mask).append(")\">").append(element).append("</g>");
+            } else {
+                sb.append(element);
+            }
+            sb.append(close).append('\n');
+            return true;
+        }
+        sync();
         if (mask != null || blend != null) {
             sb.append("<g");
             if (mask != null) {
@@ -1415,9 +1438,19 @@ final class PageSvg extends PDFGraphicsStreamEngine {
         }
         Out o = out;
         if (++elements <= MAX_ELEMENTS) {
-            syncFor(r.clips, o);
             String mask = r.maskId;
             String blend = blend(r.blend);
+            if (blend != null) {
+                String close = openBlend(blend, r.clips, o);
+                if (mask != null) {
+                    o.sb.append("<g mask=\"url(#").append(mask).append(")\">").append(sb).append("</g>");
+                } else {
+                    o.sb.append(sb);
+                }
+                o.sb.append(close).append('\n');
+                return;
+            }
+            syncFor(r.clips, o);
             if (mask != null || blend != null) {
                 o.sb.append("<g");
                 if (mask != null) {
