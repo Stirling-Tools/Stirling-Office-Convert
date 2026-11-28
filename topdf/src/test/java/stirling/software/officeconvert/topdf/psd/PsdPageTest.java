@@ -1224,6 +1224,31 @@ class PsdPageTest {
     }
 
     @Test
+    void aHueSaturationColourRangeChangesOnlyItsHues() throws IOException {
+        PsdFixture f = new PsdFixture(2, 1);
+        f.hasMerged = false;
+        f.flat(255).flat(255).flat(255);
+        PsdFixture.Layer base = new PsdFixture.Layer().rect(0, 0, 1, 2).fill(-1, 255).fill(1, 0).fill(2, 0);
+        base.channels.put(0, new byte[] {(byte) 255, 0});
+        base.channels.put(2, new byte[] {0, (byte) 255});
+        f.layers.add(base);
+        java.nio.ByteBuffer hue = java.nio.ByteBuffer.allocate(2 + 2 + 12 + 6 * 14);
+        hue.putShort((short) 2).put((byte) 0).put((byte) 0);
+        hue.putShort((short) 0).putShort((short) 0).putShort((short) 0);
+        hue.putShort((short) 0).putShort((short) 0).putShort((short) 0);
+        hue.putShort((short) 315).putShort((short) 345).putShort((short) 15).putShort((short) 45);
+        hue.putShort((short) 0).putShort((short) -100).putShort((short) 0);
+        f.layers.add(new PsdFixture.Layer().rect(0, 0, 0, 0).block("hue2", hue.array()));
+        OfficeToPdf.Result r = convert(f, "hue-range.psd");
+        assertFalse(r.warnings().stream().anyMatch(w -> w.contains("left out")), r.warnings().toString());
+        try (PDDocument pdf = open("hue-range.psd")) {
+            byte[] s = samples(image(pdf.getPage(0)));
+            assertArrayEquals(new int[] {128, 128, 128}, ints(s, 0));
+            assertArrayEquals(new int[] {0, 0, 255}, ints(s, 3));
+        }
+    }
+
+    @Test
     void anOutsideStrokeIsDrawnAroundTheLayer() throws IOException {
         PsdFixture f = new PsdFixture(9, 9);
         f.hasMerged = false;

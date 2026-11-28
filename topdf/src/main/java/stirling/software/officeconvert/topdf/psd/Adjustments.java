@@ -350,14 +350,18 @@ abstract class Adjustments {
         float hue = b.getShort();
         float sat = b.getShort();
         float light = b.getShort();
+        float[][] ranges = new float[6][];
+        boolean ranged = false;
         for (int r = 0; r < 6 && b.remaining() >= 14; r++) {
-            b.getShort();
-            b.getShort();
-            b.getShort();
-            b.getShort();
-            if (b.getShort() != 0 || b.getShort() != 0 || b.getShort() != 0) {
-                return null;
+            float[] v = new float[7];
+            for (int i = 0; i < 7; i++) {
+                v[i] = b.getShort();
             }
+            ranges[r] = v;
+            ranged |= v[4] != 0 || v[5] != 0 || v[6] != 0;
+        }
+        if (ranged && !colorize) {
+            return ranged(ranges, hue, sat, light);
         }
         return new Adjustments() {
             @Override
@@ -392,6 +396,90 @@ abstract class Adjustments {
                 }
             }
         };
+    }
+
+    private static Adjustments ranged(float[][] ranges, float hue, float sat, float light) {
+        float masterGain = 1 + gain(sat);
+        float master = light / 100f;
+        return new Adjustments() {
+            @Override
+            void apply(float[] buf, int at, int n, float[] out) {
+                float[] c = {buf[at], buf[at + 1], buf[at + 2]};
+                float[] hs = toHsl(c);
+                float shift = hue;
+                float gains = 0;
+                float lift = 0;
+                if (hs[1] > 0) {
+                    for (float[] r : ranges) {
+                        if (r == null) {
+                            continue;
+                        }
+                        float w = weight(hs[0], r);
+                        shift += w * r[4];
+                        gains += w * gain(r[5]);
+                        lift += w * r[6] / 100f;
+                    }
+                }
+                lift = Math.max(-1, Math.min(1, lift));
+                float max = Math.max(c[0], Math.max(c[1], c[2]));
+                float min = Math.min(c[0], Math.min(c[1], c[2]));
+                for (int i = 0; i < 3; i++) {
+                    float v = lift >= 0 ? c[i] + (max - c[i]) * lift : c[i] + (c[i] - min) * lift;
+                    c[i] = master < 0 ? v * (1 + master) : v + (1 - v) * master;
+                }
+                float[] now = toHsl(c);
+                float s = Colors.clamp(now[1] * masterGain * (1 + gains));
+                float[] rgb = hsl(((now[0] + shift) % 360 + 360) % 360, s, Colors.clamp(now[2]));
+                for (int i = 0; i < 3; i++) {
+                    out[i] = Colors.clamp(rgb[i]);
+                }
+            }
+        };
+    }
+
+    private static float gain(float x) {
+        if (x <= 0) {
+            return x / 100f;
+        }
+        return x >= 100 ? 1e6f : 1 / (1 - x / 100f) - 1;
+    }
+
+    private static float weight(float h, float[] r) {
+        float up = mod(h - r[0]);
+        float rise = mod(r[1] - r[0]);
+        float hold = mod(r[2] - r[0]);
+        float end = mod(r[3] - r[0]);
+        if (up < rise) {
+            return up / rise;
+        }
+        if (up <= hold) {
+            return 1;
+        }
+        if (up < end) {
+            return 1 - (up - hold) / (end - hold);
+        }
+        return 0;
+    }
+
+    private static float mod(float v) {
+        return ((v % 360) + 360) % 360;
+    }
+
+    private static float[] toHsl(float[] c) {
+        float r = c[0];
+        float g = c[1];
+        float bl = c[2];
+        float max = Math.max(r, Math.max(g, bl));
+        float min = Math.min(r, Math.min(g, bl));
+        float l = (max + min) / 2;
+        float s = max == min ? 0 : l <= 0.5f ? (max - min) / (max + min) : (max - min) / (2 - max - min);
+        float h = 0;
+        if (max != min) {
+            float d = max - min;
+            h = max == r ? (g - bl) / d + (g < bl ? 6 : 0) : max == g ? (bl - r) / d + 2 : (r - g) / d + 4;
+            h *= 60;
+        }
+        return new float[] {h, s, l};
     }
 
     private static float[] hsl(float h, float s, float l) {
