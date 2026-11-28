@@ -137,7 +137,9 @@ final class CffSubsetter {
 
     private Index fdArray;
 
-    private int[] select;
+    private byte[] select;
+
+    private BitSet unselected;
 
     private final Set<Integer> flattened = new HashSet<>();
 
@@ -351,7 +353,7 @@ final class CffSubsetter {
     }
 
     private int fdOf(int glyph) throws IOException {
-        int f = select == null ? 0 : select[glyph];
+        int f = select == null ? 0 : unselected != null && unselected.get(glyph) ? -1 : select[glyph] & 0xFF;
         if (f < 0 || f >= fds.length) {
             throw new IOException("glyph " + glyph + " has no font dictionary");
         }
@@ -600,21 +602,21 @@ final class CffSubsetter {
         }
     }
 
-    private int[] fdSelect(int select, int count) {
-        int[] fd = new int[count];
+    private byte[] fdSelect(int select, int count) {
+        byte[] fd = new byte[count];
+        unselected = null;
         need(select, select + 3L);
         int format = in.get(select) & 0xFF;
         if (format == 0) {
             need(select, select + 1L + count);
-            for (int g = 0; g < count; g++) {
-                fd[g] = in.get(select + 1 + g) & 0xFF;
-            }
+            in.get(select + 1, fd, 0, count);
             return fd;
         }
         if (format != 3) {
             throw new IllegalArgumentException("FDSelect format " + format);
         }
-        Arrays.fill(fd, -1);
+        unselected = new BitSet(count);
+        unselected.set(0, count);
         int ranges = u16(select + 1);
         need(select, select + 5L + 3L * ranges);
         int previous = 0;
@@ -624,8 +626,10 @@ final class CffSubsetter {
             if (first < previous) {
                 throw new IllegalArgumentException("the FDSelect ranges are out of order");
             }
-            Arrays.fill(fd, Math.min(first, count), Math.min(Math.max(first, next), count),
-                    in.get(select + 5 + 3 * r) & 0xFF);
+            int from = Math.min(first, count);
+            int to = Math.min(Math.max(first, next), count);
+            Arrays.fill(fd, from, to, in.get(select + 5 + 3 * r));
+            unselected.clear(from, to);
             previous = first;
         }
         return fd;
