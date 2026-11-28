@@ -183,6 +183,13 @@ final class RunProps {
                 }
                 case "w:position" -> position = Ooxml.halfPoints(k.val());
                 case "so:lineHeight" -> lineHeight = Ooxml.twips(k.attr("so:val"));
+                case "so:size" -> {
+                    Float exact = Ooxml.twips(k.attr("so:val"));
+                    if (exact != null && exact > 0) {
+                        size = Math.min(1638, exact);
+                        sizeCs = size;
+                    }
+                }
                 case "w:kern" -> kern = Ooxml.halfPoints(k.val());
                 case "w:vertAlign" -> vertAlign = k.val();
                 case "w:bdr" -> border = Border.parse(k, theme);

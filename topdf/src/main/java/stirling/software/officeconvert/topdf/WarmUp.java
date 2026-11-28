@@ -49,6 +49,9 @@ final class WarmUp {
         }
     }
 
+    private static final String MARKDOWN = "---\ntitle: Warm up\n---\n# Warm up\n\nWarm *up* www.example.com $x^2$\n\n"
+            + "- [x] warm\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n> [!NOTE]\n> up[^1]\n\n[^1]: Warm.\n";
+
     private static final byte[] SAMPLE_PNG = HexFormat.of().parseHex("89504e470d0a1a0a0000000d494844520000000200000002"
             + "080600000072b60d240000001249444154789c63f8cfc0d0c0f01f0c210c003c5f06fb4398423e0000000049454e44ae426082");
 
@@ -73,6 +76,9 @@ final class WarmUp {
     private static final String RELS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/";
 
     static byte[] sample(Format format) throws IOException {
+        if (format == Format.MARKDOWN) {
+            return MARKDOWN.getBytes(StandardCharsets.UTF_8);
+        }
         if (format == Format.HTML) {
             return ("<!DOCTYPE html><html><body><h1>Warm up</h1><p>Warm <b>up</b></p><ul><li>Warm up</li></ul>"
                     + "<table border=\"1\"><tr><th>Warm</th><td>up</td></tr></table></body></html>")

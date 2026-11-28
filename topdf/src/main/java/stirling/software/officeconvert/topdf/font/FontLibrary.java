@@ -24,6 +24,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.SortedSet;
 import java.util.TreeSet;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -227,9 +228,32 @@ public final class FontLibrary {
         return Collections.unmodifiableSortedSet(out);
     }
 
+    private static final int MAX_KEYS = 1024;
+
+    private static final int MAX_KEY_LENGTH = 256;
+
+    private final Map<String, String[]> keys = new ConcurrentHashMap<>();
+
+    private String key(String family, boolean bold, boolean italic) {
+        String[] known = keys.get(family);
+        int slot = (bold ? 2 : 0) + (italic ? 1 : 0);
+        if (known != null) {
+            return known[slot];
+        }
+        String n = normalize(family);
+        String[] made = new String[4];
+        for (int i = 0; i < 4; i++) {
+            made[i] = "f\u0000" + n + '\u0000' + (i >> 1) + (i & 1);
+        }
+        if (family.length() <= MAX_KEY_LENGTH && keys.size() < MAX_KEYS) {
+            keys.putIfAbsent(family, made);
+        }
+        return made[slot];
+    }
+
     public FontFace find(String family, boolean bold, boolean italic) {
         Objects.requireNonNull(family, "family");
-        String key = "f\u0000" + normalize(family) + '\u0000' + (bold ? 1 : 0) + (italic ? 1 : 0);
+        String key = key(family, bold, italic);
         Optional<FontFace> known = faces.get(key);
         if (known == null) {
             known = Optional.of(resolve(family, bold, italic));

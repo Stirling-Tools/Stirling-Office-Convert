@@ -20,6 +20,7 @@ import stirling.software.officeconvert.topdf.OfficeToPdf.Options;
 import stirling.software.officeconvert.topdf.OfficeToPdf.Result;
 import stirling.software.officeconvert.topdf.font.FontSet;
 import stirling.software.officeconvert.topdf.html.HtmlDocument;
+import stirling.software.officeconvert.topdf.markdown.MarkdownPage;
 import stirling.software.officeconvert.topdf.text.Converted;
 
 /** HTML is laid out as a Word package and drawn by the Word renderer. */
@@ -27,24 +28,28 @@ final class HtmlInput {
 
     static final long MAX_BYTES = 64L << 20;
 
+    static final long MAX_MARKDOWN_BYTES = 16L << 20;
+
+    private static final long MARKDOWN_FACTOR = 96;
+
     static final String PACKAGES_REFUSED = "The ZIP file is a package of separate files, which converts only when"
             + " packages are allowed (Options.allowPackages, --allow-packages)";
 
     private HtmlInput() {}
 
     static boolean is(Path source, Format requested) throws IOException {
-        if (requested != null && requested != Format.HTML && requested != Format.DOCX) {
+        if (requested != null && !html(requested) && requested != Format.DOCX) {
             return false;
         }
         byte[] head = head(source);
         if (zip(head) || ole2(head)) {
             return false;
         }
-        return requested == Format.HTML || named(source) || sniff(head);
+        return html(requested) || named(source) || sniff(head);
     }
 
     static boolean packaged(Path source, Format requested) throws IOException {
-        if (requested != Format.HTML && requested != Format.EPUB && !zipNamed(source)) {
+        if (!html(requested) && requested != Format.EPUB && !zipNamed(source)) {
             return false;
         }
         return zip(head(source));
@@ -77,6 +82,10 @@ final class HtmlInput {
     }
 
     static Long estimate(Path source, Format requested) throws IOException {
+        if (markdown(source, requested)) {
+            return HtmlDocument.estimate(2 * Files.size(source)) + MARKDOWN_FACTOR * Files.size(source)
+                    + 2 * Admission.BASE_BYTES;
+        }
         if (MobiBook.is(source)) {
             return HtmlDocument.estimate(MAX_BYTES) + 3 * Files.size(source) + 2 * Admission.BASE_BYTES;
         }
@@ -91,7 +100,10 @@ final class HtmlInput {
 
     static Result render(Path source, Format requested, OutputStream sink, Options options,
             OfficeToPdf.Renderer renderer) throws IOException {
-        if (requested == null || requested == Format.HTML) {
+        if (markdown(source, requested)) {
+            return renderMarkdown(source, sink, options, renderer);
+        }
+        if (requested == null || html(requested)) {
             if (MobiBook.is(source)) {
                 return renderBook(read(source, 3, MobiBook::read), sink, options, renderer);
             }
@@ -112,6 +124,60 @@ final class HtmlInput {
             return null;
         }
         return render(source, sink, options, renderer, options.htmlAssets().session(), options.zoom());
+    }
+
+    private static boolean html(Format requested) {
+        return requested == Format.HTML || requested == Format.MARKDOWN;
+    }
+
+    private static boolean markdown(Path source, Format requested) throws IOException {
+        boolean named = (requested == null || requested == Format.HTML) && MarkdownPage.named(source);
+        if (requested != Format.MARKDOWN && !named) {
+            return false;
+        }
+        byte[] head = head(source);
+        return !zip(head) && !ole2(head);
+    }
+
+    private static Result renderMarkdown(Path source, OutputStream sink, Options options,
+            OfficeToPdf.Renderer renderer) throws IOException {
+        long bytes = Files.size(source);
+        if (bytes > MAX_MARKDOWN_BYTES) {
+            throw new IOException("The Markdown file is larger than " + (MAX_MARKDOWN_BYTES >> 20) + " MB");
+        }
+        String html;
+        OfficeToPdf.stopIfInterrupted();
+        Admission.Ticket ticket = Admission.jvm().enter(MARKDOWN_FACTOR * bytes + Admission.BASE_BYTES);
+        try {
+            html = MarkdownPage.html(Files.readAllBytes(source));
+        } finally {
+            ticket.close();
+        }
+        OfficeToPdf.stopIfInterrupted();
+        if (html.length() > MAX_BYTES) {
+            throw new IOException("The Markdown file makes a page larger than " + (MAX_BYTES >> 20) + " MB");
+        }
+        Path page = Files.createTempFile("office-to-pdf-", ".html");
+        try {
+            Files.writeString(page, html, StandardCharsets.UTF_8);
+            return render(page, sink, options, renderer, besidePage(options.htmlAssets().session()), options.zoom());
+        } finally {
+            OfficeToPdf.deleteQuietly(page);
+        }
+    }
+
+    private static HtmlAssets besidePage(HtmlAssets assets) {
+        return new HtmlAssets() {
+            @Override
+            public String base() {
+                return assets.base();
+            }
+
+            @Override
+            public byte[] read(String reference) throws IOException {
+                return HtmlAssets.packagePath(reference) ? assets.read(reference) : null;
+            }
+        };
     }
 
     private static Result renderPackage(Path source, Format requested, OutputStream sink, Options options,

@@ -27,14 +27,14 @@ For Word, PowerPoint and Excel input (`.docx .docm .dotx .dotm .pptx .pptm .ppsx
 `.rtf`, Word 2003 XML, XML Spreadsheet 2003 and Flat OPC `.xml`, Visio 2013 and later `.vsdx .vsdm .vssx .vstx`,
 OpenDocument `.odt .ott .fodt .odm .ods .ots .fods .odp .otp .fodp .odg .otg .fodg`, OpenOffice.org 1.x `.sxw .stw .sxc
 .stc .sxi .sti .sxd .std`, SYLK, DIF and dBASE `.slk .dif .dbf`, Lotus 1-2-3 `.wk1 .wks .wk3 .wk4 .123`, Apple iWork `.pages .numbers .key`, Publisher `.pub` and Visio 2003-2010 `.vsd .vss .vst .vsw` (from the preview they hold), plain text `.txt .text .log .asc`, tables
-`.csv .tsv .tab`, HTML `.html .htm .xhtml` or a `.zip` of a page (with `--allow-packages`), eBooks `.epub .mobi .azw3 .azw .prc .pdb .fb2 .fbz` and this library's JSON `.json`), which converts to PDF: `--password p` (a password protected document), `--max-pages n` (default 10000, 0 = all), `--timeout s` (default 300, 0 =
+`.csv .tsv .tab`, HTML `.html .htm .xhtml` or a `.zip` of a page (with `--allow-packages`), Markdown `.md .markdown`, eBooks `.epub .mobi .azw3 .azw .prc .pdb .fb2 .fbz` and this library's JSON `.json`), which converts to PDF: `--password p` (a password protected document), `--max-pages n` (default 10000, 0 = all), `--timeout s` (default 300, 0 =
 none), `--fonts dir` (repeatable; an extra folder of fonts), `--font-map Family=Installed` (repeatable; draw a
 family with an installed one, such as `Aptos=Inter`), `--font-width Family=scale` (repeatable; scale a substituted
 family's widths, 0.5 to 2), `--no-system-fonts` (only the given fonts and the bundled Liberation Sans, for
-reproducible output), `--allow-packages` (convert a `.zip` of an HTML page, or an EPUB book not named `.epub`), `--allow-local-files` (let an HTML page
+reproducible output), `--allow-packages` (convert a `.zip` of an HTML page, or an EPUB book not named `.epub`), `--allow-local-files` (let an HTML or Markdown page
 draw the pictures and style sheets in its own folder, never outside it), `-q`, and `--format pdf` to take only the Office files out
 of a folder. A folder converts its PDFs, its Office files and its eBooks (EPUB, AZW3, MOBI, PRC/PDB, FB2/FBZ), and
-its `.zip` files only with `--allow-packages`; its text, CSV, HTML and JSON files only with `--format pdf`. Inputs that would write the same output name (such
+its `.zip` files only with `--allow-packages`; its text, CSV, HTML, Markdown and JSON files only with `--format pdf`. Inputs that would write the same output name (such
 as `report.docx` and `report.xlsx`) keep their own extension in it (`report.docx.pdf`, `report.xlsx.pdf`), and Office
 owner files (`~$name`) are skipped. An input is never overwritten: an output that would take an input's name keeps that
 input's extension instead (`b.docx` and `b.pdf` in one folder give `b.docx.pdf` and `b.pdf.docx`), and nothing a run
@@ -574,7 +574,8 @@ It depends on the core module, `org.apache.pdfbox:pdfbox:3.0.8`, `org.apache.poi
 5.5.1 (with `poi`, `poi-ooxml-lite`, `xmlbeans`, `commons-io`, `commons-codec`, `commons-compress`, `commons-lang3`,
 `commons-collections4`, `commons-math3`, `SparseBitSet`, `curvesapi` and `log4j-api`) and
 `de.rototor.pdfbox:graphics2d:3.0.5`, all Apache-2.0 apart from
-`curvesapi` (BSD-3-Clause), and `org.jsoup:jsoup:1.22.2` (MIT) for HTML. Automatic hyphenation uses the English Hyphen patterns bundled under
+`curvesapi` (BSD-3-Clause), `org.jsoup:jsoup:1.23.2` (MIT) for HTML, and `org.commonmark:commonmark:0.30.0` with its
+`gfm-tables`, `gfm-strikethrough`, `task-list-items` and `footnotes` extensions (BSD-2-Clause) for Markdown. Automatic hyphenation uses the English Hyphen patterns bundled under
 `stirling/software/officeconvert/topdf/docx/hyph/` (BSD-style licence beside them).
 
 HTML (`.html .htm .xhtml`, or any file whose content starts `<!DOCTYPE html` or `<html`, such as a Word "web page"
@@ -598,6 +599,23 @@ never outside the archive. A library caller can supply them another way with `Op
 `--allow-local-files` uses, rooted at the page's folder), and
 a caller's own implementation receives each reference resolved against its `base()`, such as a URL it fetches itself.
 At most 4,000 linked files and 192 MB are read per page, 64 MB each.
+
+Markdown (`.md .markdown`) is read as GitHub Flavored Markdown (CommonMark 0.31 with tables, strikethrough, task
+lists, extended autolinks, footnotes, alerts such as `> [!NOTE]` and the disallowed raw HTML filter) and drawn
+through the HTML layout above with a built-in style sheet: A4 pages, a heading scale, bordered tables, and code blocks
+in a monospaced font that wrap rather than run off the page; a page whose tables or pictures are wider than the paper
+is shrunk to fit by at most a third, as browsers print. Headings become bookmarks and link targets (GitHub's
+anchors, or an explicit `{#id}`), links stay links, YAML (`---`) or TOML (`+++`) front matter is left out and its
+`title` names the PDF, and right-to-left paragraphs, headings and lists are set right to left. Math in `$…$`, `$$…$$`
+and ```` ```math ```` blocks is typeset as text (Greek letters, operators, scripts, fractions as `a/b`, matrices,
+`cases` and `aligned` in columns in display math); it is not laid out as a formula. Raw HTML is drawn as HTML is,
+except that `<details>` is printed open and a `name` on a heading or other element also makes it a link target.
+Pictures, written in Markdown or as raw `<img>`, are drawn from `data:` URIs, and from files beside the page only with
+`HtmlAssets` (`--allow-local-files`), never outside the page's folder; pictures, style sheets and fonts on the web are
+never fetched, even with `--fetch-linked`, and show their alt text, or a grey box that keeps its link when they have
+none. Links keep only `http`, `https`,
+`mailto` and `#` targets. Text is read as UTF-8, or UTF-16 with a byte order mark, else Windows-1252; files over
+16 MB are refused.
 
 EPUB (`.epub`, EPUB 2 and 3) is read in its reading order (the package document's spine) into one HTML page: each
 document starts a new page, its own `<style>` rules apply only to it, links between documents become links inside
@@ -944,6 +962,8 @@ further; the JDK default is 240 MB.
 
 ### Unreleased
 
+- `OfficeToPdf.Format` has a new value, `MARKDOWN`, which `Format.of` returns for `.md` and `.markdown`. A caller with
+  an exhaustive `switch` over `Format` needs a case for it.
 - Word 97-2003 `.doc` output is removed: `OfficeConvert.Format.of("x.doc")` throws `IllegalArgumentException`,
   `OfficeConvert.convert` to a `.doc` name throws `UnsupportedFormatException`, and the CLI's `--format doc` exits
   with status 2. Write `.docx` or `.rtf` instead.

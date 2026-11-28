@@ -16,7 +16,10 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 
+import org.apache.fontbox.ttf.TTFParser;
+import org.apache.fontbox.ttf.TrueTypeFont;
 import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.io.RandomAccessReadBuffer;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.rendering.PDFRenderer;
 import org.apache.pdfbox.text.PDFTextStripper;
@@ -937,6 +940,14 @@ class HtmlLayoutTest {
     }
 
     @Test
+    void aSpanWithNormalLineHeightKeepsItsOwnHeightInAFixedLine() throws IOException {
+        Laid l = lay("""
+                <html><body style="font-size:11pt"><div style="line-height:18pt"><span style="font-size:48pt;
+                line-height:normal">Big<br>Again</span></div></body></html>""");
+        assertTrue(l.word("Again").top() - l.word("Big").top() > 48, l.word("Again").top() + " vs " + l.word("Big").top());
+    }
+
+    @Test
     void brokenPictureWithoutAltKeepsAnIconSizedBox() throws IOException {
         Laid l = lay("<html><body style=\"font-size:8pt\"><p>A<img src=\"missing.png\">B</p></body></html>");
         float a = l.words().getFirst().left();
@@ -1048,5 +1059,105 @@ class HtmlLayoutTest {
         assertEquals(1.245f * 36, green, 4);
         assertEquals(1.245f * 36, red, 4);
         assertTrue(now.left() - go.right() > 1.2f * 36, go + " " + now);
+    }
+
+    private OfficeToPdf.Options testFonts() throws IOException {
+        Path fonts = Files.createDirectories(dir.resolve("fonts"));
+        Files.write(fonts.resolve("TestSans.ttf"), TestFonts.renamed("TestSans"));
+        Files.write(fonts.resolve("TallCjk.ttf"), TestFonts.withLineMetrics(TestFonts.withEastAsianGlyphs("TallCjk"), 1600, 600));
+        return OfficeToPdf.Options.defaults().fonts(FontSet.builder().directory(fonts).systemFonts(false).build());
+    }
+
+    @Test
+    void textIsKernedAsBrowsersKernIt() throws IOException {
+        Laid l = lay("<p style=\"font-family:TestSans;font-size:30px\">AVAVAVAV AAAAVVVV</p>", testFonts());
+        Word kerned = l.word("AVAVAVAV");
+        Word plain = l.word("AAAAVVVV");
+        assertTrue(kerned.right() - kerned.left() < plain.right() - plain.left() - 4, kerned + " " + plain);
+    }
+
+    @Test
+    void inlinePaddingAddsWhatItAsks() throws IOException {
+        Laid l = lay("<p style=\"font-family:TestSans\">alpha <code style=\"font-family:TestSans;font-size:60px;"
+                + "padding-left:12pt\">xx</code></p><p style=\"font-family:TestSans\">alpha <code style=\""
+                + "font-family:TestSans;font-size:60px\">xx</code></p>", testFonts());
+        List<Word> ends = l.words().stream().filter(w -> w.text().endsWith("xx")).toList();
+        assertEquals(2, ends.size(), l.words().toString());
+        assertEquals(12, ends.get(0).right() - ends.get(1).right(), 0.5f, ends.toString());
+    }
+
+    @Test
+    void inlinePaddingCountsANarrowNoBreakSpaceAtItsOwnWidth() throws IOException {
+        Path fonts = Files.createDirectories(dir.resolve("narrow-fonts"));
+        Files.write(fonts.resolve("NarrowSpace.ttf"), TestFonts.withGlyphs("NarrowSpace", 'i', 0xA0));
+        OfficeToPdf.Options options = OfficeToPdf.Options.defaults()
+                .fonts(FontSet.builder().directory(fonts).systemFonts(false).build());
+        Laid l = lay("<p style=\"font-family:NarrowSpace\">alpha <code style=\"font-family:NarrowSpace;"
+                + "font-size:100pt;padding-left:2pt\">xx</code></p><p style=\"font-family:NarrowSpace\">alpha "
+                + "<code style=\"font-family:NarrowSpace;font-size:100pt\">xx</code></p>", options);
+        List<Word> ends = l.words().stream().filter(w -> w.text().endsWith("xx")).toList();
+        assertEquals(2, ends.size(), l.words().toString());
+        assertEquals(2, ends.get(0).right() - ends.get(1).right(), 0.5f, ends.toString());
+    }
+
+    @Test
+    void remBorderWidthsFollowEachDocumentsRootSize() {
+        Map<String, String> d = Map.of("border-bottom", ".25rem solid red");
+        try {
+            Css.rootSize(12);
+            assertEquals(3f, BoxCss.border(d, "bottom"), 0.001f);
+            Css.rootSize(24);
+            assertEquals(6f, BoxCss.border(d, "bottom"), 0.001f);
+            Css.rootSize(12);
+            assertEquals(3f, BoxCss.border(Map.of("border-bottom-width", ".25REM", "border-bottom-style", "solid"),
+                    "bottom"), 0.001f);
+            Css.rootSize(24);
+            assertEquals(6f, BoxCss.border(Map.of("border-bottom-width", ".25REM", "border-bottom-style", "solid"),
+                    "bottom"), 0.001f);
+        } finally {
+            Css.clearRootSize();
+        }
+    }
+
+    @Test
+    void hebrewInAPageIsDrawnAtItsCssFontsOwnWidth() throws IOException {
+        String word = "\u05e9\u05dc\u05d5\u05dd";
+        Laid l = lay("<p dir=\"rtl\" style=\"font-family:TestSans;font-size:40px\">" + word + " " + word + "</p>",
+                testFonts());
+        float expected;
+        try (TrueTypeFont font = new TTFParser().parse(new RandomAccessReadBuffer(TestFonts.renamed("TestSans")))) {
+            float units = 0;
+            for (char c : (word + " " + word).toCharArray()) {
+                units += font.getAdvanceWidth(font.getUnicodeCmapLookup().getGlyphId(c));
+            }
+            expected = units * 30f / font.getUnitsPerEm();
+        }
+        List<Word> hebrew = l.words().stream().filter(w -> w.text().codePointAt(0) >= 0x05d0
+                && w.text().codePointAt(0) <= 0x05ea).toList();
+        assertEquals(8, hebrew.size(), l.words().toString());
+        float left = (float) hebrew.stream().mapToDouble(Word::left).min().orElseThrow();
+        float right = (float) hebrew.stream().mapToDouble(Word::right).max().orElseThrow();
+        assertEquals(expected, right - left, 0.5f, hebrew.toString());
+    }
+
+    @Test
+    void aFallbackFontDoesNotGrowCssLines() throws IOException {
+        Laid l = lay("<p style=\"font-family:TestSans,TallCjk;font-size:20px;line-height:1.5;width:150px\">"
+                + "\u4e00".repeat(60) + "</p>", testFonts());
+        List<Float> tops = l.words().stream().map(Word::top).distinct().sorted().toList();
+        assertTrue(tops.size() >= 3, l.words().toString());
+        for (int i = 1; i < tops.size(); i++) {
+            assertEquals(22.5f, tops.get(i) - tops.get(i - 1), 0.6f, tops.toString());
+        }
+    }
+
+    @Test
+    void fontSizesBetweenHalfPointsKeepTheirSize() throws IOException {
+        Laid l = lay("<p style=\"font-family:TestSans;font-size:9.35pt\">exactsizeexactsize</p>"
+                + "<p style=\"font-family:TestSans;font-size:9.5pt\">exactsizeexactsize</p>", testFonts());
+        List<Word> both = l.words().stream().filter(w -> w.text().equals("exactsizeexactsize")).toList();
+        assertEquals(2, both.size(), l.words().toString());
+        float ratio = (both.get(0).right() - both.get(0).left()) / (both.get(1).right() - both.get(1).left());
+        assertEquals(9.35f / 9.5f, ratio, 0.004f);
     }
 }

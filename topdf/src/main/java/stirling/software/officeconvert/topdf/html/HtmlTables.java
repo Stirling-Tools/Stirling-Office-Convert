@@ -9,11 +9,14 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.regex.Pattern;
 
 import org.jsoup.nodes.Element;
 import org.jsoup.nodes.Node;
 import org.jsoup.nodes.TextNode;
 import org.jsoup.select.Elements;
+import org.jsoup.select.Evaluator;
+import org.jsoup.select.QueryParser;
 
 import stirling.software.officeconvert.model.Block;
 import stirling.software.officeconvert.model.Paragraph;
@@ -29,6 +32,16 @@ final class HtmlTables {
     static final int MAX_ROWS = 20_000;
 
     static final String ROWS = "> tr, > thead > tr, > tbody > tr, > tfoot > tr";
+
+    static final Evaluator ROW_QUERY = QueryParser.parse(ROWS);
+
+    static final Evaluator CELL_QUERY = QueryParser.parse("> td, > th");
+
+    private static final Evaluator HEAD_QUERY = QueryParser.parse("> th");
+
+    private static final Evaluator COL_QUERY = QueryParser.parse("> col, > colgroup > col");
+
+    private static final Evaluator PICTURE_QUERY = QueryParser.parse("img, svg");
 
     private static final float MIN_COLUMN = 12f;
 
@@ -47,7 +60,7 @@ final class HtmlTables {
 
     Table table(Element table, Map<String, String> d, Look look, Flow.Frame frame, Paragraph.Align legacy, int depth)
             throws IOException {
-        Elements rows = table.select(ROWS);
+        Elements rows = table.select(ROW_QUERY);
         if (rows.isEmpty()) {
             return null;
         }
@@ -81,7 +94,7 @@ final class HtmlTables {
             row.header = "thead".equals(tr.parent() == null ? "" : tr.parent().normalName());
             boolean allHeads = true;
             int col = 0;
-            for (Element td : tr.select("> td, > th")) {
+            for (Element td : tr.select(CELL_QUERY)) {
                 if (hidden(td, ctx.declared(td, rowLook), rowLook)) {
                     continue;
                 }
@@ -124,7 +137,7 @@ final class HtmlTables {
                 col += colspan;
                 columns = Math.max(columns, col);
             }
-            row.header |= allHeads && !tr.select("> th").isEmpty();
+            row.header |= allHeads && !tr.select(HEAD_QUERY).isEmpty();
             t.rows.add(row);
         }
         if (columns == 0) {
@@ -268,12 +281,7 @@ final class HtmlTables {
         }
         String all = d.get("border-" + side);
         if (c == null && all != null) {
-            for (String token : Css.tokens(all)) {
-                Integer tc = Css.color(token);
-                if (tc != null) {
-                    c = tc;
-                }
-            }
+            c = BoxCss.shorthand(all).color();
         }
         return new Table.Border(w, c == null || c < 0 ? 0 : c, BoxCss.doubled(d, side));
     }
@@ -312,7 +320,7 @@ final class HtmlTables {
         float[] natural = new float[columns];
         float[] least = new float[columns];
         float[] unwrapped = new float[columns];
-        Elements cols = table.select("> col, > colgroup > col");
+        Elements cols = table.select(COL_QUERY);
         for (int c = 0; c < Math.min(columns, cols.size()); c++) {
             Float w = width(ctx.declared(cols.get(c), look).get("width"), look, given == null ? room : given);
             fixed[c] = w == null ? 0 : w;
@@ -341,7 +349,7 @@ final class HtmlTables {
                         + across + 2));
                 natural[c] = Math.max(natural[c], Math.min(room, measured.widestLine + across + 2));
                 float longest = 0;
-                for (String word : text.split("\\s+")) {
+                for (String word : WORDS.split(text)) {
                     longest = Math.max(longest, Glyphs.word(word, size, s.look().bold, s.look().font));
                 }
                 longest = Math.max(longest, measured.widestWord + 1);
@@ -400,6 +408,19 @@ final class HtmlTables {
         return sum;
     }
 
+    private static final Pattern WORDS = Pattern.compile(
+            "\\s+|(?<=[^\\s(\\-\u00a0\u202f]-)(?=[^\\s\\-!),.:;?\\]}\u00a0\u202f])");
+
+    static boolean hyphenBreak(String text, int at) {
+        if (at < 1 || at + 1 >= text.length()) {
+            return false;
+        }
+        char before = text.charAt(at - 1);
+        char after = text.charAt(at + 1);
+        return !Character.isWhitespace(before) && "(-\u00a0\u202f".indexOf(before) < 0
+                && !Character.isWhitespace(after) && "-!),.:;?]}\u00a0\u202f".indexOf(after) < 0;
+    }
+
     private static final class CellWidths {
         float line;
         float word;
@@ -432,6 +453,15 @@ final class HtmlTables {
                 int cp = text.codePointAt(i);
                 i += Character.charCount(cp);
                 boolean blank = cp == ' ' || cp == '\t' || cp == '\n' || cp == '\r' || cp == '\f';
+                if (!nowrap && cp == '-' && hyphenBreak(text, at)) {
+                    float width = Measure.width(text.substring(from, i), style);
+                    line += width;
+                    word += width;
+                    wordEnd();
+                    from = i;
+                    space = false;
+                    continue;
+                }
                 if (!blank && (nowrap || !Glyphs.wide(cp))) {
                     continue;
                 }
@@ -491,7 +521,10 @@ final class HtmlTables {
                 if (block || tag.equals("br") || tag.equals("table")) {
                     into.lineEnd();
                 }
-                if (!tag.equals("table") && !tag.equals("br")) {
+                if (tag.equals("img") && element.attr("src").isBlank() && element.attr("srcset").isBlank()
+                        && !element.attr("alt").isBlank()) {
+                    into.text("[" + element.attr("alt").strip() + "]", look.child(declared, room, true));
+                } else if (!tag.equals("table") && !tag.equals("br")) {
                     measureChildren(element, look.child(declared, room, !block), room, into, depth + 1);
                 }
                 if (block) {
@@ -525,17 +558,17 @@ final class HtmlTables {
     private static float leastTable(Element table, Look look, int level) {
         float[] columns = new float[MAX_COLUMNS];
         int used = 0;
-        Elements rows = table.select(ROWS);
+        Elements rows = table.select(ROW_QUERY);
         for (int r = 0; r < Math.min(rows.size(), MAX_ROWS); r++) {
             int col = 0;
-            for (Element td : rows.get(r).select("> td, > th")) {
+            for (Element td : rows.get(r).select(CELL_QUERY)) {
                 int span = Math.max(1, span(td.attr("colspan"), 1));
                 if (col + span > MAX_COLUMNS) {
                     break;
                 }
                 if (span == 1) {
                     float longest = 0;
-                    for (String word : td.text().split("\\s+")) {
+                    for (String word : WORDS.split(td.text())) {
                         longest = Math.max(longest, Glyphs.word(word, look.size, look.bold, look.font));
                     }
                     columns[col] = Math.max(columns[col], Math.max(longest, leastInside(td, look, level)));
@@ -648,7 +681,10 @@ final class HtmlTables {
     private float[] pictures(Slot s, float room) {
         float widest = 0;
         float all = 0;
-        for (Element img : s.element().select("img, svg")) {
+        for (Element img : s.element().select(PICTURE_QUERY)) {
+            if (img.normalName().equals("img") && img.attr("src").isBlank() && !img.hasAttr("srcset")) {
+                continue;
+            }
             Float w = pictureWidth(img, s.look(), room);
             if (w != null) {
                 widest = Math.max(widest, w);
@@ -741,14 +777,14 @@ final class HtmlTables {
         if (frameBorder(table) > 0 || BoxCss.border(d, "top") > 0 || BoxCss.border(d, "bottom") > 0) {
             return false;
         }
-        Elements rows = table.select(ROWS);
+        Elements rows = table.select(ROW_QUERY);
         if (rows.isEmpty() || rows.size() > MAX_ROWS) {
             return false;
         }
         String given = table.hasAttr("width") ? table.attr("width") : d.getOrDefault("width", "auto");
         boolean shrinks = given.isBlank() || given.strip().equalsIgnoreCase("auto");
         for (Element tr : rows) {
-            Elements cells = tr.select("> td, > th");
+            Elements cells = tr.select(CELL_QUERY);
             if (cells.size() > 1) {
                 return false;
             }

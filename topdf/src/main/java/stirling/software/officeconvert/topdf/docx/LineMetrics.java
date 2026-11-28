@@ -140,9 +140,10 @@ final class LineMetrics {
         float h;
         ParaProps.Rule rule = pp.lineRule == null ? ParaProps.Rule.AUTO : pp.lineRule;
         float value = pp.line == null ? 1 : pp.line;
+        boolean css = rule == ParaProps.Rule.AT_LEAST && pp.halfLeading && !objects && content;
         switch (rule) {
             case EXACT -> h = value;
-            case AT_LEAST -> h = Math.max(natural, value);
+            case AT_LEAST -> h = css ? value : Math.max(natural, value);
             default -> {
                 // A list label's height is not multiplied with the text's
                 h = multiple(natural, textAsc > 0 ? textAsc + textDesc : labelAsc + textDesc, value);

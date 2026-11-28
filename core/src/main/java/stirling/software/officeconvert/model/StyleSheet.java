@@ -13,6 +13,7 @@ public final class StyleSheet {
     public boolean hyphenation;
     public boolean widowControl;
     public boolean autoSpace = true;
+    public boolean kerning;
 
     public StyleSheet(RunStyle normal) {
         this.normal = normal;

@@ -178,8 +178,9 @@ class ConvertHandlerTest {
                 java.nio.charset.StandardCharsets.UTF_8), "who,role\nAnn,lead\n".getBytes());
         assertPdf(csv, "csv", "lead");
         assertFalse(text(csv.body()).contains("Team list"), text(csv.body()));
-        HttpResponse<byte[]> other = post(url + "?name=notes.md", "Plain upload text".getBytes());
+        HttpResponse<byte[]> other = post(url + "?name=notes.rst", "Plain upload text".getBytes());
         assertEquals(415, other.statusCode());
+        assertPdf(post(url + "?name=notes.md", "# Markdown upload\n\n- item".getBytes()), "md", "Markdown upload");
         assertPdf(post(url + "?name=report.txt", Fixtures.docx("Word text", 1)), "docx", "Word text 1");
     }
 

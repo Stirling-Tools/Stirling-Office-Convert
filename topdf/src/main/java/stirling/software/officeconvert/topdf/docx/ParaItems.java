@@ -360,7 +360,7 @@ final class ParaItems {
                 // Word sets small capitals at 80 % of the size, rounded to the nearest half point
                 nominal = Math.max(0.5f, Math.round(nominal * 1.6f) / 2f);
             }
-            FontFace face = face(rp, slot);
+            FontFace face = slot == Fonts.Slot.COMPLEX && web() ? webComplex(rp, piece) : face(rp, slot);
             piece = SymbolChars.remap(piece, face, label, c -> covers(faceFor(face, c), c));
             addCovered(piece, face, rp, nominal, full, link, slot == Fonts.Slot.COMPLEX, gridSpacing(rp, slot));
             i = j;
@@ -455,6 +455,24 @@ final class ParaItems {
         boolean bold = cs ? Boolean.TRUE.equals(rp.boldCs != null ? rp.boldCs : rp.bold) : rp.isBold();
         boolean italic = cs ? Boolean.TRUE.equals(rp.italicCs != null ? rp.italicCs : rp.italic) : rp.isItalic();
         return ctx.fonts.face(ctx.fonts.family(rp, slot), bold, italic);
+    }
+
+    private FontFace webComplex(RunProps rp, String piece) {
+        FontFace complex = face(rp, Fonts.Slot.COMPLEX);
+        String family = ctx.fonts.family(rp, Fonts.Slot.ASCII);
+        if (family.equals(ctx.fonts.family(rp, Fonts.Slot.COMPLEX))) {
+            return complex;
+        }
+        FontFace own = ctx.fonts.face(family, Boolean.TRUE.equals(rp.boldCs != null ? rp.boldCs : rp.bold),
+                Boolean.TRUE.equals(rp.italicCs != null ? rp.italicCs : rp.italic));
+        for (int i = 0; i < piece.length(); ) {
+            int cp = piece.codePointAt(i);
+            if (Fonts.complexScript(cp) && !own.covers(cp)) {
+                return complex;
+            }
+            i += Character.charCount(cp);
+        }
+        return own;
     }
 
     private FontFace primaryFace(RunProps rp, String sample) {

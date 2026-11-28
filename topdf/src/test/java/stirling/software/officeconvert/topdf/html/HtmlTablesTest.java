@@ -1,6 +1,7 @@
 package stirling.software.officeconvert.topdf.html;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -277,5 +278,31 @@ class HtmlTablesTest {
             assertEquals(2.25f, c.bottom.width(), 0.01);
             assertEquals(0x2f6fde, c.bottom.rgb());
         }
+    }
+
+    @Test
+    void aWordBreaksAfterItsHyphensWhenColumnsShareTheRoom() throws IOException {
+        String rest = "<td>" + "filler text that wants the room ".repeat(12) + "</td>";
+        Table hyphens = table("<table><tr><td>watermarks-resizing-slideshows-voice-over-text-and-more</td>" + rest
+                + "</tr></table>");
+        Table joined = table("<table><tr><td>watermarks_resizing_slideshows_voice_over_text_and_more</td>" + rest
+                + "</tr></table>");
+        assertTrue(hyphens.columnWidths.get(0) < joined.columnWidths.get(0) - 40,
+                hyphens.columnWidths + " vs " + joined.columnWidths);
+    }
+
+    @Test
+    void aPictureThatIsNotDrawnDoesNotWidenItsColumn() throws IOException {
+        Table t = table("<table><tr><td><img src='' alt='Stats' width='655'></td><td>"
+                + "text ".repeat(80) + "</td></tr></table>");
+        assertTrue(t.columnWidths.get(0) < 200, t.columnWidths.toString());
+    }
+
+    @Test
+    void aHyphenBeforeANoBreakSpaceIsNotABreak() {
+        assertTrue(HtmlTables.hyphenBreak("abc-def", 3));
+        assertFalse(HtmlTables.hyphenBreak("abc-\u00a0def", 3));
+        assertFalse(HtmlTables.hyphenBreak("abc-\u202fdef", 3));
+        assertFalse(HtmlTables.hyphenBreak("abc\u00a0-def", 4));
     }
 }

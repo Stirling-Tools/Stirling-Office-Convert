@@ -3,6 +3,7 @@ package stirling.software.officeconvert.topdf.html;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 final class BoxCss {
 
@@ -137,21 +138,84 @@ final class BoxCss {
         return border(d, side, true) >= DOUBLE_LEAST;
     }
 
-    private static float border(Map<String, String> d, String side, boolean onlyDouble) {
-        String style = d.get("border-" + side + "-style");
-        String all = d.get("border-" + side);
-        String width = d.get("border-" + side + "-width");
-        if (all != null) {
-            for (String token : Css.tokens(all)) {
-                String t = token.toLowerCase(Locale.ROOT);
-                if (t.equals("none") || t.equals("hidden")) {
-                    style = style == null ? "none" : style;
-                } else if (Css.length(t, 12, 0) != null || !keyword(t).equals(t)) {
-                    width = width == null ? t : width;
-                } else if (Css.color(t) == null) {
-                    style = style == null ? t : style;
-                }
+    record Shorthand(String width, String style, Integer color) {}
+
+    private static final int MAX_SHORTHANDS = 1024;
+
+    private static final int MAX_SHORTHAND_LENGTH = 128;
+
+    private static final Map<String, Shorthand> SHORTHANDS = new ConcurrentHashMap<>();
+
+    static Shorthand shorthand(String all) {
+        Shorthand known = SHORTHANDS.get(all);
+        if (known != null) {
+            return known;
+        }
+        String width = null;
+        String style = null;
+        Integer color = null;
+        for (String token : Css.tokens(all)) {
+            String t = token.toLowerCase(Locale.ROOT);
+            Integer c = Css.color(token);
+            if (c != null) {
+                color = c;
             }
+            if (t.equals("none") || t.equals("hidden")) {
+                style = style == null ? "none" : style;
+            } else if (Css.length(t, 12, 0) != null || !keyword(t).equals(t)) {
+                width = width == null ? t : width;
+            } else if (c == null) {
+                style = style == null ? t : style;
+            }
+        }
+        Shorthand parsed = new Shorthand(width, style, color);
+        if (all.length() <= MAX_SHORTHAND_LENGTH && SHORTHANDS.size() < MAX_SHORTHANDS) {
+            SHORTHANDS.put(all, parsed);
+        }
+        return parsed;
+    }
+
+    private static final Map<String, String[]> SIDES = Map.of(
+            "top", new String[] {"border-top-style", "border-top", "border-top-width"},
+            "right", new String[] {"border-right-style", "border-right", "border-right-width"},
+            "bottom", new String[] {"border-bottom-style", "border-bottom", "border-bottom-width"},
+            "left", new String[] {"border-left-style", "border-left", "border-left-width"});
+
+    private static final Map<String, Float> WIDTHS = new ConcurrentHashMap<>();
+
+    private static Float width(String width) {
+        Float known = WIDTHS.get(width);
+        if (known != null) {
+            return known.isNaN() ? null : known;
+        }
+        Float w = Css.length(keyword(width), 12, 0);
+        if (width.length() <= MAX_SHORTHAND_LENGTH && WIDTHS.size() < MAX_SHORTHANDS && !relative(width)) {
+            WIDTHS.put(width, w == null ? Float.NaN : w);
+        }
+        return w;
+    }
+
+    private static boolean relative(String width) {
+        for (int i = 0; i + 3 <= width.length(); i++) {
+            if (width.regionMatches(true, i, "rem", 0, 3)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static float border(Map<String, String> d, String side, boolean onlyDouble) {
+        String[] keys = SIDES.get(side);
+        if (keys == null) {
+            keys = new String[] {"border-" + side + "-style", "border-" + side, "border-" + side + "-width"};
+        }
+        String style = d.get(keys[0]);
+        String all = d.get(keys[1]);
+        String width = d.get(keys[2]);
+        if (all != null) {
+            Shorthand parsed = shorthand(all);
+            width = width == null ? parsed.width() : width;
+            style = style == null ? parsed.style() : style;
             if (style == null) {
                 style = "solid";
             }
@@ -160,8 +224,7 @@ final class BoxCss {
                 || onlyDouble && !style.equalsIgnoreCase("double")) {
             return 0;
         }
-        Float w = width == null ? Float.valueOf(style.equalsIgnoreCase("double") ? DOUBLE_LEAST : 0.75f)
-                : Css.length(keyword(width), 12, 0);
+        Float w = width == null ? Float.valueOf(style.equalsIgnoreCase("double") ? DOUBLE_LEAST : 0.75f) : width(width);
         return w == null ? 0.75f : Math.max(0, Math.min(12, w));
     }
 

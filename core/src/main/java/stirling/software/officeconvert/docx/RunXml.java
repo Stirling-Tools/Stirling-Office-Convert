@@ -208,5 +208,8 @@ final class RunXml {
         if (s.lineHeight() > 0) {
             sb.append("<so:lineHeight so:val=\"").append(Xml.twips(s.lineHeight())).append("\"/>");
         }
+        if (Math.abs(s.size() - base.size()) > 0.01f && Math.abs(s.size() * 2 - Xml.halfPoints(s.size())) > 0.02f) {
+            sb.append("<so:size so:val=\"").append(Xml.twips(s.size())).append("\"/>");
+        }
     }
 }

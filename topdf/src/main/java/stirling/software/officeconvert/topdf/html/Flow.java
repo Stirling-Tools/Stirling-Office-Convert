@@ -51,6 +51,8 @@ final class Flow {
 
     private static final float BROKEN_PICTURE = 12;
 
+    private static final int BROKEN_PICTURE_FILL = 0xE1E4E8;
+
     static final Set<String> SKIPPED = Set.of("head", "script", "style", "template", "title", "meta", "link",
             "base", "iframe", "object", "embed", "applet", "frame", "frameset", "video", "audio", "canvas",
             "map", "area", "input", "select", "option", "datalist", "param", "source", "track", "noembed", "noframes",
@@ -460,9 +462,12 @@ final class Flow {
             return null;
         }
         RunStyle s = look.run();
-        float space = s.size() * 0.25f;
+        RunStyle plain = new RunStyle(s.font(), s.size(), false, false, false, false, s.rgb(), -1, 0, false, 0,
+                s.scale(), false, -1);
+        float measured = Glyphs.measured("\u00a0", s.size(), s.font(), false, false);
+        float space = measured > 0 ? measured : Measure.width("\u00a0", plain);
         RunStyle g = new RunStyle(s.font(), s.size(), false, false, false, false, s.rgb(), -1, 0, false,
-                Math.max(0, Math.min(MAX_INLINE_GAP, pt) - space), s.scale(), false, -1);
+                Math.min(MAX_INLINE_GAP, pt) - space, s.scale(), false, -1);
         return new Inline.Text("\u00a0", g, null, -1);
     }
 
@@ -1470,6 +1475,37 @@ final class Flow {
         flush();
     }
 
+    static String collapse(String raw, boolean keepLines) {
+        StringBuilder b = null;
+        int n = raw.length();
+        for (int i = 0; i < n; i++) {
+            char c = raw.charAt(i);
+            boolean space = c == ' ' || c == '\t' || c == '\f' || c == '\r' || c == '\n' && !keepLines;
+            if (!space) {
+                if (b != null) {
+                    b.append(c);
+                }
+                continue;
+            }
+            int end = i + 1;
+            while (end < n) {
+                char d = raw.charAt(end);
+                if (d != ' ' && d != '\t' && d != '\f' && d != '\r' && (d != '\n' || keepLines)) {
+                    break;
+                }
+                end++;
+            }
+            if (b == null && (c != ' ' || end > i + 1)) {
+                b = new StringBuilder(n).append(raw, 0, i);
+            }
+            if (b != null) {
+                b.append(' ');
+            }
+            i = end - 1;
+        }
+        return b == null ? raw : b.toString();
+    }
+
     private void text(String raw, Look look) throws IOException {
         if (raw.isEmpty()) {
             return;
@@ -1478,7 +1514,7 @@ final class Flow {
         boolean keepSpaces = ws.startsWith("pre") && !ws.equals("pre-line") || ws.equals("break-spaces");
         boolean keepLines = ws.startsWith("pre") || ws.equals("break-spaces");
         if (!keepSpaces) {
-            String collapsed = raw.replaceAll(keepLines ? "[ \\t\\f\\r]+" : "[ \\t\\n\\f\\r]+", " ");
+            String collapsed = collapse(raw, keepLines);
             if (lastSpace && collapsed.startsWith(" ")) {
                 collapsed = collapsed.substring(1);
             }
@@ -1536,8 +1572,12 @@ final class Flow {
         para.inlines.addAll(pendingEdges);
         pendingEdges.clear();
         if (in instanceof Inline.Text t && !t.text().isBlank() && para.lineRule != Paragraph.LineRule.EXACT) {
-            float line = look.linePoints > 0 ? look.linePoints : look.lineMultiple * look.size;
-            float own = para.lineRule == Paragraph.LineRule.AT_LEAST ? para.lineHeight : 0;
+            boolean fixed = para.lineRule == Paragraph.LineRule.AT_LEAST;
+            RunStyle rs = t.style();
+            float line = look.linePoints > 0 ? look.linePoints
+                    : look.lineMultiple > 0 ? look.lineMultiple * look.size
+                    : fixed ? Glyphs.lineHeight(rs.size(), rs.font(), rs.bold(), rs.italic()) : 0;
+            float own = fixed ? para.lineHeight : 0;
             if (line > own + 0.01f) {
                 in = new Inline.Text(t.text(), t.style().withLineHeight(line), t.link(), t.anchorPage());
             }
@@ -1695,7 +1735,8 @@ final class Flow {
                 float size = e.hasAttr("alt") ? r.size() : Math.max(r.size(), BROKEN_PICTURE);
                 float box = e.hasAttr("alt") ? 0 : BROKEN_PICTURE;
                 inline(new Inline.Text("\u00a0", new RunStyle(r.font(), size, false, false, false, false, r.rgb(),
-                        -1, 0, false, box - size * 0.25f, r.scale(), false, -1), null, -1), look);
+                        box > 0 ? BROKEN_PICTURE_FILL : -1, 0, false, box - size * 0.25f, r.scale(), false, -1), link,
+                        -1), look);
             }
             return;
         }
@@ -1828,8 +1869,8 @@ final class Flow {
             float slack = room - (margins < room ? Math.min(width, room - margins) : width);
             float left = StackedTables.stackIndent(e, d, look, legacy, room, slack);
             Frame inside = frame.inner(left, slack - left, fill == null ? -1 : fill);
-            for (Element tr : e.select(HtmlTables.ROWS)) {
-                for (Element cell : tr.select("> td, > th")) {
+            for (Element tr : e.select(HtmlTables.ROW_QUERY)) {
+                for (Element cell : tr.select(HtmlTables.CELL_QUERY)) {
                     stackedCell = cell;
                     element(cell, look, inside, depth + 1);
                 }
@@ -1860,9 +1901,9 @@ final class Flow {
 
     // A table nested past the limit: each row becomes a line, its cells side by side with their own formatting
     private void nestedTable(Element table, Look look, Frame frame, int depth) throws IOException {
-        for (Element tr : table.select(HtmlTables.ROWS)) {
+        for (Element tr : table.select(HtmlTables.ROW_QUERY)) {
             boolean first = true;
-            for (Element td : tr.select("> td, > th")) {
+            for (Element td : tr.select(HtmlTables.CELL_QUERY)) {
                 pendingGap = first ? null : new Inline.Text("  ", look.run(), null, -1);
                 first = false;
                 forceInline++;
