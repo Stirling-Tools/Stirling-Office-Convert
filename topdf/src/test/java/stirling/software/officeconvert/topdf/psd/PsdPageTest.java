@@ -379,6 +379,46 @@ class PsdPageTest {
     }
 
     @Test
+    void anAdjustmentClippedToAnAdjustmentLayerIsApplied() throws IOException {
+        PsdFixture f = new PsdFixture(1, 1);
+        f.hasMerged = false;
+        f.mode = PsdDocument.GRAY;
+        f.flat(255);
+        f.layers.add(new PsdFixture.Layer().rect(0, 0, 1, 1).fill(0, 100));
+        for (int i = 0; i < 2; i++) {
+            PsdFixture.Layer invert = new PsdFixture.Layer().rect(0, 0, 0, 0).block("nvrt", new byte[0]);
+            invert.channels.put(-1, new byte[0]);
+            invert.channels.put(0, new byte[0]);
+            invert.clipped = i == 1;
+            f.layers.add(invert);
+        }
+        convert(f, "clipped-adjustment.psd");
+        try (PDDocument pdf = open("clipped-adjustment.psd")) {
+            assertArrayEquals(new byte[] {100}, samples(image(pdf.getPage(0))));
+        }
+    }
+
+    @Test
+    void sixteenBitPosterizeSplitsTheLevelsAtTheirExactEdges() throws IOException {
+        PsdFixture f = new PsdFixture(2, 1);
+        f.hasMerged = false;
+        f.mode = PsdDocument.GRAY;
+        f.depth = 16;
+        f.flat(0);
+        PsdFixture.Layer picture = new PsdFixture.Layer().rect(0, 0, 1, 2);
+        picture.channels.put(0, new byte[] {0x55, 0x56, 0x55, 0x54});
+        f.layers.add(picture);
+        PsdFixture.Layer posterize = new PsdFixture.Layer().rect(0, 0, 0, 0).block("post", new byte[] {0, 3, 0, 0});
+        posterize.channels.put(-1, new byte[0]);
+        posterize.channels.put(0, new byte[0]);
+        f.layers.add(posterize);
+        convert(f, "posterize16.psd");
+        try (PDDocument pdf = open("posterize16.psd")) {
+            assertArrayEquals(new byte[] {(byte) 0x80, 0, 0, 0}, samples(image(pdf.getPage(0))));
+        }
+    }
+
+    @Test
     void aDeepKnockoutLayerShowsTheBackgroundThroughTheLayersBelowIt() throws IOException {
         PsdFixture f = new PsdFixture(2, 1);
         f.hasMerged = false;

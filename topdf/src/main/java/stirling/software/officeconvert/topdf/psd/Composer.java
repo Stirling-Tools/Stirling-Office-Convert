@@ -45,6 +45,8 @@ final class Composer {
 
     private int spanLo;
 
+    private boolean styleLater;
+
     private int spanHi;
 
     private List<long[]> patternBlocks = List.of();
@@ -824,7 +826,22 @@ final class Composer {
     private void item(Node base, float[] dest) throws IOException {
         Layers.Layer l = base.layer;
         if (base instanceof Adjust a) {
-            adjust(a, dest, null);
+            if (base.clipped.isEmpty()) {
+                adjust(a, dest, null, null);
+                return;
+            }
+            float[] own = shapeRow();
+            float[] m = mask(a);
+            for (int x = 0; x < width; x++) {
+                own[x] = m == null ? 1 : m[x];
+            }
+            adjust(a, dest, null, own);
+            for (Node c : base.clipped) {
+                if (c instanceof Adjust clipped && !c.layer.hidden) {
+                    adjust(clipped, dest, own, null);
+                }
+            }
+            releaseShape(own);
             return;
         }
         if (l.knockout != 0 && base.clipped.isEmpty()) {
@@ -888,7 +905,15 @@ final class Composer {
         LayerEffects fx = base.fx;
         float fxOpacity = l.opacity / 255f;
         float[] src = buffer();
-        float[] shape = coverage(base, src);
+        boolean later = l.blendClipped && base instanceof Pixels styled && l.fillOpacity >= 255
+                && (l.overlay != null || styled.line != null);
+        styleLater = later;
+        float[] shape;
+        try {
+            shape = coverage(base, src);
+        } finally {
+            styleLater = false;
+        }
         if (fx != null && fx.shadow != null) {
             drawEffect(dest, fx, fx.shadow, l.shadow.color(), l.shadow.opacity(), l.shadow.blend(), fxOpacity,
                     l.shadow.conceal() && !(l.shadow.spread() > 0) ? shape : null);
@@ -911,6 +936,9 @@ final class Composer {
                 }
                 clip(c, src, shape);
             }
+            if (later) {
+                restyle((Pixels) base, src);
+            }
             composite(dest, src, l.blend, opacity, null);
         }
         release(src);
@@ -922,18 +950,34 @@ final class Composer {
 
     private void clip(Node c, float[] dest, float[] shape) throws IOException {
         if (c instanceof Adjust a) {
-            adjust(a, dest, shape);
+            adjust(a, dest, shape, null);
             return;
         }
+        Layers.Layer l = c.layer;
+        LayerEffects fx = c.fx;
+        float opacity = l.opacity / 255f;
         float[] s = buffer();
-        releaseShape(coverage(c, s));
-        composite(dest, s, c.layer.blend, c.layer.opacity / 255f, shape, spanLo, spanHi);
+        float[] own = coverage(c, s);
+        int lo = spanLo;
+        int hi = spanHi;
+        if (fx != null && fx.shadow != null) {
+            drawEffect(dest, fx, fx.shadow, l.shadow.color(), l.shadow.opacity(), l.shadow.blend(), opacity,
+                    l.shadow.conceal() && !(l.shadow.spread() > 0) ? own : null, shape);
+        }
+        releaseShape(own);
+        if (fx != null && fx.stroke != null && fx.strokeUnder) {
+            drawStroke(dest, c, opacity, shape);
+        }
+        composite(dest, s, l.blend, opacity, shape, lo, hi);
         release(s);
+        if (fx != null && fx.stroke != null && !fx.strokeUnder) {
+            drawStroke(dest, c, opacity, shape);
+        }
     }
 
-    private void adjust(Adjust a, float[] dest, float[] clip) throws IOException {
+    private void adjust(Adjust a, float[] dest, float[] clip, float[] given) throws IOException {
         Layers.Layer l = a.layer;
-        float[] m = mask(a);
+        float[] m = given != null ? given : mask(a);
         float opacity = l.opacity / 255f * l.fillOpacity / 255f;
         float[] changed = new float[Math.max(n, 3)];
         float[] mixed = new float[3];
@@ -1076,7 +1120,55 @@ final class Composer {
         }
         float[] m = mask(node);
         float[] shape = shapeRow();
-        Effects.Overlay overlay = l.overlay;
+        for (int x = 0; x < width; x++) {
+            int at = x * stride + n;
+            float a = out[at] * (m == null ? 1 : m[x]);
+            shape[x] = a;
+            out[at] = a * fill;
+        }
+        boolean later = styleLater && fill >= 1;
+        if (!later) {
+            overlay(p, out, shape, base, scale);
+        }
+        if (p.noFill) {
+            for (int x = 0; x < width; x++) {
+                out[x * stride + n] = 0;
+                shape[x] = 0;
+            }
+        }
+        if (!later) {
+            line(p, out, shape);
+        }
+        if (l.blend == Blend.DISSOLVE) {
+            for (int x = 0; x < width; x++) {
+                int at = x * stride + n;
+                float a = out[at] * l.opacity / 255f;
+                out[at] = noise(x, y) < a ? 255f / Math.max(1, l.opacity) : 0;
+            }
+        }
+        if (p.color != null && p.line == null) {
+            boolean inside = y >= l.top && y < l.bottom;
+            spanLo = inside ? Math.max(0, Math.min(width, l.left)) : 0;
+            spanHi = inside ? Math.max(spanLo, Math.min(width, l.right)) : 0;
+        } else {
+            spanLo = 0;
+            spanHi = width;
+        }
+        return shape;
+    }
+
+    private void restyle(Pixels p, float[] out) {
+        float[] alpha = shapeRow();
+        for (int x = 0; x < width; x++) {
+            alpha[x] = out[x * stride + n];
+        }
+        overlay(p, out, alpha, 1, 1);
+        releaseShape(alpha);
+        line(p, out, null);
+    }
+
+    private void overlay(Pixels p, float[] out, float[] alpha, float base, float scale) {
+        Effects.Overlay overlay = p.layer.overlay;
         float[] tint = overlay == null || overlay.color() == null ? null : solid(overlay.color());
         float[] ramp = null;
         if (overlay != null && overlay.gradient() != null) {
@@ -1103,16 +1195,14 @@ final class Composer {
                 p.overlayPattern.row(y, width, p.overlayPlace[0], p.overlayPlace[1], p.overlayPlace[2], ramp, stride, n);
             }
         }
+        if (tint == null && ramp == null) {
+            return;
+        }
         float[] mixed = new float[3];
         float[] local = new float[n];
         for (int x = 0; x < width; x++) {
             int at = x * stride + n;
-            float a = out[at] * (m == null ? 1 : m[x]);
-            shape[x] = a;
-            if (tint == null && ramp == null) {
-                out[at] = a * fill;
-                continue;
-            }
+            float a = alpha[x];
             int c0 = x * stride;
             float strength = overlay.opacity();
             if (ramp != null) {
@@ -1137,46 +1227,30 @@ final class Composer {
         if (ramp != null) {
             release(ramp);
         }
-        if (p.noFill) {
-            for (int x = 0; x < width; x++) {
-                out[x * stride + n] = 0;
-                shape[x] = 0;
-            }
+    }
+
+    private void line(Pixels p, float[] out, float[] shape) {
+        if (p.line == null) {
+            return;
         }
-        if (p.line != null) {
-            float[] line = new float[width];
-            p.line.row(y, line);
-            for (int x = 0; x < width; x++) {
-                float as = line[x] * p.lineOpacity;
-                if (as <= 0) {
-                    continue;
-                }
-                int at = x * stride;
-                float af = out[at + n];
-                float ao = as + af * (1 - as);
-                for (int i = 0; i < n; i++) {
-                    out[at + i] = (p.lineColor[i] * as + out[at + i] * af * (1 - as)) / ao;
-                }
-                out[at + n] = ao;
+        float[] line = new float[width];
+        p.line.row(y, line);
+        for (int x = 0; x < width; x++) {
+            float as = line[x] * p.lineOpacity;
+            if (as <= 0) {
+                continue;
+            }
+            int at = x * stride;
+            float af = out[at + n];
+            float ao = as + af * (1 - as);
+            for (int i = 0; i < n; i++) {
+                out[at + i] = (p.lineColor[i] * as + out[at + i] * af * (1 - as)) / ao;
+            }
+            out[at + n] = ao;
+            if (shape != null) {
                 shape[x] = Math.max(shape[x], line[x]);
             }
         }
-        if (l.blend == Blend.DISSOLVE) {
-            for (int x = 0; x < width; x++) {
-                int at = x * stride + n;
-                float a = out[at] * l.opacity / 255f;
-                out[at] = noise(x, y) < a ? 255f / Math.max(1, l.opacity) : 0;
-            }
-        }
-        if (p.color != null && p.line == null) {
-            boolean inside = y >= l.top && y < l.bottom;
-            spanLo = inside ? Math.max(0, Math.min(width, l.left)) : 0;
-            spanHi = inside ? Math.max(spanLo, Math.min(width, l.right)) : 0;
-        } else {
-            spanLo = 0;
-            spanHi = width;
-        }
-        return shape;
     }
 
     private static float noise(int x, int y) {
@@ -1252,12 +1326,7 @@ final class Composer {
             return;
         }
         for (Node c : node.clipped) {
-            if (!c.layer.hidden && c.layer.stroke != null) {
-                effects.add("stroke");
-            }
-            if (!c.layer.hidden && c.layer.shadow != null) {
-                effects.add("drop shadow");
-            }
+            effects(c, budget);
         }
         if (node instanceof Group g) {
             for (Node c : g.children) {
@@ -1451,17 +1520,22 @@ final class Composer {
     }
 
     private void drawStroke(float[] dest, Node node, float layerOpacity) {
+        drawStroke(dest, node, layerOpacity, null);
+    }
+
+    private void drawStroke(float[] dest, Node node, float layerOpacity, float[] clip) {
         Layers.Layer l = node.layer;
         LayerEffects fx = node.fx;
         if (l.stroke.gradient() == null) {
-            drawEffect(dest, fx, fx.stroke, l.stroke.color(), l.stroke.opacity(), l.stroke.blend(), layerOpacity, null);
+            drawEffect(dest, fx, fx.stroke, l.stroke.color(), l.stroke.opacity(), l.stroke.blend(), layerOpacity, null,
+                    clip);
             return;
         }
         if (node.strokeGradient == null) {
             node.strokeGradient = Gradient.of(l.stroke.gradient(), n, this::solid);
             if (node.strokeGradient == null) {
                 drawEffect(dest, fx, fx.stroke, l.stroke.color(), l.stroke.opacity(), l.stroke.blend(), layerOpacity,
-                        null);
+                        null, clip);
                 return;
             }
         }
@@ -1473,12 +1547,17 @@ final class Composer {
             int at = x * stride + n;
             src[at] *= fx.at(fx.stroke, x, y) * l.stroke.opacity();
         }
-        composite(dest, src, l.stroke.blend(), layerOpacity, null);
+        composite(dest, src, l.stroke.blend(), layerOpacity, clip);
         release(src);
     }
 
     private void drawEffect(float[] dest, LayerEffects fx, byte[] raster, float[] color, float opacity, int blend,
             float layerOpacity, float[] conceal) {
+        drawEffect(dest, fx, raster, color, opacity, blend, layerOpacity, conceal, null);
+    }
+
+    private void drawEffect(float[] dest, LayerEffects fx, byte[] raster, float[] color, float opacity, int blend,
+            float layerOpacity, float[] conceal, float[] clip) {
         float[] src = buffer();
         float[] tint = solid(color);
         for (int x = 0; x < width; x++) {
@@ -1486,7 +1565,7 @@ final class Composer {
             System.arraycopy(tint, 0, src, at, n);
             src[at + n] = fx.at(raster, x, y) * opacity * (conceal == null ? 1 : 1 - conceal[x]);
         }
-        composite(dest, src, blend, layerOpacity, null);
+        composite(dest, src, blend, layerOpacity, clip);
         release(src);
     }
 
