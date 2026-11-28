@@ -37,6 +37,14 @@ final class Composer {
 
     static final long MAX_PATTERN_BYTES = 64L << 20;
 
+    private static final float[] UNIT = new float[256];
+
+    static {
+        for (int i = 0; i < 256; i++) {
+            UNIT[i] = i / 255f;
+        }
+    }
+
     private final List<float[]> pool = new ArrayList<>();
 
     private Node top;
@@ -391,6 +399,12 @@ final class Composer {
             if (line == null) {
                 for (int x = x0; x < x1; x++) {
                     into[x * step + offset] = fill / 255f;
+                }
+                return;
+            }
+            if (doc.depth == 8) {
+                for (int x = x0; x < x1; x++) {
+                    into[x * step + offset] = UNIT[line[x - left] & 0xFF];
                 }
                 return;
             }
@@ -1296,6 +1310,13 @@ final class Composer {
                 continue;
             }
             float ab = dest[at + n];
+            if (separable && ab >= 1) {
+                for (int i = 0; i < n; i++) {
+                    float cb = dest[at + i];
+                    dest[at + i] = cb + (Blend.channel(mode, cb, src[at + i]) - cb) * as;
+                }
+                continue;
+            }
             float ao = as + ab - as * ab;
             if (whole && ab > 0) {
                 if (cmyk) {
