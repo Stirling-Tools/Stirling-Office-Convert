@@ -199,7 +199,8 @@ final class OfdText {
                 } catch (IOException | RuntimeException e) {
                     read = null;
                 }
-                OfdOutlines outlines = data == null ? null : OfdOutlines.of(data);
+                OfdOutlines outlines = data == null ? null
+                        : read != null ? OfdOutlines.lazy(data) : OfdOutlines.of(data);
                 if (read == null && outlines == null) {
                     notes.add("An embedded font in the OFD document could not be read; a substitute was used");
                 }

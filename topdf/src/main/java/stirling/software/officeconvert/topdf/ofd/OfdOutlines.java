@@ -20,11 +20,13 @@ final class OfdOutlines {
 
     static final int MAX_CACHED = 20_000;
 
-    private final CFFFont cff;
+    private CFFFont cff;
 
-    private final TrueTypeFont ttf;
+    private TrueTypeFont ttf;
 
-    private final double perEm;
+    private double perEm;
+
+    private byte[] pending;
 
     private final Map<Integer, Shape> cache = new HashMap<>();
 
@@ -32,6 +34,15 @@ final class OfdOutlines {
         this.cff = cff;
         this.ttf = ttf;
         this.perEm = perEm;
+    }
+
+    static OfdOutlines lazy(byte[] data) {
+        if (data == null || data.length < 4) {
+            return null;
+        }
+        OfdOutlines o = new OfdOutlines(null, null, 0);
+        o.pending = data;
+        return o;
     }
 
     static OfdOutlines of(byte[] data) {
@@ -60,6 +71,15 @@ final class OfdOutlines {
     Shape outline(int gid) {
         if (gid <= 0) {
             return null;
+        }
+        if (pending != null) {
+            OfdOutlines read = of(pending);
+            pending = null;
+            if (read != null) {
+                cff = read.cff;
+                ttf = read.ttf;
+                perEm = read.perEm;
+            }
         }
         Shape known = cache.get(gid);
         if (known != null || cache.containsKey(gid)) {
