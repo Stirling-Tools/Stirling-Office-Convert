@@ -15,6 +15,7 @@ import java.util.regex.Pattern;
 import org.jsoup.nodes.Element;
 import org.jsoup.nodes.Node;
 import org.jsoup.nodes.TextNode;
+import org.jsoup.select.Elements;
 
 import stirling.software.officeconvert.model.Paragraph;
 
@@ -47,7 +48,7 @@ final class Layout {
         boolean flex = display.equals("flex") || display.equals("inline-flex");
         boolean grid = display.equals("grid") || display.equals("inline-grid");
         if (!flex && !grid) {
-            return null;
+            return inlineBlocks(e, look, room, ctx);
         }
         if (flex && d.getOrDefault("flex-direction", "row").strip().toLowerCase(Locale.ROOT).startsWith("column")) {
             return null;
@@ -67,7 +68,7 @@ final class Layout {
         if (grid && columns < 2) {
             return areas(items, d.get("grid-template-areas"), look, room, ctx, gap);
         }
-        if (columns < 2) {
+        if (columns < 2 || grid && spanAll(items, columns, look, ctx)) {
             return null;
         }
         boolean wraps = d.getOrDefault("flex-wrap", "nowrap").strip().toLowerCase(Locale.ROOT).startsWith("wrap");
@@ -96,6 +97,59 @@ final class Layout {
             }
         }
         return null;
+    }
+
+    private static boolean spanAll(List<Element> items, int columns, Look look, HtmlContext ctx) {
+        for (Element item : items) {
+            Map<String, String> d = ctx.declared(item, look);
+            String placed = d.get("grid-column");
+            if (placed == null && d.get("grid-column-start") != null) {
+                placed = d.get("grid-column-start") + "/" + d.getOrDefault("grid-column-end", "auto");
+            }
+            if (placed == null || columnSpan(placed, columns) < columns) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    static int columnSpan(String placed, int columns) {
+        String[] parts = placed.strip().toLowerCase(Locale.ROOT).split("\\s*/\\s*");
+        if (parts.length == 1) {
+            return spanOf(parts[0]);
+        }
+        if (parts.length != 2) {
+            return 1;
+        }
+        if (parts[1].startsWith("span")) {
+            return spanOf(parts[1]);
+        }
+        Integer start = line(parts[0], columns);
+        Integer end = line(parts[1], columns);
+        if (start == null || end == null) {
+            return 1;
+        }
+        return Math.abs(end - start);
+    }
+
+    private static int spanOf(String v) {
+        if (!v.startsWith("span")) {
+            return 1;
+        }
+        try {
+            return Math.max(1, Integer.parseInt(v.substring(4).strip()));
+        } catch (NumberFormatException ex) {
+            return 1;
+        }
+    }
+
+    private static Integer line(String v, int columns) {
+        try {
+            int n = Integer.parseInt(v.strip());
+            return n < 0 ? columns + 2 + n : n == 0 ? null : n;
+        } catch (NumberFormatException ex) {
+            return null;
+        }
     }
 
     // The visible children, with display: contents wrappers replaced by their own children as browsers do
@@ -591,6 +645,81 @@ final class Layout {
             }
         }
         return Math.max(widest, line);
+    }
+
+    static Plan inlineBlocks(Element e, Look look, float room, HtmlContext ctx) {
+        Elements kids = e.children();
+        if (kids.size() < 2 || kids.size() > 64 || !"inline-block".equals(display(kids.first(), look, ctx))) {
+            return null;
+        }
+        List<Element> items = new ArrayList<>();
+        if (!items(e, look, ctx, items, 0) || items.size() < 2) {
+            return null;
+        }
+        float[] own = new float[items.size()];
+        for (int i = 0; i < items.size(); i++) {
+            Element item = items.get(i);
+            if (!"inline-block".equals(display(item, look, ctx))) {
+                return null;
+            }
+            Float w = boxWidth(item, look, ctx, room, 0);
+            if (w == null || w <= 0 || w > room) {
+                return null;
+            }
+            own[i] = w;
+        }
+        int columns = 0;
+        float used = 0;
+        while (columns < own.length && columns < MAX_COLUMNS && used + own[columns] <= room * 1.001f) {
+            used += own[columns];
+            columns++;
+        }
+        if (columns < 2) {
+            return null;
+        }
+        float[] widths = new float[columns];
+        for (int i = 0; i < own.length; i++) {
+            widths[i % columns] = Math.max(widths[i % columns], own[i]);
+        }
+        return new Plan(items, false, columns, widths, 0);
+    }
+
+    private static String display(Element e, Look look, HtmlContext ctx) {
+        return ctx.declared(e, look).getOrDefault("display", "").strip().toLowerCase(Locale.ROOT);
+    }
+
+    private static Float boxWidth(Element e, Look look, HtmlContext ctx, float room, int depth) {
+        Map<String, String> d = ctx.declared(e, look);
+        float sides = side(d, look, "left") + side(d, look, "right");
+        Float w = size(d.get("width"), look, room);
+        if (w != null && w > 0) {
+            return w + sides;
+        }
+        if (depth >= 4 || !e.ownText().isBlank()) {
+            return null;
+        }
+        Elements kids = e.children();
+        if (e.normalName().equals("tr")) {
+            float sum = 0;
+            for (Element td : kids) {
+                Float c = boxWidth(td, look, ctx, room, depth + 1);
+                if (c == null) {
+                    return null;
+                }
+                sum += c;
+            }
+            return kids.isEmpty() ? null : sum + sides;
+        }
+        if (e.normalName().equals("table") || e.normalName().equals("tbody")) {
+            Element first = e.selectFirst("> tbody > tr, > tr");
+            Float c = first == null ? null : boxWidth(first, look, ctx, room, depth + 1);
+            return c == null ? null : c + sides;
+        }
+        if (kids.size() != 1) {
+            return null;
+        }
+        Float c = boxWidth(kids.first(), look, ctx, room, depth + 1);
+        return c == null ? null : c + sides;
     }
 
     private static float side(Map<String, String> cd, Look look, String side) {

@@ -17,6 +17,57 @@ class CssTest {
     private static final float VIEWPORT = 602;
 
     @Test
+    void aFontStackPrefersAnInstalledFamilyOverALookAlikeOfAnEarlierOne() {
+        try {
+            Look.drawable(f -> true);
+            Look.ownFace(f -> f.equals("Arial"));
+            assertEquals("Arial", Look.family("Verdana, Tahoma, Arial"));
+            assertEquals("Verdana", Look.family("Verdana, Tahoma"));
+            assertEquals("Arial", Look.family("Verdana, sans-serif"));
+            assertEquals("Calibri", Look.family("\"Calibri\",\"sans-serif\""));
+        } finally {
+            Look.clearDrawable();
+        }
+    }
+
+    @Test
+    void markupCommentMarkersAroundAStyleSheetAreIgnored() {
+        List<Css.Rule> rules = Css.rules("<!--\nP{font-size:12px}\n-->\n<!-- h1{color:red} -->", new ArrayList<>(), VIEWPORT);
+        assertEquals(2, rules.size(), rules.toString());
+        assertEquals("P", rules.get(0).selector());
+        assertEquals("h1", rules.get(1).selector());
+        assertNull(Css.length("0.", 12, 100));
+        assertEquals(7.5f, Css.length(".5em", 15, 100));
+    }
+
+    @Test
+    void logicalMarginAndPaddingShorthandsSplitIntoTheirSides() {
+        Map<String, String> d = Css.declarations("margin-inline:15px auto;margin-block:10px;padding-block:1px 2px;"
+                + "padding-inline:3px;margin-block-end:4px");
+        assertEquals("15px", d.get("margin-inline-start"));
+        assertEquals("auto", d.get("margin-inline-end"));
+        assertEquals("10px", d.get("margin-top"));
+        assertEquals("4px", d.get("margin-bottom"));
+        assertEquals("1px", d.get("padding-top"));
+        assertEquals("2px", d.get("padding-bottom"));
+        assertEquals("3px", d.get("padding-inline-start"));
+        assertEquals("3px", d.get("padding-inline-end"));
+    }
+
+    @Test
+    void presentationalColoursFollowTheLegacyParsingRules() {
+        assertEquals("#3dffff", Presentation.legacyColor("3D#ffffff"));
+        assertEquals("#ffffff", Presentation.legacyColor("ffffff"));
+        assertEquals("#ff0000", Presentation.legacyColor(" Red "));
+        assertEquals("#11aa22", Presentation.legacyColor("#1a2"));
+        assertEquals("#000000", Presentation.legacyColor("#"));
+        assertEquals("#c00000", Presentation.legacyColor("chucknorris"));
+        assertEquals("#0ab00d", Presentation.legacyColor("#0a0b0c0d"));
+        assertNull(Presentation.legacyColor("transparent"));
+        assertNull(Presentation.legacyColor("  "));
+    }
+
+    @Test
     void mediaQueriesAnswerAsAPrintedPage() {
         assertTrue(Media.matches("", VIEWPORT));
         assertTrue(Media.matches("print", VIEWPORT));

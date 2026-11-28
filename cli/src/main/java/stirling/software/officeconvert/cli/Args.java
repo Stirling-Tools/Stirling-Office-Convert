@@ -96,6 +96,8 @@ record Args(
         Integer imageDpi = null;
         Float imageQuality = null;
         boolean grayscale = false;
+        boolean attachFiles = false;
+        OfficeToPdf.MailAttachments attachLimits = OfficeToPdf.MailAttachments.defaults();
         for (int i = 0; i < args.length; i++) {
             String a = args[i];
             switch (a) {
@@ -174,6 +176,8 @@ record Args(
                 case "--allow-packages" -> office = office.allowPackages(true);
                 case "--toc" -> office = office.tableOfContents(true);
                 case "--page-numbers" -> office = office.pageNumbers(true);
+                case "--attach-files" -> attachFiles = true;
+                case "--attachment-limit" -> attachLimits = attachmentLimit(value(args, ++i, a), a);
                 case "--zoom" -> {
                     float zoom = number(value(args, ++i, a), a);
                     if (!(zoom >= OfficeToPdf.Options.MIN_ZOOM && zoom <= OfficeToPdf.Options.MAX_ZOOM)) {
@@ -209,6 +213,9 @@ record Args(
         if (imageDpi == null && imageQuality != null) {
             throw new Usage("--image-quality goes with --image-dpi");
         }
+        if (attachFiles) {
+            office = office.mailAttachments(attachLimits);
+        }
         PdfOptimizer.Images images = imageDpi == null ? null
                 : new PdfOptimizer.Images(imageDpi, imageQuality == null ? DEFAULT_IMAGE_QUALITY : imageQuality);
         FontSet fonts = fontSet.directories(fontDirs).build();
@@ -234,6 +241,23 @@ record Args(
             throw new Usage(option + " needs seconds from 0 (no limit) to 86400, not '" + s + "'");
         }
         return v;
+    }
+
+    private static OfficeToPdf.MailAttachments attachmentLimit(String s, String option) throws Usage {
+        String[] parts = s.split(",", -1);
+        try {
+            long each = Long.parseLong(parts[0].strip());
+            long total = parts.length > 1 ? Long.parseLong(parts[1].strip())
+                    : Math.max(each, OfficeToPdf.MailAttachments.DEFAULT_MAX_TOTAL_BYTES >> 20);
+            long most = OfficeToPdf.MailAttachments.MAX_BYTES >> 20;
+            if (parts.length > 2 || each < 1 || total < 1 || each > most || total > most) {
+                throw new NumberFormatException();
+            }
+            return new OfficeToPdf.MailAttachments(each << 20, total << 20);
+        } catch (IllegalArgumentException e) {
+            throw new Usage(option + " needs a size in MB for each file and optionally the total, from 1 to "
+                    + (OfficeToPdf.MailAttachments.MAX_BYTES >> 20) + " (10 or 10,100), not '" + s + "'");
+        }
     }
 
     private static int count(String s, String option) throws Usage {

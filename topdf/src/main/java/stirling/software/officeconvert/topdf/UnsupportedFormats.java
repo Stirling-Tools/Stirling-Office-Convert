@@ -2,7 +2,6 @@ package stirling.software.officeconvert.topdf;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Locale;
@@ -42,9 +41,6 @@ public final class UnsupportedFormats {
             case "xlr" -> "Microsoft Works spreadsheets (.xlr) are not supported; save the file as .xlsx";
             case "mpp", "mpt" -> "Microsoft Project files are not supported; save the plan as PDF from Project";
             case "one", "onepkg" -> "OneNote notebooks are not supported; export the pages as PDF from OneNote";
-            case "mht", "mhtml" -> "MHTML web archives are not supported; open the file in Word or a browser and save it"
-                    + " as .docx or PDF";
-            case "eml", "msg" -> "E-mail messages are not Office documents; convert them with an e-mail to PDF tool";
             case "odf", "mml" -> "OpenDocument formulas on their own are not supported; place the formula in a"
                     + " document";
             case "odb" -> "OpenDocument databases are not supported";
@@ -73,11 +69,6 @@ public final class UnsupportedFormats {
                 || head.length >= 2 && (head[0] & 0xFF) == 0x32 && (head[1] & 0xFF) == 0xBE) {
             return "The file is a Windows Write document, which is not supported; save it as .docx";
         }
-        String text = new String(head, StandardCharsets.ISO_8859_1).stripLeading().toLowerCase(Locale.ROOT);
-        if ((text.startsWith("mime-version:") || text.startsWith("from:") || text.startsWith("content-type:"))
-                && text.contains("multipart/related")) {
-            return byExtension("mht");
-        }
         try {
             if (!LegacyOffice.ole2(file)) {
                 return null;
@@ -95,9 +86,6 @@ public final class UnsupportedFormats {
                     || root.hasEntryCaseInsensitive("StarDrawDocument3")
                     || root.hasEntryCaseInsensitive("StarImpressDocument")) {
                 return starOffice();
-            }
-            if (root.hasEntryCaseInsensitive("__substg1.0_0037001F") || root.hasEntryCaseInsensitive("__nameid_version1.0")) {
-                return byExtension("msg");
             }
             return null;
         } catch (IOException | RuntimeException e) {

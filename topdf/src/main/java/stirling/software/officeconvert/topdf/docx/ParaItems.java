@@ -475,7 +475,8 @@ final class ParaItems {
     private Look look(RunProps rp, FontFace face, Inline.Link link, float nominal) {
         Color bg = rp.shadingColor() != null ? rp.shadingColor() : rp.highlightColor();
         Color fallback = bg != null ? (Colors.dark(bg) ? Color.WHITE : Color.BLACK) : fallbackColor();
-        return Look.of(face, rp, nominal, link, fallback, ctx.fonts.emulation(face));
+        Look look = Look.of(face, rp, nominal, link, fallback, ctx.fonts.emulation(face));
+        return web() ? look.pixelRounded() : look;
     }
 
     // A character the stand-in for a missing font lacks still takes that font's line height
@@ -498,6 +499,9 @@ final class ParaItems {
         Color bg = rp.shadingColor() != null ? rp.shadingColor() : rp.highlightColor();
         Color fallback = bg != null ? (Colors.dark(bg) ? Color.WHITE : Color.BLACK) : fallbackColor();
         Look look = Look.of(f, rp, nominal, link, fallback, own);
+        if (web()) {
+            look = look.pixelRounded();
+        }
         return ownLine ? look.withLineOf(look(rp, requested, link, nominal)) : look;
     }
 

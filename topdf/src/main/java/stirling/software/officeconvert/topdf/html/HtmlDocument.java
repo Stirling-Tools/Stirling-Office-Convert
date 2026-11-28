@@ -84,7 +84,9 @@ public final class HtmlDocument {
 
     /** {@code fonts} decides which family of each CSS font stack is used; null takes the first named. */
     public static Converted write(Path source, OutputStream out, FontLibrary fonts) throws IOException {
-        return lay(source, out, fonts, 1f, HtmlAssets.NONE).converted();
+        try (DocxWriter writer = new DocxWriter(out)) {
+            return lay(source, writer, fonts, 1f, 1f, HtmlAssets.NONE, Map.of()).converted();
+        }
     }
 
     /** Lays the page out on paper enlarged by {@code 1 / zoom}, as a browser lays out content too wide for the page
@@ -109,7 +111,7 @@ public final class HtmlDocument {
 
     public static Laid lay(Path source, OutputStream out, FontLibrary fonts, float zoom, float scale,
             HtmlAssets assets, Map<String, Integer> targetPages) throws IOException {
-        try (DocxWriter writer = new DocxWriter(out)) {
+        try (DocxWriter writer = new DocxWriter(out).exactSizes()) {
             return lay(source, writer, fonts, zoom, scale, assets, targetPages);
         }
     }
@@ -133,6 +135,8 @@ public final class HtmlDocument {
             if (fonts != null) {
                 Map<String, Boolean> known = new HashMap<>();
                 Look.drawable(f -> known.computeIfAbsent(f, k -> installed(fonts, k)));
+                Map<String, Boolean> own = new HashMap<>();
+                Look.ownFace(f -> own.computeIfAbsent(f, k -> ownFace(fonts, k)));
                 Look.generics(generics(fonts));
                 Glyphs.fonts(fonts);
             }
@@ -164,13 +168,37 @@ public final class HtmlDocument {
         });
     }
 
-    // Installed, or a well-known family with a look-alike installed (Arial drawn with Liberation Sans)
-    private static boolean installed(FontLibrary fonts, String family) {
+    private static final Map<String, List<String>> METRIC_TWINS = Map.ofEntries(
+            Map.entry("arial", List.of("Liberation Sans", "Arimo")),
+            Map.entry("helvetica", List.of("Liberation Sans", "Arimo", "Nimbus Sans", "TeX Gyre Heros")),
+            Map.entry("times new roman", List.of("Liberation Serif", "Tinos")),
+            Map.entry("times", List.of("Liberation Serif", "Tinos", "Nimbus Roman", "TeX Gyre Termes")),
+            Map.entry("courier new", List.of("Liberation Mono", "Cousine")),
+            Map.entry("courier", List.of("Liberation Mono", "Cousine", "Nimbus Mono PS", "TeX Gyre Cursor")),
+            Map.entry("arial narrow", List.of("Liberation Sans Narrow")),
+            Map.entry("calibri", List.of("Carlito")),
+            Map.entry("cambria", List.of("Caladea")),
+            Map.entry("georgia", List.of("Gelasio")));
+
+    private static boolean ownFace(FontLibrary fonts, String family) {
         if (fonts.exact(family, false, false) != null) {
             return true;
         }
         String mapped = fonts.substitute(family);
         if (mapped != null && fonts.exact(mapped, false, false) != null) {
+            return true;
+        }
+        for (String twin : METRIC_TWINS.getOrDefault(family.strip().toLowerCase(Locale.ROOT), List.of())) {
+            if (fonts.exact(twin, false, false) != null) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Installed, or a well-known family with a look-alike installed (Arial drawn with Liberation Sans)
+    private static boolean installed(FontLibrary fonts, String family) {
+        if (ownFace(fonts, family)) {
             return true;
         }
         for (String standIn : FontLibrary.lookAlikes(family)) {
@@ -190,6 +218,9 @@ public final class HtmlDocument {
         // One bulk read: the parser's small reads are slow on network and container file systems
         byte[] bytes = Files.readAllBytes(source);
         Document doc = Jsoup.parse(new ByteArrayInputStream(bytes), null, "");
+        for (Element image : doc.select("input[type=image]")) {
+            image.tagName("img");
+        }
         Element baseTag = doc.selectFirst("base[href]");
         linked.rebase(baseTag == null ? null : baseTag.attr("href"));
         Map<String, String> declared = new Cascade(doc, viewportPx(JsonModel.defaultPage()), linked).page();
@@ -228,6 +259,8 @@ public final class HtmlDocument {
             Set<String> loaded = new HashSet<>();
             web.families().forEach(f -> loaded.add(f.toLowerCase(Locale.ROOT)));
             Look.drawable(f -> loaded.contains(f.toLowerCase(Locale.ROOT)) || installed.test(f));
+            Predicate<String> own = Look.ownFace();
+            Look.ownFace(f -> loaded.contains(f.toLowerCase(Locale.ROOT)) || own.test(f));
         }
         boolean ownPaper = cascade.declaresPages();
         float printed = page.pageWidth - page.marginLeft - page.marginRight;
@@ -285,6 +318,11 @@ public final class HtmlDocument {
         List<Inline> fixedLayer = new ArrayList<>(Backgrounds.paint(Backgrounds.url(htmlStyle) != null ? htmlStyle
                 : bodyStyle, bodyLook, ctx.images(), 0, 0, page.pageWidth, page.pageHeight, false));
         int canvas = canvasColor(htmlStyle, bodyStyle);
+        int bodyFill = bodyBoxColor(htmlStyle, bodyStyle, canvas);
+        if (bodyFill >= 0 && fullWidth(bodyStyle)) {
+            canvas = bodyFill == 0xFFFFFF ? -1 : bodyFill;
+            bodyFill = -1;
+        }
         ctx.canvas(canvas);
         if (canvas >= 0) {
             fixedLayer.add(0, new Inline.Shape(page.marginLeft - inset[0], page.marginTop,
@@ -306,7 +344,7 @@ public final class HtmlDocument {
             ctx.scrolling(1);
         }
         new Flow(ctx, writer::block, false).root(body, bodyLook,
-                new Flow.Frame(0, 0, width, bodyBoxColor(htmlStyle, bodyStyle, canvas)));
+                new Flow.Frame(0, 0, width, bodyFill));
         String author = null;
         Element meta = doc.selectFirst("meta[name=author]");
         if (meta != null) {
@@ -333,6 +371,22 @@ public final class HtmlDocument {
             color = Css.color(bodyStyle.get("background-color"));
         }
         return color == null || color < 0 || color == 0xFFFFFF ? -1 : color;
+    }
+
+    private static boolean fullWidth(Map<String, String> bodyStyle) {
+        for (String side : new String[] {"margin-left", "margin-right"}) {
+            Float v = Css.length(bodyStyle.getOrDefault(side, "8px").strip(), 12, 0);
+            if (v == null || v != 0f) {
+                return false;
+            }
+        }
+        for (String key : new String[] {"width", "max-width"}) {
+            String v = bodyStyle.getOrDefault(key, "").strip().toLowerCase(Locale.ROOT);
+            if (!v.isEmpty() && !v.equals("auto") && !v.equals("none") && !v.equals("100%")) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static int bodyBoxColor(Map<String, String> htmlStyle, Map<String, String> bodyStyle, int canvas) {

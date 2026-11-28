@@ -190,7 +190,7 @@ final class RunXml {
             sb.append("<w:w w:val=\"").append(s.scale()).append("\"/>");
         }
         if (Math.abs(s.size() - base.size()) > 0.01f) {
-            int hp = Xml.halfPoints(s.size());
+            String hp = Xml.size(s.size(), ctx.exactSizes);
             sb.append("<w:sz w:val=\"").append(hp).append("\"/><w:szCs w:val=\"").append(hp).append("\"/>");
         }
         if (s.underline()) {

@@ -2,11 +2,14 @@ package stirling.software.officeconvert.topdf.html;
 
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 import org.jsoup.nodes.Element;
 
 /** A browser's default look for each tag, then the old presentational attributes; style sheets override both. */
 final class Presentation {
+
+    private static final Set<String> BACKGROUND_ELEMENTS = Set.of("body", "table", "tr", "td", "th");
 
     private static final String[] FONT_SIZES = {"10px", "13px", "16px", "18px", "24px", "32px", "48px"};
 
@@ -47,7 +50,11 @@ final class Presentation {
             case "h4" -> heading(out, "1em", "1.33em");
             case "h5" -> heading(out, "0.83em", "1.67em");
             case "h6" -> heading(out, "0.67em", "2.33em");
-            case "p", "dl" -> vertical(out, "1em");
+            case "p" -> {
+                vertical(out, "1em");
+                out.put(DEFAULT_BOTTOM, "1");
+            }
+            case "dl" -> vertical(out, "1em");
             case "ul", "ol" -> {
                 vertical(out, "1em");
                 out.put("padding-inline-start", "40px");
@@ -89,9 +96,14 @@ final class Presentation {
         vertical(out, margin);
     }
 
+    static final String DEFAULT_TOP = "-oc-default-margin-top";
+
+    static final String DEFAULT_BOTTOM = "-oc-default-margin-bottom";
+
     private static void vertical(Map<String, String> out, String margin) {
         out.put("margin-top", margin);
         out.put("margin-bottom", margin);
+        out.put(DEFAULT_TOP, "1");
     }
 
     private static void attributes(Element e, Map<String, String> out) {
@@ -113,17 +125,22 @@ final class Presentation {
             out.put("vertical-align", valign);
         }
         if (e.hasAttr("bgcolor")) {
-            out.put("background-color", e.attr("bgcolor"));
+            putColor(out, "background-color", e.attr("bgcolor"));
+        }
+        String background = e.attr("background").strip();
+        if (!background.isEmpty() && BACKGROUND_ELEMENTS.contains(e.normalName())) {
+            out.put("background-image", "picture");
+            out.put("background-url", background);
         }
         for (String dim : new String[] {"width", "height"}) {
-            String v = e.attr(dim).strip();
-            if (!v.isEmpty()) {
-                out.put(dim, v.matches("[0-9.]+") ? v + "px" : v);
+            String v = dimension(e.attr(dim));
+            if (v != null) {
+                out.put(dim, v);
             }
         }
         if ("font".equals(e.normalName())) {
             if (e.hasAttr("color")) {
-                out.put("color", e.attr("color"));
+                putColor(out, "color", e.attr("color"));
             }
             if (e.hasAttr("face")) {
                 out.put("font-family", e.attr("face"));
@@ -134,8 +151,98 @@ final class Presentation {
             cellPadding(e, out);
         }
         if ("body".equals(e.normalName()) && e.hasAttr("text")) {
-            out.put("color", e.attr("text"));
+            putColor(out, "color", e.attr("text"));
         }
+    }
+
+    static String dimension(String value) {
+        String v = value.strip();
+        int i = 0;
+        while (i < v.length() && i < 12 && Character.isDigit(v.charAt(i))) {
+            i++;
+        }
+        if (i == 0) {
+            return null;
+        }
+        int end = i;
+        if (end < v.length() && v.charAt(end) == '.') {
+            int f = end + 1;
+            while (f < v.length() && f < 20 && Character.isDigit(v.charAt(f))) {
+                f++;
+            }
+            if (f > end + 1) {
+                end = f;
+            }
+        }
+        boolean percent = end < v.length() && v.charAt(end) == '%';
+        return v.substring(0, end) + (percent ? "%" : "px");
+    }
+
+    private static void putColor(Map<String, String> out, String property, String value) {
+        String c = legacyColor(value);
+        if (c != null) {
+            out.put(property, c);
+        }
+    }
+
+    static String legacyColor(String value) {
+        String s = value.strip();
+        if (s.isEmpty() || s.equalsIgnoreCase("transparent")) {
+            return null;
+        }
+        Integer named = NamedColors.get(s.toLowerCase(Locale.ROOT));
+        if (named != null) {
+            return Css.hex(named);
+        }
+        if (s.length() == 4 && s.charAt(0) == '#' && hexDigits(s.substring(1))) {
+            int r = Character.digit(s.charAt(1), 16) * 17;
+            int g = Character.digit(s.charAt(2), 16) * 17;
+            int b = Character.digit(s.charAt(3), 16) * 17;
+            return Css.hex(r << 16 | g << 8 | b);
+        }
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < s.length() && sb.length() < 128; ) {
+            int cp = s.codePointAt(i);
+            i += Character.charCount(cp);
+            sb.append(cp > 0xFFFF ? "00" : Character.digit(cp, 16) >= 0 && cp < 128 ? String.valueOf((char) cp) : "0");
+        }
+        if (sb.length() > 128) {
+            sb.setLength(128);
+        }
+        if (s.charAt(0) == '#') {
+            sb.deleteCharAt(0);
+        }
+        while (sb.length() == 0 || sb.length() % 3 != 0) {
+            sb.append('0');
+        }
+        int len = sb.length() / 3;
+        String[] parts = {sb.substring(0, len), sb.substring(len, 2 * len), sb.substring(2 * len)};
+        if (len > 8) {
+            for (int i = 0; i < 3; i++) {
+                parts[i] = parts[i].substring(len - 8);
+            }
+            len = 8;
+        }
+        while (len > 2 && parts[0].charAt(0) == '0' && parts[1].charAt(0) == '0' && parts[2].charAt(0) == '0') {
+            for (int i = 0; i < 3; i++) {
+                parts[i] = parts[i].substring(1);
+            }
+            len--;
+        }
+        int rgb = 0;
+        for (String part : parts) {
+            rgb = rgb << 8 | Integer.parseInt(part.substring(0, Math.min(2, len)), 16);
+        }
+        return Css.hex(rgb);
+    }
+
+    private static boolean hexDigits(String s) {
+        for (int i = 0; i < s.length(); i++) {
+            if (Character.digit(s.charAt(i), 16) < 0 || s.charAt(i) >= 128) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static void cellPadding(Element cell, Map<String, String> out) {
@@ -143,10 +250,10 @@ final class Presentation {
         for (int i = 0; i < 2 && table != null && !"table".equals(table.normalName()); i++) {
             table = table.parent();
         }
-        String v = table == null || !"table".equals(table.normalName()) ? "" : table.attr("cellpadding").strip();
-        if (v.matches("[0-9]{1,4}([.][0-9]+)?")) {
+        String v = table == null || !"table".equals(table.normalName()) ? null : dimension(table.attr("cellpadding"));
+        if (v != null && v.endsWith("px")) {
             for (String side : new String[] {"top", "right", "bottom", "left"}) {
-                out.put("padding-" + side, v + "px");
+                out.put("padding-" + side, v);
             }
         }
     }

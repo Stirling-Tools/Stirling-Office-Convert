@@ -35,6 +35,15 @@ final class Xml {
         return Math.min(3276, Math.max(2, Math.round(pt * 2f)));
     }
 
+    static String size(float pt, boolean exact) {
+        int hp = halfPoints(pt);
+        float hundredths = Math.round(Math.min(1638f, Math.max(1f, pt)) * 100f) / 100f;
+        if (!exact || Math.abs(hundredths * 2f - hp) < 0.01f) {
+            return Integer.toString(hp);
+        }
+        return new java.math.BigDecimal(Float.toString(hundredths)).stripTrailingZeros().toPlainString() + "pt";
+    }
+
     private static final long MAX_EMU = 2L * 1584 * 12700;
 
     static long emu(float pt) {

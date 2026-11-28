@@ -174,10 +174,15 @@ final class HtmlInput {
 
     static Result renderPage(String html, OutputStream sink, Options options, OfficeToPdf.Renderer renderer)
             throws IOException {
+        return renderPage(html, sink, options, renderer, HtmlAssets.NONE);
+    }
+
+    static Result renderPage(String html, OutputStream sink, Options options, OfficeToPdf.Renderer renderer,
+            HtmlAssets assets) throws IOException {
         Path page = Files.createTempFile("office-to-pdf-", ".html");
         try {
             Files.writeString(page, html, StandardCharsets.UTF_8);
-            return render(page, sink, options, renderer, HtmlAssets.NONE, 1f);
+            return render(page, sink, options, renderer, assets, assets == HtmlAssets.NONE ? 1f : options.zoom());
         } finally {
             OfficeToPdf.deleteQuietly(page);
         }

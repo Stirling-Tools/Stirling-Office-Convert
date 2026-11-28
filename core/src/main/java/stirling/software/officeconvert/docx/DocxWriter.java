@@ -83,6 +83,11 @@ public final class DocxWriter implements DocSink, Closeable {
         out.write("<w:document " + NS + "><w:body>");
     }
 
+    public DocxWriter exactSizes() {
+        ctx.exactSizes = true;
+        return this;
+    }
+
     @Override
     public void begin(StyleSheet styles, HeaderFooterSet running) {
         this.body = new BodyXml(ctx, styles);
@@ -183,7 +188,8 @@ public final class DocxWriter implements DocSink, Closeable {
         }
         entry("word/styles.xml", StylesPart.xml(styleSheet));
         Map<String, String> embeds = embedFonts();
-        entry("word/settings.xml", PackageParts.settings(hf, hasFootnotes(), styleSheet.hyphenation, !embeds.isEmpty()));
+        entry("word/settings.xml", PackageParts.settings(hf, hasFootnotes(), styleSheet.hyphenation, !embeds.isEmpty(),
+                ctx.exactSizes));
         entry("word/fontTable.xml", PackageParts.fontTable(ctx.fonts, embeds));
         for (Object[] m : mediaFiles) {
             ZipParts.picture(zip, "word/media/" + m[0], m[1] instanceof byte[] b ? b : spill.read((SpillFile.Block) m[1]));

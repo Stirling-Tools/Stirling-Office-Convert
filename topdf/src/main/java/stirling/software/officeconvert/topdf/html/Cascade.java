@@ -765,7 +765,7 @@ final class Cascade {
             return null;
         }
         // :has of one child compound costs a pass over the children, so layouts chosen by child count still match
-        Matcher m = PSEUDO.matcher(CHILD_HAS.matcher(s.replaceAll(QUOTED, "")).replaceAll(" $1"));
+        Matcher m = PSEUDO.matcher(CHILD_HAS.matcher(QUOTED.matcher(s).replaceAll("")).replaceAll(" $1"));
         while (m.find()) {
             if (!STRUCTURAL.contains(m.group(1).toLowerCase(Locale.ROOT))) {
                 return null;
@@ -790,6 +790,7 @@ final class Cascade {
             if (!WORD.matcher(value).matches()) {
                 return null;
             }
+            value = value.replace(".", "\\.").replace(":", "\\:");
             m.appendReplacement(out, Matcher.quoteReplacement("[" + m.group(1).strip() + "~=(^|\\s)" + value + "(\\s|$)]"));
         }
         m.appendTail(out);
@@ -797,10 +798,10 @@ final class Cascade {
     }
 
     private static final Pattern WORD_ATTRIBUTE = Pattern.compile("\\[([^\\[\\]~|^$*=]+)~=([^\\[\\]]*)\\]");
-    private static final Pattern WORD = Pattern.compile("[-_A-Za-z0-9]+");
+    private static final Pattern WORD = Pattern.compile("[-_A-Za-z0-9][-_A-Za-z0-9:/.@]*");
 
     private static final Pattern PSEUDO = Pattern.compile("(?<!\\\\):([a-zA-Z-]+)");
-    private static final String QUOTED = "\"[^\"]*\"|'[^']*'";
+    private static final Pattern QUOTED = Pattern.compile("\"[^\"]*\"|'[^']*'");
     private static final Pattern CHILD_HAS = Pattern.compile(
             ":has[(][ ]*>[ ]*((?:[^\\s>+~,()]|[(][^()]{0,40}[)]){1,200})[ ]*[)]");
 
@@ -815,6 +816,28 @@ final class Cascade {
         boolean word = false;
         for (int i = 0; i < selector.length(); i++) {
             char c = selector.charAt(i);
+            if (c == '\\') {
+                i++;
+                continue;
+            }
+            if (c == '[') {
+                classes++;
+                word = true;
+                char quote = 0;
+                for (i++; i < selector.length(); i++) {
+                    char a = selector.charAt(i);
+                    if (a == '\\') {
+                        i++;
+                    } else if (quote != 0) {
+                        quote = a == quote ? 0 : quote;
+                    } else if (a == '"' || a == '\'') {
+                        quote = a;
+                    } else if (a == ']') {
+                        break;
+                    }
+                }
+                continue;
+            }
             if (c == '#') {
                 ids++;
                 word = true;
@@ -884,6 +907,14 @@ final class Cascade {
             if (marked == important) {
                 String key = marked ? d.getKey().substring(1) : d.getKey();
                 Css.resetBorderSide(out, key);
+                if (key.startsWith("margin")) {
+                    if (!key.equals("margin-bottom")) {
+                        out.remove(Presentation.DEFAULT_TOP);
+                    }
+                    if (!key.equals("margin-top")) {
+                        out.remove(Presentation.DEFAULT_BOTTOM);
+                    }
+                }
                 out.put(key, d.getValue());
             }
         }

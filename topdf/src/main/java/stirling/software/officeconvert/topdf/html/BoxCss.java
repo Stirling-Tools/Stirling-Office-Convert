@@ -236,7 +236,14 @@ final class BoxCss {
     }
 
     static float height(Map<String, String> d, Look look) {
-        String h = d.get("height");
+        return height(d.get("height"), look);
+    }
+
+    static float minHeight(Map<String, String> d, Look look) {
+        return height(d.get("min-height"), look);
+    }
+
+    private static float height(String h, Look look) {
         if (h == null || h.contains("%") || h.strip().equalsIgnoreCase("auto")) {
             return 0;
         }

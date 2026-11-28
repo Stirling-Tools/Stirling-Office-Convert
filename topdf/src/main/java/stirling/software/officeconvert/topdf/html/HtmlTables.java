@@ -111,6 +111,10 @@ final class HtmlTables {
                 rowspan = rowspan == 0 ? rowCount - r : Math.min(rowspan, rowCount - r);
                 Table.Cell cell = cell(cellDecl, colspan, frameBorder);
                 cell.vMerge = rowspan > 1 ? 1 : 0;
+                float cellHeight = BoxCss.length(cellDecl.get("height"), cellLook.size, 0);
+                if (rowspan == 1 && cellHeight <= MAX_SPACER_ROW) {
+                    row.height = Math.max(row.height, cellHeight);
+                }
                 float[] pad = pads(cellDecl, cellLook, cellpadding);
                 grid.get(r).put(col, new Slot(td, cell, cellDecl, cellLook, pad));
                 for (int below = r + 1; below < r + rowspan; below++) {
@@ -168,6 +172,8 @@ final class HtmlTables {
         indent(t, table, d, look, frame, width, legacy);
         return t;
     }
+
+    private static final float MAX_SPACER_ROW = 90;
 
     private static boolean hidden(Element e, Map<String, String> d, Look look) {
         return e.hasAttr("hidden") || "none".equalsIgnoreCase(d.getOrDefault("display", "").strip())
@@ -332,7 +338,7 @@ final class HtmlTables {
                 if (w != null && fixed[c] == 0) {
                     fixed[c] = w + across;
                 }
-                String text = s.element().text();
+                String text = s.element().text() + missingAlt(s, room);
                 float size = s.look().size;
                 CellWidths measured = new CellWidths();
                 measureChildren(s.element(), s.look(), room, measured, 0);
@@ -397,6 +403,14 @@ final class HtmlTables {
             sum = room;
         }
         floorAtLongestWord(t, least);
+        for (int c = 0; c < columns; c++) {
+            float w = t.columnWidths.get(c);
+            if (w < least[c] && sum < room) {
+                float grow = Math.min(least[c] - w, room - sum);
+                t.columnWidths.set(c, w + grow);
+                sum += grow;
+            }
+        }
         return sum;
     }
 
@@ -609,11 +623,11 @@ final class HtmlTables {
     }
 
     private static Float cellpadding(Element table, Look look) {
-        String cellpadding = table.attr("cellpadding").strip();
-        if (cellpadding.isEmpty()) {
+        String cellpadding = Presentation.dimension(table.attr("cellpadding"));
+        if (cellpadding == null || !cellpadding.endsWith("px")) {
             return null;
         }
-        Float pt = Css.length(cellpadding.matches("[0-9.]+") ? cellpadding + "px" : cellpadding, look.size, 0);
+        Float pt = Css.length(cellpadding, look.size, 0);
         return pt == null ? null : Math.max(0, Math.min(36, pt));
     }
 
@@ -645,6 +659,17 @@ final class HtmlTables {
         return left == Float.MAX_VALUE ? new float[] {1.5f, 1.5f} : new float[] {left, right};
     }
 
+    private String missingAlt(Slot s, float room) {
+        StringBuilder alt = new StringBuilder();
+        for (Element img : s.element().select("img[alt]")) {
+            String a = img.attr("alt").strip();
+            if (!a.isEmpty() && alt.length() < 2_000 && pictureWidth(img, s.look(), room) == null) {
+                alt.append(" [").append(a).append(']');
+            }
+        }
+        return alt.toString();
+    }
+
     private float[] pictures(Slot s, float room) {
         float widest = 0;
         float all = 0;
@@ -669,8 +694,7 @@ final class HtmlTables {
             return null;
         }
         String src = img.attr("src").strip();
-        if (!src.regionMatches(true, 0, "data:image/", 0, 11) || src.regionMatches(true, 0, "data:image/svg", 0, 14)
-                || src.length() >= 1 << 20) {
+        if (src.isEmpty() || src.regionMatches(true, 0, "data:image/svg", 0, 14) || src.length() >= 1 << 20) {
             return null;
         }
         try {

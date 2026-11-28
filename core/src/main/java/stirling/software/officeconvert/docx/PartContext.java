@@ -18,6 +18,7 @@ final class PartContext {
     final Set<String> fonts = new LinkedHashSet<>();
     Scripts.Profile scripts = new Scripts.Profile();
     PdfWebFonts sourceFonts;
+    boolean exactSizes;
     private int nextRel = 20;
     private int nextDocPr = 1;
     private int nextBookmark = 1;

@@ -61,6 +61,9 @@ final class Css {
             if (semi >= 0) {
                 head = head.substring(semi + 1).strip();
             }
+            if (head.contains("<!--") || head.contains("-->")) {
+                head = head.replace("<!--", " ").replace("-->", " ").strip();
+            }
             if (head.startsWith("@")) {
                 String at = head.toLowerCase(Locale.ROOT);
                 if (depth >= MAX_NESTING) {
@@ -229,7 +232,8 @@ final class Css {
 
     static final List<String> SHORTHANDS = List.of("margin", "padding", "border", "border-width", "border-color",
             "border-style", "background", "background-image", "font", "list-style", "page-break-before",
-            "page-break-after");
+            "page-break-after", "margin-inline", "padding-inline", "margin-block", "padding-block", "margin-block-start",
+            "margin-block-end", "padding-block-start", "padding-block-end");
 
     /** Splits the shorthands that held var() into their parts, once var() has been filled in. */
     static void expandShorthands(Map<String, String> d) {
@@ -263,6 +267,26 @@ final class Css {
                 out.put(name + "-bottom", v[2]);
                 out.put(name + "-left", v[3]);
             }
+            case "margin-inline", "padding-inline" -> {
+                List<String> t = tokens(value);
+                String box = name.substring(0, name.indexOf('-'));
+                if (!t.isEmpty()) {
+                    out.put(box + "-inline-start", t.get(0));
+                    out.put(box + "-inline-end", t.size() > 1 ? t.get(1) : t.get(0));
+                }
+            }
+            case "margin-block", "padding-block" -> {
+                List<String> t = tokens(value);
+                String box = name.substring(0, name.indexOf('-'));
+                if (!t.isEmpty()) {
+                    out.put(box + "-top", t.get(0));
+                    out.put(box + "-bottom", t.size() > 1 ? t.get(1) : t.get(0));
+                }
+            }
+            case "margin-block-start", "padding-block-start" -> out.put(name.substring(0, name.indexOf('-')) + "-top",
+                    value);
+            case "margin-block-end", "padding-block-end" -> out.put(name.substring(0, name.indexOf('-')) + "-bottom",
+                    value);
             case "border" -> {
                 for (String side : new String[] {"top", "right", "bottom", "left"}) {
                     resetBorderSide(out, "border-" + side);
@@ -501,7 +525,7 @@ final class Css {
         while (unit < s.length() && (Character.isDigit(s.charAt(unit)) || "+-.".indexOf(s.charAt(unit)) >= 0)) {
             unit++;
         }
-        if (unit == 0) {
+        if (unit == 0 || s.charAt(unit - 1) == '.') {
             return null;
         }
         float n;

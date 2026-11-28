@@ -157,10 +157,20 @@ misses a drawn form. Images are charged wherever they are listed.
 | Picture decode / largest picture | 32 M / 100 M pixels | the picture is downscaled or refused |
 | RTF group nesting | 2,048 | deeper groups are dropped |
 | HTML nesting | 200 | deeper content is kept, flattened to plain text |
+| HTML floats stacked in one column / blocks set beside them | 8 / 32 | further floats and blocks follow below |
 | CSS rules / style sheet characters (inline `<style>` included) | 200,000 / 8 MB | the rest is dropped with a warning |
 | CSS selector match work (weighted by selector complexity) | 10 M | later elements keep default styles, with a warning |
 | CSS `@import` depth / at-rule nesting | 8 / 16 | ignored deeper |
 | SVG elements / depth / pixels | 20,000 / 48 / 4 M | further elements and deeper ones are skipped; larger pictures are scaled down |
+| E-mail or web archive file | 192 MB | refused |
+| MIME parts / nesting depth / attached messages shown | 10,000 / 24 / 64 (8 deep) | deeper or further parts are left out |
+| MIME headers per part / header bytes per file | 1,000 / 16 MB | further headers are ignored |
+| E-mail or web archive page / inlined frames | 64 M characters / 32 frames, 16 M characters | refused / further frames are left out |
+| E-mail attachments embedded as PDF files (`MailAttachments`, off by default) | 10 MB each / 100 MB in all by default, at most 1 GB / 1,000 files | larger ones are listed with the reason and left out |
+| Outlook compressed RTF body | 64 MB decompressed | the RTF is ignored and the plain text body is used |
+| RTF group nesting when reading HTML or text out of an Outlook RTF body | 512 | deeper groups are skipped |
+| Declarative shadow roots unwrapped in a web archive | 2,000 | further ones stay hidden |
+| Outlook named properties (contact, appointment and task fields) / time-zone rules | 65,536 / 1,024 | further entries are ignored |
 | ODS repeated rows and columns | 8–192 MB of work | truncated with a warning |
 | Spreadsheet cells / merged ranges | 4 M / 100,000 | truncated |
 | Spreadsheet data read before admission | 256 MB | the rest is charged conservatively |

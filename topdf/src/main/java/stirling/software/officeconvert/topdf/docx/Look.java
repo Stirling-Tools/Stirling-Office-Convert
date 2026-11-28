@@ -99,6 +99,15 @@ record Look(TextStyle style, float ascent, float descent, float leading, float r
                 dstrike, highlight, shading, link, nominalSize);
     }
 
+    Look pixelRounded() {
+        return new Look(style, pixels(ascent), pixels(descent), pixels(leading), rise, underline, underlineColor,
+                strike, dstrike, highlight, shading, link, nominalSize);
+    }
+
+    private static float pixels(float points) {
+        return Math.round(points / 0.75f) * 0.75f;
+    }
+
     Look scaledMetrics(float k) {
         return new Look(style, ascent * k, descent * k, leading * k, rise, underline, underlineColor, strike, dstrike,
                 highlight, shading, link, nominalSize);

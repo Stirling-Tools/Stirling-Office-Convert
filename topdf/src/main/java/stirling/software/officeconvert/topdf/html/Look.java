@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.function.Predicate;
+import java.util.regex.Pattern;
 
 import stirling.software.officeconvert.model.Paragraph;
 import stirling.software.officeconvert.model.RunStyle;
@@ -16,6 +17,10 @@ final class Look {
     private static final int MAX_LINES = 20;
 
     String font = generic("serif");
+    private static final Pattern RELATIVE = Pattern.compile("[0-9]*[.]?[0-9]+(em|%)");
+
+    private static final Pattern QUOTES = Pattern.compile("^[\"']|[\"']$");
+
     float size = ROOT_SIZE;
     boolean bold;
     boolean italic;
@@ -252,7 +257,7 @@ final class Look {
         if (keyword > 0 || parent <= 0) {
             return keyword;
         }
-        if (t.matches("[0-9]*[.]?[0-9]+(em|%)")) {
+        if (RELATIVE.matcher(t).matches()) {
             Float factor = Css.length(t, 1, 1);
             return factor == null || factor <= 0 ? 0 : Math.min(400, parent * factor);
         }
@@ -302,6 +307,17 @@ final class Look {
 
     static void clearDrawable() {
         DRAWABLE.remove();
+        OWN_FACE.remove();
+    }
+
+    private static final ThreadLocal<Predicate<String>> OWN_FACE = ThreadLocal.withInitial(() -> f -> true);
+
+    static Predicate<String> ownFace() {
+        return OWN_FACE.get();
+    }
+
+    static void ownFace(Predicate<String> test) {
+        OWN_FACE.set(test);
     }
 
     /** The first family of a CSS font stack that can be drawn, as a browser picks it. */
@@ -326,28 +342,39 @@ final class Look {
     }
 
     static String family(String list) {
-        for (String raw : Css.splitTopLevel(list, ',')) {
-            String f = raw.strip().replaceAll("^[\"']|[\"']$", "").strip();
+        List<String> stack = Css.splitTopLevel(list, ',');
+        String standIn = null;
+        for (String raw : stack) {
+            String f = QUOTES.matcher(raw.strip()).replaceAll("").strip();
             if (f.isEmpty() || f.startsWith("-") || f.equalsIgnoreCase("inherit") || f.equalsIgnoreCase("initial")) {
                 continue;
             }
-            String generic = generic(f.toLowerCase(Locale.ROOT));
+            boolean quoted = !raw.strip().equals(f);
+            String generic = quoted ? null : generic(f.toLowerCase(Locale.ROOT));
             if (generic != null) {
                 return generic;
             }
+            if (quoted && generic(f.toLowerCase(Locale.ROOT)) != null) {
+                continue;
+            }
             if (f.length() <= 64 && DRAWABLE.get().test(f)) {
-                return f;
+                if (OWN_FACE.get().test(f)) {
+                    return f;
+                }
+                if (standIn == null) {
+                    standIn = f;
+                }
             }
         }
-        return null;
+        return standIn;
     }
 
     private static final ThreadLocal<Map<String, String>> GENERICS = ThreadLocal.withInitial(Map::of);
 
     static final Map<String, List<String>> FONTCONFIG_ORDER = Map.of(
-            "serif", List.of("Noto Serif", "DejaVu Serif", "Times New Roman", "Thorndale AMT", "Luxi Serif",
+            "serif", List.of("Times New Roman", "Liberation Serif", "Tinos", "Noto Serif", "DejaVu Serif", "Thorndale AMT", "Luxi Serif",
                     "Nimbus Roman No9 L", "Nimbus Roman", "Times"),
-            "sans-serif", List.of("Noto Sans", "DejaVu Sans", "Verdana", "Arial", "Albany AMT", "Luxi Sans",
+            "sans-serif", List.of("Arial", "Liberation Sans", "Arimo", "Noto Sans", "DejaVu Sans", "Verdana", "Albany AMT", "Luxi Sans",
                     "Nimbus Sans L", "Nimbus Sans", "Helvetica", "Lucida Sans Unicode", "Tahoma"),
             "monospace", List.of("Noto Sans Mono", "DejaVu Sans Mono", "Inconsolata", "Andale Mono", "Courier New",
                     "Cumberland AMT", "Luxi Mono", "Nimbus Mono L", "Nimbus Mono", "Nimbus Mono PS", "Courier"));

@@ -90,6 +90,142 @@ class HtmlLayoutTest {
     }
 
     @Test
+    void stackedPictureFloatsWithoutAWidthSitBesideTheFollowingParagraph() throws IOException {
+        java.awt.image.BufferedImage img = new java.awt.image.BufferedImage(8, 4, java.awt.image.BufferedImage.TYPE_INT_RGB);
+        java.io.ByteArrayOutputStream png = new java.io.ByteArrayOutputStream();
+        javax.imageio.ImageIO.write(img, "png", png);
+        String src = "data:image/png;base64," + java.util.Base64.getEncoder().encodeToString(png.toByteArray());
+        Laid l = lay("""
+                <html><head><style>body{margin:0}
+                figure[typeof~='mw:File/Thumb']{display:table;margin:0 0 8px 12px;clear:right;float:right}
+                </style></head><body>
+                <figure typeof="mw:File/Thumb"><a href="#"><img src="SRC" width="200" height="100"></a>
+                <figcaption>Upper</figcaption></figure><!-- a comment -->
+                <figure typeof="mw:File/Thumb"><img src="SRC" width="200" height="100"><figcaption>Lower</figcaption>
+                </figure>
+                <!-- another --><p>Beside the pictures runs this paragraph.</p></body></html>""".replace("SRC", src));
+        Word beside = l.word("Beside");
+        Word upper = l.word("Upper");
+        Word lower = l.word("Lower");
+        assertTrue(upper.left() > l.word("paragraph.").right(), l.words().toString());
+        assertTrue(beside.top() < upper.top(), l.words().toString());
+        assertEquals(upper.left(), lower.left(), 1f);
+        assertTrue(lower.top() > upper.top() + 60, l.words().toString());
+        assertTrue(upper.left() > l.pageWidth() / 2, l.words().toString());
+    }
+
+    @Test
+    void paragraphsKeepFlowingBesideATallFloatUntilItEnds() throws IOException {
+        java.awt.image.BufferedImage img = new java.awt.image.BufferedImage(8, 4, java.awt.image.BufferedImage.TYPE_INT_RGB);
+        java.io.ByteArrayOutputStream png = new java.io.ByteArrayOutputStream();
+        javax.imageio.ImageIO.write(img, "png", png);
+        String src = "data:image/png;base64," + java.util.Base64.getEncoder().encodeToString(png.toByteArray());
+        Laid l = lay("""
+                <html><head><style>body{margin:0} .thumb{float:right;margin:0 0 8px 12px}</style></head><body>
+                <figure class="thumb"><img src="SRC" width="200" height="300"><figcaption>Caption</figcaption></figure>
+                <p>First paragraph beside the picture.</p><p>Second paragraph beside it too.</p>
+                <p style="clear:both">Cleared paragraph below.</p></body></html>""".replace("SRC", src));
+        float edge = l.word("Caption").left();
+        assertTrue(l.word("First").top() < l.word("Second").top(), l.words().toString());
+        assertTrue(l.word("Second").top() < l.word("Caption").top(), l.words().toString());
+        assertTrue(l.word("Second").right() < edge, l.words().toString());
+        assertTrue(l.word("too.").right() < edge, l.words().toString());
+        assertTrue(l.word("Cleared").top() > l.word("Caption").top(), l.words().toString());
+    }
+
+    @Test
+    void blocksBesideAFloatDoNotIndentByTheFloatTwice() throws IOException {
+        java.awt.image.BufferedImage img = new java.awt.image.BufferedImage(8, 4, java.awt.image.BufferedImage.TYPE_INT_RGB);
+        java.io.ByteArrayOutputStream png = new java.io.ByteArrayOutputStream();
+        javax.imageio.ImageIO.write(img, "png", png);
+        String src = "data:image/png;base64," + java.util.Base64.getEncoder().encodeToString(png.toByteArray());
+        Laid l = lay("""
+                <html><head><style>body{margin:0} figure{float:left;margin:0}</style></head><body>
+                <figure><img src="SRC" width="200" height="400"><figcaption>Cap</figcaption></figure>
+                <p style="margin-left:210px">Alpha sits beside</p><p style="margin-left:210px">Beta sits beside</p>
+                </body></html>""".replace("SRC", src));
+        assertEquals(l.word("Alpha").left(), l.word("Beta").left(), 1f, l.words().toString());
+        assertTrue(l.word("Beta").left() < 220, l.words().toString());
+        assertTrue(l.word("Beta").top() > l.word("Alpha").top(), l.words().toString());
+        assertTrue(l.word("Beta").top() < l.word("Cap").top(), l.words().toString());
+    }
+
+    @Test
+    void aPictureThatCannotBeLoadedKeepsItsSizeAndShowsItsAlt() throws IOException {
+        Laid l = lay("""
+                <html><body style="margin:0"><p>Before<img src="http://example.invalid/x.png" width="200" height="100"
+                alt="Logo">After</p><p>Plain<img src="http://example.invalid/y.png" alt="Unsized">End</p>
+                <p>Next</p></body></html>""");
+        assertEquals(150, l.word("After").left() - l.word("Before").right(), 2f, l.words().toString());
+        assertTrue(l.word("Logo").left() >= l.word("Before").right(), l.words().toString());
+        assertTrue(l.word("Logo").top() < l.word("Before").top() - 50, l.words().toString());
+        assertTrue(l.word("Plain[Unsized]End").top() - l.word("Before").top() < 40, l.words().toString());
+        assertTrue(l.text().contains("[Unsized]"), l.words().toString());
+        Laid tight = lay("""
+                <html><body style="margin:0"><p><img src="http://example.invalid/z.png" width="120" height="40"
+                alt="alpha beta gamma delta epsilon zeta eta theta iota kappa lambda">After</p><p>Below</p></body></html>""");
+        assertTrue(tight.text().contains("alpha"), tight.words().toString());
+        assertTrue(tight.word("Below").top() > tight.word("alpha").top(), tight.words().toString());
+        for (Word w : tight.words()) {
+            assertTrue(w.top() < tight.word("Below").top() - 2 || w.text().equals("Below"), tight.words().toString());
+        }
+    }
+
+    @Test
+    void pixelSizesAreNotRoundedToHalfPoints() throws IOException {
+        Laid l = lay("""
+                <html><body><p style="font-family:'Courier New';font-size:13px">abcdefghij</p></body></html>""");
+        Word w = l.word("abcdefghij");
+        assertEquals(58.5f, w.right() - w.left(), 0.3f, l.words().toString());
+    }
+
+    @Test
+    void blankLinesTakeTheHeightOfTheirOwnText() throws IOException {
+        Laid l = lay("""
+                <html><body><pre style="font-size:9px;line-height:12px">one
+                two
+
+                three</pre></body></html>""");
+        float line = l.word("two").top() - l.word("one").top();
+        assertEquals(9f, line, 0.2f, l.words().toString());
+        assertEquals(2 * line, l.word("three").top() - l.word("two").top(), 0.2f, l.words().toString());
+    }
+
+    @Test
+    void contentInsideAnImageMapIsDrawnButItsAreasAreNot() throws IOException {
+        Laid l = lay("""
+                <html><body><map name="m"><area href="#a" alt="Hotspot"><a href="#b">Unsubscribe here</a></map>
+                </body></html>""");
+        assertTrue(l.text().contains("Unsubscribe here"), l.text());
+        assertFalse(l.text().contains("Hotspot"), l.text());
+    }
+
+    @Test
+    void inlinePaddingTakesItsOwnWidthEvenInMonospace() throws IOException {
+        Laid plain = lay("""
+                <html><body><p>The <code>email</code> package</p></body></html>""");
+        Laid padded = lay("""
+                <html><body><p>The <code style="padding:0 20px">email</code> package</p></body></html>""");
+        assertEquals(15f, left(padded, "email") - left(plain, "email"), 1f, padded.words().toString());
+        Laid thin = lay("""
+                <html><body><p>The <code style="padding:0 1px">email</code> package</p></body></html>""");
+        assertEquals(0.75f, left(thin, "email") - left(plain, "email"), 0.6f, thin.words().toString());
+    }
+
+    private static float left(Laid l, String text) {
+        return l.words().stream().filter(w -> w.text().replace("\u00a0", "").strip().equals(text)).findFirst()
+                .orElseThrow(() -> new AssertionError(text + " not found in " + l.words())).left();
+    }
+
+    @Test
+    void anImageInputIsDrawnAsItsPicture() throws IOException {
+        Laid l = lay("""
+                <html><body><form><input type="IMAGE" src="http://example.invalid/b.png" alt="Website Maintenance">
+                </form><p>Next</p></body></html>""");
+        assertTrue(l.text().contains("Website Maintenance"), l.text());
+    }
+
+    @Test
     void flexRowItemsKeepTheirPlacesOnTheLine() throws IOException {
         Laid l = lay("""
                 <html><head><style>
@@ -328,7 +464,7 @@ class HtmlLayoutTest {
     @Test
     void aFloatedSidebarSitsBesideTheColumnAfterIt() throws IOException {
         Laid l = lay("""
-                <html><head><style>
+                <!doctype html><html><head><style>
                 body{margin:0} .side{float:left;width:30%;padding:10px;box-sizing:border-box;background:#203040;color:#fff}
                 .main{margin-left:32%}
                 </style></head><body><div class=side><p>Contact</p><p>Phone</p></div>
@@ -686,6 +822,141 @@ class HtmlLayoutTest {
         Word hi = l.word("Hi");
         assertEquals(0xFF0000, l.first().getRGB(Math.round(hi.right()) + 20, Math.round(hi.top()) - 4) & 0xFFFFFF);
         assertEquals(0x0000FF, l.first().getRGB(l.first().getWidth() / 2, l.first().getHeight() / 2) & 0xFFFFFF);
+    }
+
+    @Test
+    void aFullWidthBodyColourCoversTheGapsBetweenItsBlocks() throws IOException {
+        Laid l = lay("""
+                <!doctype html><html style="background:#0000ff"><body style="background:#ffffff;margin:0">
+                <p style="margin:0 0 80px">First</p><p>Second</p></body></html>""");
+        Word first = l.word("First");
+        int gap = Math.round(first.top() + 40);
+        assertEquals(0xFFFFFF, l.first().getRGB(Math.round(first.left()) + 5, gap) & 0xFFFFFF);
+    }
+
+    @Test
+    void gridItemsThatEachSpanEveryColumnStack() throws IOException {
+        Laid l = lay("""
+                <!doctype html><html><body><div style="display:grid;grid-template-columns:1fr 1fr">
+                <div style="grid-column:1/3">Upper</div><div style="grid-column:1/-1">Lower</div></div></body></html>""");
+        assertEquals(l.word("Upper").left(), l.word("Lower").left(), 1f, l.words().toString());
+        assertTrue(l.word("Lower").top() > l.word("Upper").top() + 5, l.words().toString());
+    }
+
+    @Test
+    void anEmptySpacerKeepsItsHeightInAndOutOfTableCells() throws IOException {
+        Laid l = lay("""
+                <!doctype html><html><body style="margin:0"><table><tr><td>
+                Cell1<div style="height:40px"></div>Cell2<div style="height:40px;line-height:40px;font-size:1px">&nbsp;</div>Cell3
+                </td></tr></table><div>Out1</div><div style="height:40px"></div><div>Out2</div></body></html>""");
+        float line = l.word("Out2").top() - l.word("Out1").top() - 30;
+        assertEquals(30, l.word("Cell2").top() - l.word("Cell1").top() - line, 2f, l.words().toString());
+        assertEquals(30, l.word("Cell3").top() - l.word("Cell2").top() - line, 2f, l.words().toString());
+        assertTrue(line > 8 && line < 20, l.words().toString());
+    }
+
+    @Test
+    void aSizedSpacerHoldingOnlyATinySpaceTakesItsHeight() throws IOException {
+        Laid l = lay("""
+                <!doctype html><html><body style="margin:0"><div>Top</div>
+                <div style="height:40px;font-size:1px;line-height:1px">&nbsp;</div><div>Bottom</div></body></html>""");
+        assertEquals(30 + 13.8f, l.word("Bottom").top() - l.word("Top").top(), 2f, l.words().toString());
+    }
+
+    @Test
+    void aOnePixelWidePictureThatCannotLoadKeepsItsHeight() throws IOException {
+        Laid l = lay("""
+                <!doctype html><html><body style="margin:0"><div>Top</div>
+                <div><img src="http://example.invalid/s.gif" width="1" height="40" style="display:block"></div>
+                <div>Bottom</div></body></html>""");
+        assertEquals(30 + 13.8f, l.word("Bottom").top() - l.word("Top").top(), 2f, l.words().toString());
+    }
+
+    @Test
+    void onlyTheLastBreakAtTheEndOfABlockIsDropped() throws IOException {
+        Laid l = lay("""
+                <!doctype html><html><body style="margin:0"><div>One<br><br></div><div>Two<br></div><div>Three</div>
+                </body></html>""");
+        float twoToThree = l.word("Three").top() - l.word("Two").top();
+        assertEquals(2 * twoToThree, l.word("Two").top() - l.word("One").top(), 1.5f, l.words().toString());
+    }
+
+    @Test
+    void withoutADoctypeACellDropsTheDefaultParagraphMarginsAtItsEdgesButKeepsSetOnes() throws IOException {
+        String page = """
+                <html><body style="margin:0"><div>A1</div>
+                <table cellpadding=0 cellspacing=0><tr><td><p>A2</p></td></tr></table><div>A3</div>
+                <table cellpadding=0 cellspacing=0><tr><td><p style="margin:10px 0">A4</p></td></tr></table>
+                <div>A5</div></body></html>""";
+        Laid quirks = lay(page);
+        float line = quirks.word("A3").top() - quirks.word("A2").top();
+        assertEquals(line, quirks.word("A2").top() - quirks.word("A1").top(), 1f, quirks.words().toString());
+        assertEquals(line + 7.5f, quirks.word("A4").top() - quirks.word("A3").top(), 1f, quirks.words().toString());
+        Laid standard = lay("<!doctype html>" + page);
+        assertEquals(line + 12, standard.word("A2").top() - standard.word("A1").top(), 1f,
+                standard.words().toString());
+    }
+
+    @Test
+    void aNormalLineIsAWholeNumberOfPixelsTallAsInABrowser() throws IOException {
+        Laid l = lay("""
+                <!doctype html><html><body><div>One<br>Two<br>Three</div>
+                <div style="font:13px Arial">Four<br>Five</div></body></html>""");
+        assertEquals(13.5f, l.word("Two").top() - l.word("One").top(), 0.1f, l.words().toString());
+        assertEquals(11.25f, l.word("Five").top() - l.word("Four").top(), 0.1f, l.words().toString());
+    }
+
+    @Test
+    void anOutlinedInlineBlockMakesItsLineTallByItsPaddingAndBorder() throws IOException {
+        Laid l = lay("""
+                <!doctype html><html><body><div>Top</div><div>Middle</div>
+                <div><a href="#" style="display:inline-block;padding:10px 20px;border:2px solid #333">Button</a></div>
+                <div>Bottom</div></body></html>""");
+        float line = l.word("Middle").top() - l.word("Top").top();
+        assertEquals(line + 15 + 3, l.word("Bottom").top() - l.word("Middle").top() - line, 2f, l.words().toString());
+    }
+
+    @Test
+    void aRuleTakesItsMarginsAndTwoPixelsOfBorder() throws IOException {
+        Laid l = lay("""
+                <!doctype html><html><body><div>Above</div><div>Next</div><hr><div>Below</div></body></html>""");
+        float line = l.word("Next").top() - l.word("Above").top();
+        assertEquals(line + 6 + 1.5f + 6, l.word("Below").top() - l.word("Next").top(), 1f, l.words().toString());
+    }
+
+    @Test
+    void theAltTextOfAPictureThatCannotLoadWidensItsColumn() throws IOException {
+        Laid l = lay("""
+                <!doctype html><html><body><table width="100%"><tr>
+                <td><img src="http://example.invalid/photo.gif" alt="Sylvia Carr"></td>
+                <td>Security experts have discovered two new vulnerabilities in Internet Explorer and Outlook that
+                leave your system open to attack, so read on to see what you should do about them.</td>
+                </tr></table></body></html>""");
+        assertTrue(l.word("Carr]").top() - l.word("[Sylvia").top() < 20, l.words().toString());
+    }
+
+    @Test
+    void dimensionAttributesTakeTheirLeadingNumberAndAColumnIsNeverNarrowerThanItsLongestWord() throws IOException {
+        assertEquals("3px", Presentation.dimension("3D\"100%\""));
+        assertEquals("95%", Presentation.dimension(" 95%"));
+        assertEquals("10px", Presentation.dimension("10em"));
+        assertEquals("12.5px", Presentation.dimension("12.5"));
+        assertTrue(Presentation.dimension("wide") == null);
+        Laid l = lay("""
+                <!doctype html><html><body><table border="3D0"><tr><td width='3D"100%"'>Announcements and
+                newsletters</td></tr></table></body></html>""");
+        assertTrue(l.word("Announcements").right() - l.word("Announcements").left() > 60, l.words().toString());
+    }
+
+    @Test
+    void inlineBlockColumnsOfAKnownWidthSitSideBySide() throws IOException {
+        Laid l = lay("""
+                <!doctype html><html><body><table width="100%"><tr><td align="center">
+                <div style="display:inline-block"><table><tr><td width="150">Leftcard</td></tr></table></div>
+                <div style="display:inline-block"><table><tr><td width="150">Rightcard</td></tr></table></div>
+                </td></tr></table></body></html>""");
+        assertEquals(l.word("Leftcard").top(), l.word("Rightcard").top(), 1f, l.words().toString());
+        assertTrue(l.word("Rightcard").left() > l.word("Leftcard").left() + 100, l.words().toString());
     }
 
     @Test
