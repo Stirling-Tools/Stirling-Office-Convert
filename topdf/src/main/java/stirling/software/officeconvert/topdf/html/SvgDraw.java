@@ -2041,8 +2041,8 @@ final class SvgDraw {
                         last.rgb() & 0xFF, Math.round(last.alpha() * 255)));
             }
             double d = Math.hypot(fx - cx, fy - cy);
-            if (d > r * 0.999) {
-                double k = r * 0.999 / d;
+            if (d > r * 0.99) {
+                double k = r * 0.99 / d;
                 fx = (float) (cx + (fx - cx) * k);
                 fy = (float) (cy + (fy - cy) * k);
             }
