@@ -769,9 +769,11 @@ public final class PdfFonts implements Closeable {
             int end = Math.min(glyphs.size(), i + 100);
             b.append(end - i).append(" beginbfchar\n");
             for (int k = i; k < end; k++) {
-                b.append('<').append(hex(glyphs.get(k), 4)).append("> <");
+                b.append('<');
+                hex(b, glyphs.get(k), 4);
+                b.append("> <");
                 for (byte x : texts.get(k).getBytes(StandardCharsets.UTF_16BE)) {
-                    b.append(hex(x & 0xFF, 2));
+                    hex(b, x & 0xFF, 2);
                 }
                 b.append(">\n");
             }
@@ -794,9 +796,14 @@ public final class PdfFonts implements Closeable {
         return fd == null ? null : new PDFontDescriptor(fd);
     }
 
-    private static String hex(int value, int digits) {
-        return String.format(Locale.ROOT, "%0" + digits + "X", value);
+    private static void hex(StringBuilder b, int value, int digits) {
+        int n = Math.max(digits, (35 - Integer.numberOfLeadingZeros(value)) / 4);
+        for (int i = n - 1; i >= 0; i--) {
+            b.append(HEX_DIGITS[value >>> 4 * i & 0xF]);
+        }
     }
+
+    private static final char[] HEX_DIGITS = "0123456789ABCDEF".toCharArray();
 
     private static boolean presentationForm(int cp) {
         return cp >= 0xFB00 && cp <= 0xFDFF || cp >= 0xFE70 && cp <= 0xFEFF || cp >= 0xE000 && cp <= 0xF8FF;

@@ -41,6 +41,8 @@ final class StackLayout extends Region {
 
     private float grid;
 
+    private boolean bodyTrial;
+
     private final List<PageBox.Exclusion> exclusions = new ArrayList<>();
 
     StackLayout(float width) {
@@ -50,6 +52,7 @@ final class StackLayout extends Region {
     static StackLayout body(float width, float grid) {
         StackLayout s = new StackLayout(width);
         s.grid = grid;
+        s.bodyTrial = true;
         return s;
     }
 
@@ -62,6 +65,10 @@ final class StackLayout extends Region {
 
     boolean inCell() {
         return cell;
+    }
+
+    boolean bodyTrial() {
+        return bodyTrial;
     }
 
     boolean inNote() {

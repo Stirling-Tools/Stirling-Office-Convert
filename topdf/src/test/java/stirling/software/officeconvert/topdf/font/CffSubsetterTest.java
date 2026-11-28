@@ -33,6 +33,19 @@ class CffSubsetterTest {
     }
 
     @Test
+    void outlinesOutsideTheHeapSubsetExactlyAsAnArrayDoes() throws IOException {
+        List<byte[]> globals = List.of(new byte[] {11}, new byte[] {(byte) (2 - 107 + 139), 11}, new byte[] {11});
+        byte[] cff = nameKeyed(globals, List.of(new byte[] {14}, new byte[] {(byte) (1 - 107 + 139), 29, 29, 14},
+                new byte[] {(byte) (1 - 107 + 139), 29, (byte) 139, 21, (byte) 239, (byte) 139, 5, 14}));
+        java.nio.ByteBuffer direct = java.nio.ByteBuffer.allocateDirect(cff.length + 7);
+        direct.position(7);
+        direct.put(cff);
+        java.nio.ByteBuffer view = direct.position(7).slice();
+        int[] cids = {0, 1, 2};
+        assertTrue(Arrays.equals(CffSubsetter.subset(cff, "X", cids, cids), CffSubsetter.subset(view, "X", cids, cids)));
+    }
+
+    @Test
     void checkingOutlinesReadsTheIndexesButNotTheGlyphData() throws IOException {
         List<byte[]> glyphs = new ArrayList<>();
         glyphs.add(new byte[] {14});

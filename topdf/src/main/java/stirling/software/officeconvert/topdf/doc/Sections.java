@@ -245,7 +245,11 @@ final class Sections implements Story.Breaks {
                 case 1 -> "linesAndChars";
                 case 3 -> "snapToChars";
                 default -> "lines";
-            }).append("\" w:linePitch=\"").append(s.getDyaLinePitch()).append("\"/>");
+            }).append("\" w:linePitch=\"").append(s.getDyaLinePitch());
+            if (clm == 1 && s.getDxtCharSpace() != 0) {
+                b.append("\" w:charSpace=\"").append(s.getDxtCharSpace());
+            }
+            b.append("\"/>");
         }
         return b.append("</w:sectPr>").toString();
     }

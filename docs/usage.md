@@ -26,7 +26,7 @@ For Word, PowerPoint and Excel input (`.docx .docm .dotx .dotm .pptx .pptm .ppsx
 .xltx .xltm .xlsb`, Word 6.0 to 2003 `.doc .dot`, Excel 2.0 to 2003 `.xls .xlt`, PowerPoint 97-2003 `.ppt .pps .pot`,
 `.rtf`, Word 2003 XML, XML Spreadsheet 2003 and Flat OPC `.xml`, Visio 2013 and later `.vsdx .vsdm .vssx .vstx`,
 OpenDocument `.odt .ott .fodt .odm .ods .ots .fods .odp .otp .fodp .odg .otg .fodg`, OpenOffice.org 1.x `.sxw .stw .sxc
-.stc .sxi .sti .sxd .std`, SYLK, DIF and dBASE `.slk .dif .dbf`, Lotus 1-2-3 `.wk1 .wks .wk3 .wk4 .123`, Apple iWork `.pages .numbers .key`, Publisher `.pub` and Visio 2003-2010 `.vsd .vss .vst .vsw` (from the preview they hold), plain text `.txt .text .log .asc`, tables
+.stc .sxi .sti .sxd .std`, SYLK, DIF and dBASE `.slk .dif .dbf`, Lotus 1-2-3 `.wk1 .wks .wk3 .wk4 .123`, Apple iWork `.pages .numbers .key`, OFD `.ofd`, UOF `.uof .uot .uos .uop`, WPS Office `.wps .wpt .et .ett .dps .dpt`, Publisher `.pub` and Visio 2003-2010 `.vsd .vss .vst .vsw` (from the preview they hold), plain text `.txt .text .log .asc`, tables
 `.csv .tsv .tab`, HTML `.html .htm .xhtml` or a `.zip` of a page (with `--allow-packages`), eBooks `.epub .mobi .azw3 .azw .prc .pdb .fb2 .fbz` and this library's JSON `.json`), which converts to PDF: `--password p` (a password protected document), `--max-pages n` (default 10000, 0 = all), `--timeout s` (default 300, 0 =
 none), `--fonts dir` (repeatable; an extra folder of fonts), `--font-map Family=Installed` (repeatable; draw a
 family with an installed one, such as `Aptos=Inter`), `--font-width Family=scale` (repeatable; scale a substituted
@@ -487,6 +487,17 @@ drawn yet. Password protected packages open with their password, as described ab
 drawn like presentations, one page per drawing page, leaving out shapes on layers that are not printed.
 OpenOffice.org 1.x documents (`.sxw .stw .sxc .stc .sxi .sti .sxd .std`) are reshaped as OpenDocument (namespaces,
 renamed elements, property sets split by style family) and converted as such; their embedded objects are left out.
+
+OFD documents (GB/T 33190, `.ofd`, such as Chinese e-invoices) are drawn page by page at their fixed positions: template
+pages, layers, paths, text with its glyph positions, pictures (including JBIG2, passed into the PDF as is), clipping,
+colour spaces and axial and radial shadings, annotations, outlines and the appearance of seals. Signatures are drawn,
+never checked. Embedded fonts are used where they can be read; text in an embedded font that has no character map is
+drawn from its glyph outlines and kept searchable. UOF documents (GB/T 20916, UOF 1.0 `.uof .uot .uos .uop`) are
+rewritten as Word, Excel or PowerPoint packages and converted as such; lengths a file leaves empty fall back to A4 and
+Word's defaults. WPS Office files (`.wps .wpt .et .ett .dps .dpt`) are converted from the Word, Excel or PowerPoint
+format they hold; a Works document named `.wps` and an older Kingsoft file are refused with a plain reason. Founder
+Apabi (`.ceb .cebx .xeb`), Sursen (`.sep .s2 .s72 .s92 .gw`), CNKI (`.caj .kdh .nh .teb`) and SuperStar (`.pdg`)
+files have no published specification and are refused with a reason.
 
 Apple Pages, Numbers and Keynote files are not read in their own format: the PDF preview iWork stores in the file is
 drawn when there is one, else its preview picture of the first page, and a warning says which. Microsoft Publisher

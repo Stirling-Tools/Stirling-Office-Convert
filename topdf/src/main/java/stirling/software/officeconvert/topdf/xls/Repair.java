@@ -39,6 +39,10 @@ final class Repair {
 
     private static final int WINDOW2 = 0x023E;
 
+    private static final int CONDFMT = 0x01B0;
+
+    private static final int CFRULE = 0x01B1;
+
     private static final Map<Integer, Integer> FIXED = Map.ofEntries(Map.entry(0x000C, 2), Map.entry(0x000D, 2),
             Map.entry(0x000F, 2), Map.entry(0x0010, 8), Map.entry(0x0011, 2), Map.entry(0x0012, 2),
             Map.entry(0x0013, 2), Map.entry(0x0019, 2), Map.entry(0x0022, 2), Map.entry(0x002A, 2),
@@ -100,6 +104,14 @@ final class Repair {
                 continue;
             }
             objects = false;
+            if (sid == CONDFMT && len >= 2) {
+                int next = conditions(d, at, len, out);
+                if (next > 0) {
+                    changed = true;
+                    at = next;
+                    continue;
+                }
+            }
             Integer fixed = sid == WINDOW2 ? null : FIXED.get(sid);
             if (fixed != null && len > fixed) {
                 out.write(d[at]);
@@ -125,6 +137,42 @@ final class Repair {
             changed = true;
         }
         return changed ? out.toByteArray() : null;
+    }
+
+    private static int conditions(byte[] d, int at, int len, ByteArrayOutputStream out) {
+        ByteArrayOutputStream kept = new ByteArrayOutputStream();
+        int rules = 0;
+        int good = 0;
+        boolean keep = false;
+        int next = at + 4 + len;
+        while (next + 4 <= d.length) {
+            int sid = u16(d, next);
+            int size = u16(d, next + 2);
+            if (sid != CFRULE && (sid != CONTINUE || rules == 0) || next + 4 + size > d.length) {
+                break;
+            }
+            if (sid == CFRULE) {
+                rules++;
+                int type = size > 0 ? d[next + 4] & 0xFF : 0;
+                keep = type == 1 || type == 2;
+                good += keep ? 1 : 0;
+            }
+            if (keep) {
+                kept.write(d, next, 4 + size);
+            }
+            next += 4 + size;
+        }
+        if (good == rules) {
+            return -1;
+        }
+        if (good > 0) {
+            out.write(d, at, 4);
+            out.write(good);
+            out.write(good >> 8);
+            out.write(d, at + 6, len - 2);
+            out.writeBytes(kept.toByteArray());
+        }
+        return next;
     }
 
     static byte[] salvage(Path file) throws InterruptedIOException {

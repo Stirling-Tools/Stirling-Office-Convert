@@ -6,10 +6,12 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Locale;
+import java.util.zip.ZipEntry;
 
 import org.apache.poi.poifs.filesystem.DirectoryNode;
 import org.apache.poi.poifs.filesystem.POIFSFileSystem;
 
+import stirling.software.officeconvert.topdf.io.BoundedZip;
 import stirling.software.officeconvert.topdf.io.LegacyOffice;
 
 /** The plain reason for each kind of file the converter does not read, by its extension or, when the name gives
@@ -21,7 +23,6 @@ public final class UnsupportedFormats {
     /** The reason a file with this extension is not converted, or null when it is not a known kind. */
     public static String byExtension(String extension) {
         return switch (extension.toLowerCase(Locale.ROOT)) {
-            case "wps" -> works();
             case "wpd", "wp", "wp5", "wp6", "wp7", "wpt" -> wordPerfect();
             case "pub" -> "The file is not a Microsoft Publisher publication that can be read; save the publication as PDF"
                     + " from Publisher";
@@ -38,6 +39,17 @@ public final class UnsupportedFormats {
                     + " .xlsx";
             case "wri" -> "Windows Write documents (.wri) are not supported; save the file as .docx";
             case "hwp", "hwpx" -> "Hangul word processor documents are not supported; save the file as .docx";
+            case "ceb", "xeb", "cebx" -> "Founder Apabi documents (.ceb, .cebx, .xeb) are not supported: the format is"
+                    + " proprietary and has no published specification; save the document as PDF or OFD from Apabi Reader";
+            case "sep", "s2", "s72", "s92", "gw" -> "Sursen (Shusheng) documents are not supported: the format is"
+                    + " proprietary and has no published specification; save the document as PDF or OFD from the Sursen"
+                    + " reader";
+            case "caj", "kdh", "nh", "teb" -> "CNKI documents (.caj, .kdh, .nh, .teb) are not supported: the format is"
+                    + " proprietary and has no published specification; download the PDF edition from CNKI instead";
+            case "pdg" -> "SuperStar (Chaoxing) PDG pages are not supported: the format is proprietary and has no"
+                    + " published specification; save the book as PDF from the SuperStar reader";
+            case "eio" -> "Yozo Office documents (.eio) are not supported; save the document as .docx, .xlsx or .pptx"
+                    + " from Yozo Office";
             case "xlw" -> "Excel 4.0 workbooks (.xlw) are not supported; save the file as .xlsx";
             case "xlr" -> "Microsoft Works spreadsheets (.xlr) are not supported; save the file as .xlsx";
             case "mpp", "mpt" -> "Microsoft Project files are not supported; save the plan as PDF from Project";
@@ -73,6 +85,14 @@ public final class UnsupportedFormats {
                 || head.length >= 2 && (head[0] & 0xFF) == 0x32 && (head[1] & 0xFF) == 0xBE) {
             return "The file is a Windows Write document, which is not supported; save it as .docx";
         }
+        String wps = kingsoft(file, head);
+        if (wps != null) {
+            return wps;
+        }
+        if (head.length >= 2 && head[0] == 'P' && head[1] == 'K' && uof2(file)) {
+            return "The file is a UOF 2.0 package, which is not supported yet; save it as UOF 1.0 (.uot, .uos or .uop)"
+                    + " or as .docx, .xlsx or .pptx";
+        }
         String text = new String(head, StandardCharsets.ISO_8859_1).stripLeading().toLowerCase(Locale.ROOT);
         if ((text.startsWith("mime-version:") || text.startsWith("from:") || text.startsWith("content-type:"))
                 && text.contains("multipart/related")) {
@@ -103,6 +123,40 @@ public final class UnsupportedFormats {
         } catch (IOException | RuntimeException e) {
             return null;
         }
+    }
+
+    private static boolean uof2(Path file) {
+        try (BoundedZip z = BoundedZip.open(file)) {
+            ZipEntry e = z.entry("uof.xml");
+            if (e == null || e.isDirectory()) {
+                return false;
+            }
+            try (InputStream in = z.open(e, 1 << 20)) {
+                String head = new String(in.readNBytes(8192), StandardCharsets.UTF_8);
+                return head.contains("schemas.uof.org/cn/2009/uof");
+            }
+        } catch (IOException | RuntimeException e) {
+            return false;
+        }
+    }
+
+    private static String kingsoft(Path file, byte[] head) {
+        Path name = file.getFileName();
+        String n = name == null ? "" : name.toString().toLowerCase(Locale.ROOT);
+        int dot = n.lastIndexOf('.');
+        String ext = dot < 0 ? "" : n.substring(dot + 1);
+        boolean family = switch (ext) {
+            case "wps", "wpt", "et", "ett", "dps", "dpt" -> true;
+            default -> false;
+        };
+        boolean zip = head.length >= 2 && head[0] == 'P' && head[1] == 'K';
+        boolean ole2 = head.length >= 4 && (head[0] & 0xFF) == 0xD0 && (head[1] & 0xFF) == 0xCF && head[2] == 0x11
+                && (head[3] & 0xFF) == 0xE0;
+        if (!family || zip || ole2) {
+            return null;
+        }
+        return "The file is in an older WPS Office or Microsoft Works format that is not supported; WPS Office files"
+                + " saved in the Word, Excel or PowerPoint formats convert, so save it as .docx, .xlsx or .pptx";
     }
 
     private static String works() {

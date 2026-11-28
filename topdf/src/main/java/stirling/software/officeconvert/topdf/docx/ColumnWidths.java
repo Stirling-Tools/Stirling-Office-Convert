@@ -166,7 +166,7 @@ final class ColumnWidths {
         float line = 0;
         float longest = 0;
         float widest = 0;
-        for (Item it : new ParaItems(ctx, para, null).items) {
+        for (Item it : new ParaItems(ctx, para, null, false, true).items) {
             switch (it.kind) {
                 case TEXT -> {
                     int from = 0;

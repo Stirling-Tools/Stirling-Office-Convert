@@ -3,6 +3,7 @@ package stirling.software.officeconvert.topdf.xlsx;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -54,6 +55,17 @@ class RowHeightTest {
                     .append("\" s=\"1\" t=\"inlineStr\"><is><t>Row").append(r).append("</t></is></c></row>");
         }
         return b.toString();
+    }
+
+    @Test
+    void aMissingSimSunFitsRowsToItsOwnLineNotItsStandIns() throws Exception {
+        FontLibrary fonts = FontLibrary.of(List.of(Files.createDirectories(dir.resolve("none"))));
+        for (String family : new String[] {"SimSun", "宋体"}) {
+            FontMeasure m = FontMeasure.of(fonts, family, false, false);
+            assertEquals(0.8594, (double) m.winAscent() / m.unitsPerEm(), 0.002, family);
+            assertEquals(17, m.screenLinePx(11), family);
+            assertEquals(15, m.screenLinePx(10), family);
+        }
     }
 
     private static double factor() {

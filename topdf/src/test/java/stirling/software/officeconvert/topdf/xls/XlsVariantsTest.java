@@ -1,5 +1,6 @@
 package stirling.software.officeconvert.topdf.xls;
 
+import static org.apache.poi.ss.usermodel.ComparisonOperator.GT;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -360,6 +361,35 @@ class XlsVariantsTest {
         assertTrue(out.all().contains("Line 1"), out.all());
         assertTrue(out.warnings().contains("damaged"), out.warnings());
         assertTrue(out.result().truncated(), "a cut workbook marks the result partial");
+    }
+
+    @Test
+    void conditionalFormatRulesOfAnUndefinedTypeAreLeftOutAndTheSheetPrints() throws Exception {
+        byte[] stream = workbookStream(xls(wb -> {
+            HSSFSheet s = wb.createSheet("Rules");
+            for (int i = 0; i < 5; i++) {
+                s.createRow(i).createCell(0).setCellValue("Value " + i);
+            }
+            org.apache.poi.ss.usermodel.SheetConditionalFormatting cf = s.getSheetConditionalFormatting();
+            cf.addConditionalFormatting(new CellRangeAddress[] {CellRangeAddress.valueOf("A1:A5")},
+                    cf.createConditionalFormattingRule(GT, "2"), cf.createConditionalFormattingRule(GT, "3"));
+            cf.addConditionalFormatting(new CellRangeAddress[] {CellRangeAddress.valueOf("B1:B5")},
+                    cf.createConditionalFormattingRule(GT, "1"));
+        }));
+        int at = 0;
+        int rules = 0;
+        while (at + 4 <= stream.length) {
+            int sid = stream[at] & 0xFF | (stream[at + 1] & 0xFF) << 8;
+            int len = stream[at + 2] & 0xFF | (stream[at + 3] & 0xFF) << 8;
+            if (sid == 0x1B1 && rules++ != 1) {
+                stream[at + 4] = 0;
+            }
+            at += 4 + len;
+        }
+        assertEquals(3, rules);
+        XlsTest.Converted out = convert("rules.xls", withStream(stream));
+        assertTrue(out.all().contains("Value 4"), out.all());
+        assertFalse(out.warnings().contains("damaged"), out.warnings());
     }
 
     private static void iconsAndScales(org.apache.poi.ss.usermodel.Workbook wb) {

@@ -4,9 +4,11 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -92,19 +94,7 @@ final class FontScanner {
     }
 
     static void checkCff(FontEntry entry, long maxBytes) throws IOException {
-        try (Source src = entry.file() != null ? Source.of(entry.file()) : Source.of(entry.data())) {
-            long[] t = tables(src, entry.offset()).get("CFF ");
-            if (t == null) {
-                throw new IOException("the font has no CFF table");
-            }
-            if (t[1] > maxBytes) {
-                throw new IOException("the CFF table is too large");
-            }
-            CffSubsetter.check((int) t[1], (into, from, to) -> {
-                byte[] b = src.slice(t[0] + from, to - from).bytes;
-                System.arraycopy(b, 0, into, from, b.length);
-            });
-        }
+        CffSubsetter.check(mappedTable(entry, "CFF ", maxBytes));
     }
 
     static long[] tableRange(FontEntry entry, String tag) throws IOException {
@@ -130,6 +120,32 @@ final class FontScanner {
         }
     }
 
+    static ByteBuffer mappedTable(FontEntry entry, String tag, long maxBytes) throws IOException {
+        long[] t;
+        try (Source src = entry.file() != null ? Source.of(entry.file()) : Source.of(entry.data())) {
+            t = tables(src, entry.offset()).get(tag);
+        }
+        if (t == null) {
+            throw new IOException("the font has no " + tag.strip() + " table");
+        }
+        if (t[1] > maxBytes) {
+            throw new IOException("the " + tag.strip() + " table is too large");
+        }
+        if (entry.file() == null) {
+            byte[] data = entry.data();
+            if (t[0] < 0 || t[1] < 0 || t[0] + t[1] > data.length) {
+                throw new IOException("Font data out of range");
+            }
+            return ByteBuffer.wrap(data, (int) t[0], (int) t[1]).slice();
+        }
+        try (FileChannel channel = FileChannel.open(entry.file(), StandardOpenOption.READ)) {
+            if (t[0] < 0 || t[1] < 0 || t[0] + t[1] > channel.size()) {
+                throw new IOException("Font data out of range");
+            }
+            return channel.map(FileChannel.MapMode.READ_ONLY, t[0], t[1]);
+        }
+    }
+
     static byte[] metricsOnly(FontEntry entry) throws IOException {
         try (Source src = entry.file() != null ? Source.of(entry.file()) : Source.of(entry.data())) {
             Map<String, long[]> tables = tables(src, entry.offset());
@@ -140,7 +156,8 @@ final class FontScanner {
                     if (t[1] > MAX_CMAP_BYTES) {
                         throw new IOException("the " + tag.strip() + " table is too large");
                     }
-                    kept.put(tag, src.slice(t[0], (int) t[1]).bytes);
+                    byte[] bytes = src.slice(t[0], (int) t[1]).bytes;
+                    kept.put(tag, tag.equals("cmap") ? unicodeOnly(bytes) : bytes);
                 }
             }
             kept.put("CFF ", EMPTY_CFF);
@@ -160,6 +177,30 @@ final class FontScanner {
             }
             return out.array();
         }
+    }
+
+    private static final int[][] UNICODE_CMAPS = {{0, 4}, {3, 10}, {0, 3}, {3, 1}, {3, 0}, {0, 1}};
+
+    static byte[] unicodeOnly(byte[] cmap) {
+        if (cmap.length < 4) {
+            return cmap;
+        }
+        ByteBuffer b = ByteBuffer.wrap(cmap);
+        int count = Math.min(b.getShort(2) & 0xFFFF, (cmap.length - 4) / 8);
+        for (int[] want : UNICODE_CMAPS) {
+            for (int i = 0; i < count; i++) {
+                int at = 4 + 8 * i;
+                if ((b.getShort(at) & 0xFFFF) == want[0] && (b.getShort(at + 2) & 0xFFFF) == want[1]) {
+                    if (count == 1) {
+                        return cmap;
+                    }
+                    byte[] out = cmap.clone();
+                    ByteBuffer.wrap(out).putShort(2, (short) 1).put(4, cmap, at, 8);
+                    return out;
+                }
+            }
+        }
+        return cmap;
     }
 
     static int[] coverage(FontEntry entry) {

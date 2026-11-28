@@ -242,6 +242,15 @@ final class Footprint {
     private static long decodeBytes(OfficeZip zip, String part, long size) {
         byte[] head;
         try {
+            head = zip.head(part, QUICK_HEAD_BYTES);
+            PictureDecoder.Kind quick = PictureDecoder.sniff(head);
+            if (quick == PictureDecoder.Kind.JPEG) {
+                return 0;
+            }
+            if (quick == PictureDecoder.Kind.PNG && pngSize(head)) {
+                Dimension d = PictureDecoder.pixelSize(head);
+                return 4 * Math.min((long) d.width * d.height, PictureDecoder.DECODE_PIXELS);
+            }
             head = zip.head(part, MEDIA_HEAD_BYTES);
         } catch (IOException | RuntimeException e) {
             return 0;
@@ -266,6 +275,17 @@ final class Footprint {
             }
         }
     }
+
+    private static boolean pngSize(byte[] head) {
+        return head.length >= 24 && head[12] == 'I' && head[13] == 'H' && head[14] == 'D' && head[15] == 'R'
+                && be32(head, 16) > 0 && be32(head, 20) > 0;
+    }
+
+    private static int be32(byte[] b, int at) {
+        return (b[at] & 0xFF) << 24 | (b[at + 1] & 0xFF) << 16 | (b[at + 2] & 0xFF) << 8 | b[at + 3] & 0xFF;
+    }
+
+    private static final int QUICK_HEAD_BYTES = 64;
 
     private static long saturated(long v) {
         return v < 0 ? Long.MAX_VALUE : v;
