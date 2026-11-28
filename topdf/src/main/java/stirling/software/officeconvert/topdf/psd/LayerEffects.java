@@ -13,6 +13,9 @@ final class LayerEffects {
     record Shadow(float[] color, float opacity, int blend, double angle, boolean global, float distance, float size,
             float spread, boolean conceal) {}
 
+    record Bevel(String style, float size, float depth, boolean up, double angle, boolean global, float altitude,
+            float[] light, float lightOpacity, int lightBlend, float[] dark, float darkOpacity, int darkBlend) {}
+
     final int left;
 
     final int top;
@@ -27,6 +30,10 @@ final class LayerEffects {
 
     final boolean strokeUnder;
 
+    byte[] highlight;
+
+    byte[] lowlight;
+
     private LayerEffects(int left, int top, int width, int height, byte[] stroke, byte[] shadow, boolean strokeUnder) {
         this.left = left;
         this.top = top;
@@ -37,8 +44,11 @@ final class LayerEffects {
         this.strokeUnder = strokeUnder;
     }
 
-    static int extent(Stroke stroke, Shadow shadow) {
+    static int extent(Stroke stroke, Shadow shadow, Bevel bevel) {
         double e = 2;
+        if (bevel != null) {
+            e = Math.max(e, bevel.size() + 2);
+        }
         if (stroke != null) {
             e = Math.max(e, stroke.size() + 2);
         }
@@ -49,7 +59,7 @@ final class LayerEffects {
     }
 
     static LayerEffects build(float[] alpha, int left, int top, int width, int height, Stroke stroke, Shadow shadow,
-            double globalAngle, boolean opaque) {
+            Bevel bevel, double globalAngle, boolean opaque) {
         byte[] s = null;
         boolean under = false;
         if (stroke != null && stroke.size() > 0) {
@@ -115,7 +125,65 @@ final class LayerEffects {
                 sh[i] = (byte) Math.round(clamp(base[i]) * 255);
             }
         }
-        return new LayerEffects(left, top, width, height, s, sh, under);
+        LayerEffects fx = new LayerEffects(left, top, width, height, s, sh, under);
+        if (bevel != null && bevel.size() > 0) {
+            fx.bevel(alpha, bevel, globalAngle);
+        }
+        return fx;
+    }
+
+    private void bevel(float[] alpha, Bevel bevel, double globalAngle) {
+        int n = width * height;
+        float[] solid = new float[n];
+        for (int i = 0; i < n; i++) {
+            solid[i] = alpha[i] >= 0.5f ? 1 : 0;
+        }
+        float[] dIn = distance(solid, width, height, false);
+        float[] dOut = distance(solid, width, height, true);
+        float size = bevel.size();
+        String style = bevel.style();
+        float half = Math.max(0.5f, size / 2);
+        float[] h = new float[n];
+        for (int i = 0; i < n; i++) {
+            boolean inside = solid[i] > 0;
+            h[i] = switch (style) {
+                case "OtrB" -> inside ? 1 : 1 - clamp(dOut[i] / size);
+                case "Embs" -> inside ? 0.5f + 0.5f * clamp(dIn[i] / half) : 0.5f - 0.5f * clamp(dOut[i] / half);
+                case "PlEb" -> inside ? clamp(dIn[i] / half) : clamp(dOut[i] / half);
+                default -> inside ? clamp(dIn[i] / size) : 0;
+            };
+        }
+        gauss(h, width, height, Math.max(0.5, size / 4));
+        double angle = Math.toRadians(bevel.global() ? globalAngle : bevel.angle());
+        double altitude = Math.toRadians(bevel.altitude());
+        double lx = Math.cos(altitude) * Math.cos(angle);
+        double ly = -Math.cos(altitude) * Math.sin(angle);
+        double lz = Math.sin(altitude);
+        double k = size * bevel.depth() * (bevel.up() ? 1 : -1);
+        highlight = new byte[n];
+        lowlight = new byte[n];
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                int i = y * width + x;
+                float region = switch (style) {
+                    case "OtrB" -> 1 - alpha[i];
+                    case "InrB" -> alpha[i];
+                    default -> 1;
+                };
+                if (region <= 0) {
+                    continue;
+                }
+                double gx = (h[y * width + Math.min(width - 1, x + 1)] - h[y * width + Math.max(0, x - 1)]) / 2.0;
+                double gy = (h[Math.min(height - 1, y + 1) * width + x] - h[Math.max(0, y - 1) * width + x]) / 2.0;
+                double nx = -gx * k;
+                double ny = -gy * k;
+                double shade = (nx * lx + ny * ly + lz) / Math.sqrt(nx * nx + ny * ny + 1);
+                float up = clamp((float) ((shade - lz) / Math.max(1e-6, 1 - lz)));
+                float down = clamp((float) ((lz - shade) / Math.max(1e-6, lz)));
+                highlight[i] = (byte) Math.round(up * region * 255);
+                lowlight[i] = (byte) Math.round(down * region * 255);
+            }
+        }
     }
 
     float at(byte[] raster, int x, int y) {

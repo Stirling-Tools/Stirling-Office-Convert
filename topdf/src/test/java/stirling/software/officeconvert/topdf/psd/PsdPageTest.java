@@ -579,6 +579,32 @@ class PsdPageTest {
     }
 
     @Test
+    void anInnerBevelLightsTheEdgeFacingTheLightAndShadesTheOther() throws IOException {
+        PsdFixture f = new PsdFixture(12, 12);
+        f.hasMerged = false;
+        f.flat(255).flat(255).flat(255);
+        Desc bevel = new Desc("ebbl").bool("enab", true).bool("present", true).en("hglM", "BlnM", "Scrn")
+                .obj("hglC", rgb(255, 255, 255)).unit("hglO", "#Prc", 100).en("sdwM", "BlnM", "Mltp")
+                .obj("sdwC", rgb(0, 0, 0)).unit("sdwO", "#Prc", 100).en("bvlT", "bvlT", "SfBL")
+                .en("bvlS", "BESl", "InrB").bool("uglg", false).unit("lagl", "#Ang", 90).unit("Lald", "#Ang", 30)
+                .unit("srgR", "#Prc", 100).unit("blur", "#Pxl", 3).en("bvlD", "BESs", "In  ");
+        byte[] d = new Desc("null").bool("masterFXSwitch", true).obj("ebbl", bevel).bytes(true);
+        byte[] fx = new byte[d.length + 4];
+        System.arraycopy(d, 0, fx, 4, d.length);
+        f.layers.add(new PsdFixture.Layer().rect(2, 2, 10, 10).fill(-1, 255).fill(0, 128).fill(1, 128).fill(2, 128)
+                .block("lfx2", fx));
+        OfficeToPdf.Result r = convert(f, "bevel.psd");
+        assertFalse(r.warnings().stream().anyMatch(w -> w.contains("bevel")), r.warnings().toString());
+        try (PDDocument pdf = open("bevel.psd")) {
+            byte[] s = samples(image(pdf.getPage(0)));
+            int top = s[(2 * 12 + 6) * 3] & 0xFF;
+            int middle = s[(6 * 12 + 6) * 3] & 0xFF;
+            int bottom = s[(9 * 12 + 6) * 3] & 0xFF;
+            assertTrue(top > middle && bottom < middle, top + " " + middle + " " + bottom);
+        }
+    }
+
+    @Test
     void aPatternTooLargeToHoldIsLeftOutWithAWarning() throws IOException {
         PsdFixture f = new PsdFixture(2, 1);
         f.hasMerged = false;

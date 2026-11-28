@@ -26,7 +26,7 @@ final class Effects {
 
     record Overlay(float[] color, float opacity, int blend, Descriptor gradient, Descriptor pattern) {}
 
-    record Found(Overlay overlay, LayerEffects.Stroke stroke, LayerEffects.Shadow shadow) {}
+    record Found(Overlay overlay, LayerEffects.Stroke stroke, LayerEffects.Shadow shadow, LayerEffects.Bevel bevel) {}
 
     static Found scan(Source.Cursor c, long len, Set<String> into) throws IOException {
         byte[] b = new byte[(int) Math.min(len, MAX_SCAN)];
@@ -46,6 +46,7 @@ final class Effects {
         Overlay overlay = null;
         LayerEffects.Stroke stroke = null;
         LayerEffects.Shadow shadow = null;
+        LayerEffects.Bevel bevel = null;
         for (Map.Entry<String, String> e : NAMES.entrySet()) {
             Object v = d.get(e.getKey());
             List<Object> all = new ArrayList<>();
@@ -91,10 +92,32 @@ final class Effects {
                             bounded(fx.number("Ckmt", 0), 100, 0) / 100, fx.flag("layerConceals", true));
                     continue;
                 }
+                if (e.getValue().equals("bevel and emboss") && bevel == null) {
+                    bevel = bevel(fx);
+                    if (bevel != null) {
+                        continue;
+                    }
+                }
                 into.add(e.getValue());
             }
         }
-        return new Found(overlay, stroke, shadow);
+        return new Found(overlay, stroke, shadow, bevel);
+    }
+
+    private static LayerEffects.Bevel bevel(Descriptor fx) {
+        String style = fx.enumValue("bvlS");
+        if (!"SfBL".equals(fx.enumValue("bvlT")) || !("InrB".equals(style) || "OtrB".equals(style)
+                || "Embs".equals(style) || "PlEb".equals(style))) {
+            return null;
+        }
+        float[] light = fx.color("hglC");
+        float[] dark = fx.color("sdwC");
+        return new LayerEffects.Bevel(style, bounded(fx.number("blur", 5), 250, 5),
+                bounded(fx.number("srgR", 100), 1000, 100) / 100, !"Out ".equals(fx.enumValue("bvlD")),
+                fx.number("lagl", 120), fx.flag("uglg", true), bounded(fx.number("Lald", 30), 90, 30),
+                light == null ? new float[] {1, 1, 1} : light, bounded(fx.number("hglO", 75), 100, 75) / 100,
+                blend(fx.enumValue("hglM")), dark == null ? new float[] {0, 0, 0} : dark,
+                bounded(fx.number("sdwO", 75), 100, 75) / 100, blend(fx.enumValue("sdwM")));
     }
 
     private static float bounded(double v, double max, double fallback) {
