@@ -844,6 +844,26 @@ class HtmlLayoutTest {
     }
 
     @Test
+    void anEmptySpacerKeepsItsHeightInAndOutOfTableCells() throws IOException {
+        Laid l = lay("""
+                <!doctype html><html><body style="margin:0"><table><tr><td>
+                Cell1<div style="height:40px"></div>Cell2<div style="height:40px;line-height:40px;font-size:1px">&nbsp;</div>Cell3
+                </td></tr></table><div>Out1</div><div style="height:40px"></div><div>Out2</div></body></html>""");
+        float line = l.word("Out2").top() - l.word("Out1").top() - 30;
+        assertEquals(30, l.word("Cell2").top() - l.word("Cell1").top() - line, 2f, l.words().toString());
+        assertEquals(30, l.word("Cell3").top() - l.word("Cell2").top() - line, 2f, l.words().toString());
+        assertTrue(line > 8 && line < 20, l.words().toString());
+    }
+
+    @Test
+    void aSizedSpacerHoldingOnlyATinySpaceTakesItsHeight() throws IOException {
+        Laid l = lay("""
+                <!doctype html><html><body style="margin:0"><div>Top</div>
+                <div style="height:40px;font-size:1px;line-height:1px">&nbsp;</div><div>Bottom</div></body></html>""");
+        assertEquals(30 + 13.8f, l.word("Bottom").top() - l.word("Top").top(), 2f, l.words().toString());
+    }
+
+    @Test
     void thePageColourReachesThePageMarginsWhateverTheBodyMargin() throws IOException {
         Laid l = lay("<html><body bgcolor=\"#ffff00\" style=\"margin:40px\"><p>Hi</p></body></html>");
         int x = Math.round(HtmlDocument.PAGE_MARGIN) + 3;

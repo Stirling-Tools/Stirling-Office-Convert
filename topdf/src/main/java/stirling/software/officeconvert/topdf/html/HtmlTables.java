@@ -111,6 +111,10 @@ final class HtmlTables {
                 rowspan = rowspan == 0 ? rowCount - r : Math.min(rowspan, rowCount - r);
                 Table.Cell cell = cell(cellDecl, colspan, frameBorder);
                 cell.vMerge = rowspan > 1 ? 1 : 0;
+                float cellHeight = BoxCss.length(cellDecl.get("height"), cellLook.size, 0);
+                if (rowspan == 1 && cellHeight <= MAX_SPACER_ROW) {
+                    row.height = Math.max(row.height, cellHeight);
+                }
                 float[] pad = pads(cellDecl, cellLook, cellpadding);
                 grid.get(r).put(col, new Slot(td, cell, cellDecl, cellLook, pad));
                 for (int below = r + 1; below < r + rowspan; below++) {
@@ -168,6 +172,8 @@ final class HtmlTables {
         indent(t, table, d, look, frame, width, legacy);
         return t;
     }
+
+    private static final float MAX_SPACER_ROW = 90;
 
     private static boolean hidden(Element e, Map<String, String> d, Look look) {
         return e.hasAttr("hidden") || "none".equalsIgnoreCase(d.getOrDefault("display", "").strip())

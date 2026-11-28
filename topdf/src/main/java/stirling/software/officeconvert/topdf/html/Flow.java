@@ -53,6 +53,10 @@ final class Flow {
 
     private static final float MAX_BORDER_SPACE = 31;
 
+    private static final float MAX_SPACER = 90;
+
+    private int emitted;
+
     private static final float BROKEN_PICTURE = 12;
 
     private static final int MISSING_EDGE = 0xC0C0C0;
@@ -949,6 +953,7 @@ final class Flow {
             pendingBreak = true;
         }
         Block before = lastBlock();
+        int emittedBefore = emitted;
         Look outerLook = blockLook;
         Frame outerFrame = blockFrame;
         String outerHeading = headingStyle;
@@ -981,7 +986,12 @@ final class Flow {
             clipLeft = Math.min(clipLeft, clip);
         }
         float inside = clipLeft;
-        if (plan == null) {
+        boolean spacer = plan == null && absolutes.isEmpty() && BoxCss.height(d, look) > 0
+                && BoxCss.height(d, look) <= MAX_SPACER
+                && "none".equalsIgnoreCase(d.getOrDefault("float", "none").strip()) && blankSpacer(e);
+        if (spacer) {
+            pad(Math.max(BoxCss.height(d, look), Controls.linePitch(look)));
+        } else if (plan == null) {
             walkChildren(e, look, inner, depth);
         } else if (plan.inline()) {
             inlineRow(plan, d, look, inner, depth);
@@ -990,6 +1000,17 @@ final class Flow {
         }
         floatOf = outerFloat;
         flush();
+        if (!spacer && plan == null && emitted == emittedBefore && absolutes.isEmpty()
+                && "none".equalsIgnoreCase(d.getOrDefault("float", "none").strip())) {
+            float h = Math.max(BoxCss.height(d, look), BoxCss.minHeight(d, look));
+            if ("border-box".equalsIgnoreCase(d.getOrDefault("box-sizing", "").strip())) {
+                h -= BoxCss.padding(d.get("padding-top"), em, frame.width())
+                        + BoxCss.padding(d.get("padding-bottom"), em, frame.width());
+            }
+            if (h <= MAX_SPACER) {
+                pad(h);
+            }
+        }
         if (hung != null && !hung.bottom().isEmpty()) {
             float padBottom = BoxCss.padding(d.get("padding-bottom"), em, frame.width());
             float below = padBottom + (padBottom > 0 || BoxCss.border(d, "bottom") > 0 ? pendingSpace : 0);
@@ -1137,6 +1158,7 @@ final class Flow {
     }
 
     private void emit(Block b) throws IOException {
+        emitted++;
         if (pendingBookmark != null) {
             Paragraph first = switch (b) {
                 case Paragraph p -> p;
@@ -1184,6 +1206,22 @@ final class Flow {
             out.add(waiting);
         }
         waiting = b;
+    }
+
+    private static final Set<String> SPACER_PARTS = Set.of("span", "font", "b", "i", "strong", "em", "u", "small",
+            "sup", "sub", "br", "p", "div", "a");
+
+    private static boolean blankSpacer(Element e) {
+        if (!Layout.text(e, 64).replace('\u00a0', ' ').isBlank()) {
+            return false;
+        }
+        int seen = 0;
+        for (Element c : e.getAllElements()) {
+            if (c != e && (!SPACER_PARTS.contains(c.normalName()) || ++seen > 16)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private Block lastBlock() {
