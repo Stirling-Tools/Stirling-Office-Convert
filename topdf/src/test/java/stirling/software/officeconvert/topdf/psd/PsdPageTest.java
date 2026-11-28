@@ -571,6 +571,29 @@ class PsdPageTest {
     }
 
     @Test
+    void currentBrightnessAndContrastFollowTheirCurves() throws IOException {
+        PsdFixture f = new PsdFixture(2, 1);
+        f.hasMerged = false;
+        f.mode = PsdDocument.GRAY;
+        f.flat(255);
+        PsdFixture.Layer base = new PsdFixture.Layer().rect(0, 0, 1, 2);
+        base.channels.put(0, new byte[] {(byte) 240, (byte) 120});
+        f.layers.add(base);
+        java.nio.ByteBuffer brit = java.nio.ByteBuffer.allocate(8);
+        brit.putShort((short) -95).putShort((short) -50).putShort((short) 127).put((byte) 0);
+        Desc generator = new Desc("null").lng("Vrsn", 1).lng("Brgh", -95).lng("Cntr", -50).lng("means", 127)
+                .bool("Lab ", false).bool("useLegacy", false).bool("Auto", false);
+        f.layers.add(new PsdFixture.Layer().rect(0, 0, 0, 0).block("brit", brit.array())
+                .block("CgEd", generator.bytes(true)));
+        convert(f, "current-brightness.psd");
+        try (PDDocument pdf = open("current-brightness.psd")) {
+            byte[] s = samples(image(pdf.getPage(0)));
+            assertEquals(170, s[0] & 0xFF, 4);
+            assertEquals(78, s[1] & 0xFF, 4);
+        }
+    }
+
+    @Test
     void legacyBrightnessAndContrastShiftAndStretchAroundTheMean() throws IOException {
         PsdFixture f = new PsdFixture(1, 1);
         f.hasMerged = false;

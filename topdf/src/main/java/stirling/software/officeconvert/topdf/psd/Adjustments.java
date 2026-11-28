@@ -280,11 +280,21 @@ abstract class Adjustments {
             boolean compress = contrast < 0;
             lut = lut(v -> (float) ((compress ? (v * 255 - m) * k + m + bright : (v * 255 + bright - m) * k + m) / 255));
         } else {
-            float[] first = brightness == 0 ? null
-                    : curve(new double[] {0, 128 - 0.4039 * brightness, 255}, new double[] {0, 128 + 0.2616 * brightness, 255});
-            double shift = -0.3131 * contrast;
+            double lift = Math.abs(brightness) / 100;
+            double spread = contrast / 100;
+            float[] first;
+            if (brightness > 0) {
+                first = curve(new double[] {0, 117.151 - 25.664 * lift, 252.475 - 42.806 * lift, 255},
+                        new double[] {0, 117.151 + 47.024 * lift, 252.475 - 0.096 * lift, 255});
+            } else if (brightness < 0) {
+                first = curve(new double[] {0, 125.308 + 84.178 * lift, 239.276 + 9.816 * lift, 255},
+                        new double[] {0, 125.308 - 0.064 * lift, 239.276 - 19.798 * lift, 255});
+            } else {
+                first = null;
+            }
             float[] second = contrast == 0 ? null
-                    : curve(new double[] {-18.85, 0, 255, 273.85}, new double[] {-18.85 - shift, 0, 255, 273.85 + shift});
+                    : curve(new double[] {0, 34.058 + 16.919 * spread, 220.942 - 16.919 * spread, 255},
+                            new double[] {0, 34.058 - 0.007 * spread, 220.942 + 0.007 * spread, 255});
             lut = lut(v -> {
                 float t = first == null ? v : look(first, v);
                 return second == null ? t : look(second, t);
