@@ -16,7 +16,10 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 
+import org.apache.fontbox.ttf.TTFParser;
+import org.apache.fontbox.ttf.TrueTypeFont;
 import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.io.RandomAccessReadBuffer;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.rendering.PDFRenderer;
 import org.apache.pdfbox.text.PDFTextStripper;
@@ -1114,6 +1117,27 @@ class HtmlLayoutTest {
         } finally {
             Css.clearRootSize();
         }
+    }
+
+    @Test
+    void hebrewInAPageIsDrawnAtItsCssFontsOwnWidth() throws IOException {
+        String word = "\u05e9\u05dc\u05d5\u05dd";
+        Laid l = lay("<p dir=\"rtl\" style=\"font-family:TestSans;font-size:40px\">" + word + " " + word + "</p>",
+                testFonts());
+        float expected;
+        try (TrueTypeFont font = new TTFParser().parse(new RandomAccessReadBuffer(TestFonts.renamed("TestSans")))) {
+            float units = 0;
+            for (char c : (word + " " + word).toCharArray()) {
+                units += font.getAdvanceWidth(font.getUnicodeCmapLookup().getGlyphId(c));
+            }
+            expected = units * 30f / font.getUnitsPerEm();
+        }
+        List<Word> hebrew = l.words().stream().filter(w -> w.text().codePointAt(0) >= 0x05d0
+                && w.text().codePointAt(0) <= 0x05ea).toList();
+        assertEquals(8, hebrew.size(), l.words().toString());
+        float left = (float) hebrew.stream().mapToDouble(Word::left).min().orElseThrow();
+        float right = (float) hebrew.stream().mapToDouble(Word::right).max().orElseThrow();
+        assertEquals(expected, right - left, 0.5f, hebrew.toString());
     }
 
     @Test
