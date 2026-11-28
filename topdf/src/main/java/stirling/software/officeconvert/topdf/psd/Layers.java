@@ -158,7 +158,7 @@ final class Layers {
         long open = planes * (40L << 10);
         long caches = planes * doc.width * 4L;
         long strips = vectors * 2 * doc.width * VectorMask.STRIP;
-        long fx = effects ? LayerEffects.MAX_PIXELS * 30 + LayerEffects.MAX_PIXELS * 4 * 2 : 0;
+        long fx = effects ? LayerEffects.MAX_PIXELS * 30 + LayerEffects.MAX_PIXELS * 4 * 7 : 0;
         return buffers + open + caches + strips + blobs * 4 + fx + (64L << 20);
     }
 

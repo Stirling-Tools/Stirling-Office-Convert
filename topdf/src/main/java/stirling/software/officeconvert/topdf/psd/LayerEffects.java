@@ -50,8 +50,11 @@ final class LayerEffects {
         this.strokeUnder = strokeUnder;
     }
 
-    static int extent(Stroke stroke, Shadow shadow, Bevel bevel, Shadow glow) {
+    static int extent(Stroke stroke, Shadow shadow, Bevel bevel, Shadow glow, Shadow innerShadow) {
         double e = 2;
+        if (innerShadow != null) {
+            e = Math.max(e, innerShadow.distance() + innerShadow.size() * 1.5 + 2);
+        }
         if (glow != null) {
             e = Math.max(e, glow.size() * 1.5 + 2);
         }
@@ -111,18 +114,25 @@ final class LayerEffects {
         if (glow != null) {
             fx.glow = bytes(soft(alpha, width, height, glow, globalAngle));
         }
+        float[] outside = null;
+        if (innerShadow != null || innerGlow != null) {
+            outside = new float[alpha.length];
+            for (int i = 0; i < alpha.length; i++) {
+                outside[i] = 1 - alpha[i];
+            }
+        }
         if (innerShadow != null) {
-            float[] shifted = soft(alpha, width, height, innerShadow, globalAngle);
+            float[] shifted = soft(outside, width, height, innerShadow, globalAngle);
             for (int i = 0; i < shifted.length; i++) {
-                shifted[i] = alpha[i] * (1 - clamp(shifted[i]));
+                shifted[i] = alpha[i] * clamp(shifted[i]);
             }
             fx.innerShadow = bytes(shifted);
         }
         if (innerGlow != null) {
-            float[] spread = soft(alpha, width, height, innerGlow, globalAngle);
+            float[] spread = soft(outside, width, height, innerGlow, globalAngle);
             for (int i = 0; i < spread.length; i++) {
                 float b = clamp(spread[i]);
-                spread[i] = alpha[i] * clamp(innerGlow.conceal() ? 2 * (1 - b) : 2 * b - 1);
+                spread[i] = alpha[i] * clamp(innerGlow.conceal() ? 2 * b : 1 - 2 * b);
             }
             fx.innerGlow = bytes(spread);
         }

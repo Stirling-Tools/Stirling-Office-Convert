@@ -1373,7 +1373,7 @@ final class Composer {
             return;
         }
         Layers.Layer l = node.layer;
-        int e = LayerEffects.extent(l.stroke, l.shadow, l.bevel, l.glow);
+        int e = LayerEffects.extent(l.stroke, l.shadow, l.bevel, l.glow, l.innerShadow);
         int x0 = 0;
         int y0 = 0;
         int x1 = width;

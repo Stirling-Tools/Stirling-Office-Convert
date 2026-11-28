@@ -631,6 +631,27 @@ class PsdPageTest {
     }
 
     @Test
+    void aChokedInnerShadowThickensInsideTheEdge() throws IOException {
+        PsdFixture f = new PsdFixture(16, 16);
+        f.hasMerged = false;
+        f.flat(255).flat(255).flat(255);
+        Desc inner = new Desc("IrSh").bool("enab", true).bool("present", true).en("Md  ", "BlnM", "Nrml")
+                .obj("Clr ", rgb(0, 0, 0)).unit("Opct", "#Prc", 100).bool("uglg", false).unit("lagl", "#Ang", 90)
+                .unit("Dstn", "#Pxl", 0).unit("blur", "#Pxl", 2).unit("Ckmt", "#Prc", 100);
+        byte[] d = new Desc("null").bool("masterFXSwitch", true).obj("IrSh", inner).bytes(true);
+        byte[] fx = new byte[d.length + 4];
+        System.arraycopy(d, 0, fx, 4, d.length);
+        f.layers.add(new PsdFixture.Layer().rect(2, 2, 14, 14).fill(-1, 255).fill(0, 200).fill(1, 200).fill(2, 200)
+                .block("lfx2", fx));
+        convert(f, "choke.psd");
+        try (PDDocument pdf = open("choke.psd")) {
+            byte[] s = samples(image(pdf.getPage(0)));
+            assertTrue((s[(2 * 16 + 8) * 3] & 0xFF) < 100, "edge " + (s[(2 * 16 + 8) * 3] & 0xFF));
+            assertEquals(200, s[(8 * 16 + 8) * 3] & 0xFF);
+        }
+    }
+
+    @Test
     void aGradientOuterGlowTakesItsColourFromTheGradient() throws IOException {
         PsdFixture f = new PsdFixture(16, 16);
         f.hasMerged = false;
