@@ -129,7 +129,9 @@ final class Effects {
 
     private static LayerEffects.Bevel bevel(Descriptor fx) {
         String style = fx.enumValue("bvlS");
-        if (!"SfBL".equals(fx.enumValue("bvlT")) || !("InrB".equals(style) || "OtrB".equals(style)
+        String technique = fx.enumValue("bvlT");
+        if (!("SfBL".equals(technique) || "PrBL".equals(technique) || "Slmt".equals(technique))
+                || !("InrB".equals(style) || "OtrB".equals(style)
                 || "Embs".equals(style) || "PlEb".equals(style))) {
             return null;
         }
