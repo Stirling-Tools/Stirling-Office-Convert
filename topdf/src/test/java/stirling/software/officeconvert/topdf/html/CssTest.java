@@ -17,6 +17,16 @@ class CssTest {
     private static final float VIEWPORT = 602;
 
     @Test
+    void markupCommentMarkersAroundAStyleSheetAreIgnored() {
+        List<Css.Rule> rules = Css.rules("<!--\nP{font-size:12px}\n-->\n<!-- h1{color:red} -->", new ArrayList<>(), VIEWPORT);
+        assertEquals(2, rules.size(), rules.toString());
+        assertEquals("P", rules.get(0).selector());
+        assertEquals("h1", rules.get(1).selector());
+        assertNull(Css.length("0.", 12, 100));
+        assertEquals(7.5f, Css.length(".5em", 15, 100));
+    }
+
+    @Test
     void presentationalColoursFollowTheLegacyParsingRules() {
         assertEquals("#3dffff", Presentation.legacyColor("3D#ffffff"));
         assertEquals("#ffffff", Presentation.legacyColor("ffffff"));

@@ -61,6 +61,9 @@ final class Css {
             if (semi >= 0) {
                 head = head.substring(semi + 1).strip();
             }
+            if (head.contains("<!--") || head.contains("-->")) {
+                head = head.replace("<!--", " ").replace("-->", " ").strip();
+            }
             if (head.startsWith("@")) {
                 String at = head.toLowerCase(Locale.ROOT);
                 if (depth >= MAX_NESTING) {
@@ -501,7 +504,7 @@ final class Css {
         while (unit < s.length() && (Character.isDigit(s.charAt(unit)) || "+-.".indexOf(s.charAt(unit)) >= 0)) {
             unit++;
         }
-        if (unit == 0) {
+        if (unit == 0 || s.charAt(unit - 1) == '.') {
             return null;
         }
         float n;
