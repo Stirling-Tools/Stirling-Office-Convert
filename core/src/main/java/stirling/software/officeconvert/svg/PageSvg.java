@@ -1543,6 +1543,9 @@ final class PageSvg extends PDFGraphicsStreamEngine {
         }
         String unicode = font.toUnicode(code);
         SvgFonts.Face face = fonts.face(font);
+        if ("\u00AD".equals(unicode) && !face.web()) {
+            unicode = "-";
+        }
         boolean paints = mode.isFill() || mode.isStroke();
         int cp = unicode == null || unicode.isEmpty() ? -1 : unicode.codePointAt(0);
         boolean single = unicode != null && unicode.codePointCount(0, unicode.length()) == 1 && xmlChar(cp)
