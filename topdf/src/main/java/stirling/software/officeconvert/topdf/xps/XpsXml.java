@@ -7,9 +7,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import org.w3c.dom.Element;
-import org.w3c.dom.Node;
-
 final class XpsXml {
 
     static final String XPS = "http://schemas.microsoft.com/xps/2005/06";
@@ -27,23 +24,20 @@ final class XpsXml {
 
     private XpsXml() {}
 
-    static boolean ours(Node n) {
+    static boolean ours(XpsElement n) {
         String ns = n.getNamespaceURI();
         return ns == null || ns.equals(XPS) || ns.equals(OXPS) || ns.endsWith("/documentstructure");
     }
 
     interface Visitor {
-        void visit(Element e) throws java.io.IOException;
+        void visit(XpsElement e) throws java.io.IOException;
     }
 
-    static void each(Element parent, Visitor visitor) throws java.io.IOException {
-        for (Node n = parent.getFirstChild(); n != null; n = n.getNextSibling()) {
-            if (!(n instanceof Element e)) {
-                continue;
-            }
+    static void each(XpsElement parent, Visitor visitor) throws java.io.IOException {
+        for (XpsElement e = parent.firstChild; e != null; e = e.nextSibling) {
             if (MC.equals(e.getNamespaceURI())) {
                 if ("AlternateContent".equals(e.getLocalName())) {
-                    Element chosen = choose(e);
+                    XpsElement chosen = choose(e);
                     if (chosen != null) {
                         each(chosen, visitor);
                     }
@@ -56,20 +50,17 @@ final class XpsXml {
         }
     }
 
-    static List<Element> elements(Element parent) {
-        List<Element> out = new ArrayList<>();
+    static List<XpsElement> elements(XpsElement parent) {
+        List<XpsElement> out = new ArrayList<>();
         collect(parent, out);
         return out;
     }
 
-    private static void collect(Element parent, List<Element> out) {
-        for (Node n = parent.getFirstChild(); n != null; n = n.getNextSibling()) {
-            if (!(n instanceof Element e)) {
-                continue;
-            }
+    private static void collect(XpsElement parent, List<XpsElement> out) {
+        for (XpsElement e = parent.firstChild; e != null; e = e.nextSibling) {
             if (MC.equals(e.getNamespaceURI())) {
                 if ("AlternateContent".equals(e.getLocalName())) {
-                    Element chosen = choose(e);
+                    XpsElement chosen = choose(e);
                     if (chosen != null) {
                         collect(chosen, out);
                     }
@@ -82,10 +73,10 @@ final class XpsXml {
         }
     }
 
-    private static Element choose(Element alternate) {
-        Element fallback = null;
-        for (Node n = alternate.getFirstChild(); n != null; n = n.getNextSibling()) {
-            if (!(n instanceof Element e) || !MC.equals(e.getNamespaceURI())) {
+    private static XpsElement choose(XpsElement alternate) {
+        XpsElement fallback = null;
+        for (XpsElement e = alternate.firstChild; e != null; e = e.nextSibling) {
+            if (!MC.equals(e.getNamespaceURI())) {
                 continue;
             }
             if ("Choice".equals(e.getLocalName())) {
@@ -99,7 +90,7 @@ final class XpsXml {
         return fallback;
     }
 
-    private static boolean understood(Element at, String prefixes) {
+    private static boolean understood(XpsElement at, String prefixes) {
         if (prefixes == null || prefixes.isBlank()) {
             return false;
         }
@@ -112,9 +103,9 @@ final class XpsXml {
         return true;
     }
 
-    static List<Element> children(Element parent, String localName) {
-        List<Element> out = new ArrayList<>();
-        for (Element e : elements(parent)) {
+    static List<XpsElement> children(XpsElement parent, String localName) {
+        List<XpsElement> out = new ArrayList<>();
+        for (XpsElement e : elements(parent)) {
             if (localName.equals(e.getLocalName())) {
                 out.add(e);
             }
@@ -122,75 +113,63 @@ final class XpsXml {
         return out;
     }
 
-    static Map<String, Element> properties(Element parent) {
-        Map<String, Element> out = new HashMap<>();
-        for (Node n = parent.getFirstChild(); n != null; n = n.getNextSibling()) {
-            if (n instanceof Element e) {
-                if (MC.equals(e.getNamespaceURI())) {
-                    for (Element x : elements(parent)) {
-                        String name = x.getLocalName();
-                        if (name != null && name.indexOf('.') >= 0) {
-                            out.putIfAbsent(name, x);
-                        }
+    static Map<String, XpsElement> properties(XpsElement parent) {
+        Map<String, XpsElement> out = new HashMap<>();
+        for (XpsElement e = parent.firstChild; e != null; e = e.nextSibling) {
+            if (MC.equals(e.getNamespaceURI())) {
+                for (XpsElement x : elements(parent)) {
+                    String name = x.getLocalName();
+                    if (name != null && name.indexOf('.') >= 0) {
+                        out.putIfAbsent(name, x);
                     }
-                    return out;
                 }
-                String name = e.getLocalName();
-                if (name != null && name.indexOf('.') >= 0 && ours(e)) {
-                    out.putIfAbsent(name, e);
-                }
+                return out;
+            }
+            String name = e.getLocalName();
+            if (name != null && name.indexOf('.') >= 0 && ours(e)) {
+                out.putIfAbsent(name, e);
             }
         }
         return out;
     }
 
-    static Element child(Element parent, String localName) {
-        for (Node n = parent.getFirstChild(); n != null; n = n.getNextSibling()) {
-            if (n instanceof Element e) {
-                if (localName.equals(e.getLocalName()) && ours(e)) {
-                    return e;
-                }
-                if (MC.equals(e.getNamespaceURI())) {
-                    for (Element x : elements(parent)) {
-                        if (localName.equals(x.getLocalName())) {
-                            return x;
-                        }
+    static XpsElement child(XpsElement parent, String localName) {
+        for (XpsElement e = parent.firstChild; e != null; e = e.nextSibling) {
+            if (localName.equals(e.getLocalName()) && ours(e)) {
+                return e;
+            }
+            if (MC.equals(e.getNamespaceURI())) {
+                for (XpsElement x : elements(parent)) {
+                    if (localName.equals(x.getLocalName())) {
+                        return x;
                     }
-                    return null;
                 }
+                return null;
             }
         }
         return null;
     }
 
-    static Element firstElement(Element parent) {
-        List<Element> all = elements(parent);
+    static XpsElement firstElement(XpsElement parent) {
+        List<XpsElement> all = elements(parent);
         return all.isEmpty() ? null : all.get(0);
     }
 
-    static String attr(Element e, String name) {
-        org.w3c.dom.Attr a = e.getAttributeNode(name);
+    static String attr(XpsElement e, String name) {
+        String a = e.value(name);
         if (a == null) {
             return null;
         }
-        String v = a.getValue().strip();
+        String v = a.strip();
         return v.isEmpty() ? null : v;
     }
 
-    static String key(Element e) {
-        var attrs = e.getAttributes();
-        for (int i = 0; i < attrs.getLength(); i++) {
-            Node a = attrs.item(i);
-            String ns = a.getNamespaceURI();
-            if ("Key".equals(a.getLocalName()) && ns != null && ns.endsWith("resourcedictionary-key")) {
-                return a.getNodeValue().strip();
-            }
-        }
-        return null;
+    static String key(XpsElement e) {
+        return e.key();
     }
 
-    static String lang(Element e) {
-        for (Node n = e; n instanceof Element el; n = n.getParentNode()) {
+    static String lang(XpsElement e) {
+        for (XpsElement el = e; el != null; el = el.getParent()) {
             String v = el.getAttributeNS("http://www.w3.org/XML/1998/namespace", "lang");
             if (v != null && !v.isBlank()) {
                 return v.strip();

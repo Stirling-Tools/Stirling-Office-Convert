@@ -7,7 +7,6 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
 
-import org.w3c.dom.Element;
 
 final class XpsGeometry {
 
@@ -74,10 +73,10 @@ final class XpsGeometry {
         return g;
     }
 
-    static XpsGeometry pathGeometry(Element geometry, String figures, String fillRule, AffineTransform transform,
+    static XpsGeometry pathGeometry(XpsElement geometry, String figures, String fillRule, AffineTransform transform,
             Budget budget) throws IOException {
         boolean evenOdd = !"NonZero".equals(fillRule);
-        List<Element> figureElements = geometry == null ? List.of() : XpsXml.children(geometry, "PathFigure");
+        List<XpsElement> figureElements = geometry == null ? List.of() : XpsXml.children(geometry, "PathFigure");
         XpsGeometry g = new XpsGeometry(evenOdd, budget, !figureElements.isEmpty());
         if (figures != null && !figures.isBlank()) {
             Parser p = new Parser(figures);
@@ -88,7 +87,7 @@ final class XpsGeometry {
             }
             g.parse(p);
         }
-        for (Element figure : figureElements) {
+        for (XpsElement figure : figureElements) {
             g.figure(figure);
         }
         g.flush();
@@ -422,7 +421,7 @@ final class XpsGeometry {
         return Math.atan2(ux * vy - uy * vx, ux * vx + uy * vy);
     }
 
-    private void figure(Element figure) throws IOException {
+    private void figure(XpsElement figure) throws IOException {
         double[] start = XpsXml.point(figure.getAttribute("StartPoint"));
         boolean closed = "true".equalsIgnoreCase(figure.getAttribute("IsClosed").strip());
         String filled = figure.getAttribute("IsFilled").strip();
@@ -430,7 +429,7 @@ final class XpsGeometry {
         open = false;
         moveTo(start == null ? 0 : start[0], start == null ? 0 : start[1]);
         boolean lastStroked = true;
-        for (Element s : XpsXml.elements(figure)) {
+        for (XpsElement s : XpsXml.elements(figure)) {
             String stroked = s.getAttribute("IsStroked").strip();
             boolean on = stroked.isEmpty() || "true".equalsIgnoreCase(stroked);
             lastStroked = on;

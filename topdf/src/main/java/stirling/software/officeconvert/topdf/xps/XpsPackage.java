@@ -20,8 +20,6 @@ import java.util.TreeMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import org.w3c.dom.Document;
-import org.w3c.dom.Element;
 
 import stirling.software.officeconvert.topdf.io.OfficeZip;
 import stirling.software.officeconvert.topdf.io.Relationship;
@@ -197,7 +195,7 @@ final class XpsPackage implements Closeable {
         }
     }
 
-    Document xml(String part) throws IOException {
+    XpsElement xml(String part) throws IOException {
         try (InputStream in = XmlElements.limit(open(part), OfficeZip.canonical(part), XmlElements.domElements())) {
             return XpsDom.parse(in);
         } catch (InterruptedIOException | FileNotFoundException e) {
@@ -233,11 +231,11 @@ final class XpsPackage implements Closeable {
         Relationship start = representation();
         oxps = start.type().equals(OXPS_REPRESENTATION);
         String startPart = start.part();
-        Element root = xml(startPart).getDocumentElement();
+        XpsElement root = xml(startPart);
         List<String> docs = new ArrayList<>();
         boolean capped = false;
         if ("FixedDocumentSequence".equals(root.getLocalName())) {
-            for (Element ref : XpsXml.children(root, "DocumentReference")) {
+            for (XpsElement ref : XpsXml.children(root, "DocumentReference")) {
                 String target = source(startPart, XpsXml.attr(ref, "Source"));
                 if (target != null && !docs.contains(target)) {
                     if (docs.size() < MAX_DOCUMENTS) {
@@ -259,9 +257,9 @@ final class XpsPackage implements Closeable {
         Set<String> usedPages = new HashSet<>();
         for (String doc : docs) {
             OfficeZip.checkNotInterrupted();
-            Element fixed;
+            XpsElement fixed;
             try {
-                fixed = xml(doc).getDocumentElement();
+                fixed = xml(doc);
             } catch (InterruptedIOException e) {
                 throw e;
             } catch (IOException e) {
@@ -275,7 +273,7 @@ final class XpsPackage implements Closeable {
             int index = documents.size();
             documents.add(doc);
             int before = pages.size();
-            for (Element content : XpsXml.children(fixed, "PageContent")) {
+            for (XpsElement content : XpsXml.children(fixed, "PageContent")) {
                 String page = source(doc, XpsXml.attr(content, "Source"));
                 if (page == null || !exists(page)) {
                     lost++;
@@ -285,9 +283,9 @@ final class XpsPackage implements Closeable {
                     continue;
                 }
                 Set<String> targets = new LinkedHashSet<>();
-                Element holder = XpsXml.child(content, "PageContent.LinkTargets");
+                XpsElement holder = XpsXml.child(content, "PageContent.LinkTargets");
                 if (holder != null) {
-                    for (Element t : XpsXml.children(holder, "LinkTarget")) {
+                    for (XpsElement t : XpsXml.children(holder, "LinkTarget")) {
                         String name = XpsXml.attr(t, "Name");
                         if (name != null && targets.size() < MAX_LINK_TARGETS) {
                             targets.add(name);
@@ -328,13 +326,13 @@ final class XpsPackage implements Closeable {
                 if (!exists(r.part())) {
                     continue;
                 }
-                Element root = xml(r.part()).getDocumentElement();
-                Element holder = XpsXml.child(root, "DocumentStructure.Outline");
-                Element outlineRoot = holder == null ? null : XpsXml.child(holder, "DocumentOutline");
+                XpsElement root = xml(r.part());
+                XpsElement holder = XpsXml.child(root, "DocumentStructure.Outline");
+                XpsElement outlineRoot = holder == null ? null : XpsXml.child(holder, "DocumentOutline");
                 if (outlineRoot == null) {
                     continue;
                 }
-                for (Element e : XpsXml.children(outlineRoot, "OutlineEntry")) {
+                for (XpsElement e : XpsXml.children(outlineRoot, "OutlineEntry")) {
                     if (outline.size() >= MAX_OUTLINE) {
                         return;
                     }
@@ -364,7 +362,7 @@ final class XpsPackage implements Closeable {
         return target;
     }
 
-    Document page(String part) throws IOException {
+    XpsElement page(String part) throws IOException {
         try {
             return xml(part);
         } catch (InterruptedIOException | FileNotFoundException e) {
@@ -377,7 +375,7 @@ final class XpsPackage implements Closeable {
             byte[] fixed = XpsRepair.uniqueAttributes(raw);
             if (fixed != null) {
                 try {
-                    Document d = XpsDom.parse(XmlElements.limit(new java.io.ByteArrayInputStream(fixed), part,
+                    XpsElement d = XpsDom.parse(XmlElements.limit(new java.io.ByteArrayInputStream(fixed), part,
                             XmlElements.domElements()));
                     notes.add("A damaged XPS page was repaired before it was converted");
                     return d;

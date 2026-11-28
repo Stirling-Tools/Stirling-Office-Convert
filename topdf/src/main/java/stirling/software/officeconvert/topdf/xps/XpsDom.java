@@ -4,14 +4,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InterruptedIOException;
 
-import javax.xml.XMLConstants;
 import javax.xml.stream.XMLStreamConstants;
 import javax.xml.stream.XMLStreamException;
 import javax.xml.stream.XMLStreamReader;
-
-import org.w3c.dom.Document;
-import org.w3c.dom.Element;
-import org.w3c.dom.Node;
 
 import stirling.software.officeconvert.topdf.io.SecureXml;
 
@@ -19,45 +14,46 @@ final class XpsDom {
 
     private XpsDom() {}
 
-    static Document parse(InputStream in) throws IOException {
-        Document doc = SecureXml.documentBuilder().newDocument();
-        doc.setStrictErrorChecking(false);
+    static XpsElement parse(InputStream in) throws IOException {
         XMLStreamReader r = SecureXml.reader(in);
         try {
-            Node at = doc;
+            XpsElement root = null;
+            XpsElement at = null;
             while (r.hasNext()) {
                 int event = r.next();
-                switch (event) {
-                    case XMLStreamConstants.START_ELEMENT -> {
-                        Element e = doc.createElementNS(blank(r.getNamespaceURI()), qname(r.getPrefix(),
-                                r.getLocalName()));
-                        for (int i = 0, n = r.getNamespaceCount(); i < n; i++) {
-                            String p = r.getNamespacePrefix(i);
-                            e.setAttributeNS(XMLConstants.XMLNS_ATTRIBUTE_NS_URI,
-                                    p == null || p.isEmpty() ? "xmlns" : "xmlns:" + p, nonNull(r.getNamespaceURI(i)));
+                if (event == XMLStreamConstants.START_ELEMENT) {
+                    XpsElement e = new XpsElement(blank(r.getNamespaceURI()), r.getLocalName(), at);
+                    int nn = r.getNamespaceCount();
+                    if (nn > 0) {
+                        String[] pairs = new String[2 * nn];
+                        for (int i = 0; i < nn; i++) {
+                            pairs[2 * i] = nonNull(r.getNamespacePrefix(i));
+                            pairs[2 * i + 1] = nonNull(r.getNamespaceURI(i));
                         }
-                        for (int i = 0, n = r.getAttributeCount(); i < n; i++) {
-                            e.setAttributeNS(blank(r.getAttributeNamespace(i)),
-                                    qname(r.getAttributePrefix(i), r.getAttributeLocalName(i)),
-                                    r.getAttributeValue(i));
+                        e.namespaces(pairs);
+                    }
+                    int na = r.getAttributeCount();
+                    if (na > 0) {
+                        String[] triples = new String[3 * na];
+                        for (int i = 0; i < na; i++) {
+                            triples[3 * i] = blank(r.getAttributeNamespace(i));
+                            triples[3 * i + 1] = r.getAttributeLocalName(i);
+                            triples[3 * i + 2] = r.getAttributeValue(i);
                         }
-                        at.appendChild(e);
-                        at = e;
+                        e.attributes(triples);
                     }
-                    case XMLStreamConstants.END_ELEMENT -> at = at.getParentNode();
-                    case XMLStreamConstants.CHARACTERS, XMLStreamConstants.CDATA -> {
-                        if (at != doc && !r.isWhiteSpace()) {
-                            at.appendChild(doc.createTextNode(r.getText()));
-                        }
+                    if (root == null) {
+                        root = e;
                     }
-                    default -> {
-                    }
+                    at = e;
+                } else if (event == XMLStreamConstants.END_ELEMENT && at != null) {
+                    at = at.getParent();
                 }
             }
-            if (doc.getDocumentElement() == null) {
+            if (root == null) {
                 throw new IOException("Malformed XML: the part has no root element");
             }
-            return doc;
+            return root;
         } catch (XMLStreamException e) {
             for (Throwable t = e; t != null; t = t.getCause()) {
                 if (t instanceof InterruptedIOException x) {
@@ -79,9 +75,5 @@ final class XpsDom {
 
     private static String nonNull(String s) {
         return s == null ? "" : s;
-    }
-
-    private static String qname(String prefix, String local) {
-        return prefix == null || prefix.isEmpty() ? local : prefix + ":" + local;
     }
 }

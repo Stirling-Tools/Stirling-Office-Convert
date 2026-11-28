@@ -31,7 +31,6 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDResources;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
-import org.w3c.dom.Element;
 
 import stirling.software.officeconvert.memory.Admission;
 import stirling.software.officeconvert.topdf.font.FontLibrary;
@@ -77,15 +76,15 @@ final class XpsRenderer {
 
     private final Map<Long, COSDictionary> alphas = new HashMap<>();
 
-    private final Map<String, Map<String, Element>> dictionaries = new HashMap<>();
+    private final Map<String, Map<String, XpsElement>> dictionaries = new HashMap<>();
 
-    private record VisualKey(Element element, double x, double y, double w, double h) {}
+    private record VisualKey(XpsElement element, double x, double y, double w, double h) {}
 
     private final Map<VisualKey, COSStream> visuals = new HashMap<>();
 
-    private final Set<Element> drawing = java.util.Collections.newSetFromMap(new IdentityHashMap<>());
+    private final Set<XpsElement> drawing = java.util.Collections.newSetFromMap(new IdentityHashMap<>());
 
-    private final Map<org.w3c.dom.Document, String> owners = new IdentityHashMap<>();
+    private final Map<XpsElement, String> owners = new IdentityHashMap<>();
 
     private Map<String, Integer> firstPages;
 
@@ -129,8 +128,8 @@ final class XpsRenderer {
         return missingGlyphRuns;
     }
 
-    record Scope(Scope parent, Map<String, Element> map) {
-        Element find(String key) {
+    record Scope(Scope parent, Map<String, XpsElement> map) {
+        XpsElement find(String key) {
             Scope s = owner(key);
             return s == null ? null : s.map.get(key);
         }
@@ -184,12 +183,12 @@ final class XpsRenderer {
     void page(int index) throws IOException {
         XpsPackage.Page p = pkg.pages().get(index);
         currentDocument = pkg.documents().get(p.document());
-        org.w3c.dom.Document dom = pkg.page(p.part());
+        XpsElement dom = pkg.page(p.part());
         owners.clear();
         props.clear();
         owners.put(dom, p.part());
         pageLinks = 0;
-        Element root = dom.getDocumentElement();
+        XpsElement root = dom;
         if (!"FixedPage".equals(root.getLocalName())) {
             throw new IOException("The XPS page " + p.part() + " is not a fixed page");
         }
@@ -305,7 +304,7 @@ final class XpsRenderer {
         return Math.min(v, MAX_PAGE_UNITS);
     }
 
-    private static void boxes(PDPage page, Element root, double w, double h) {
+    private static void boxes(PDPage page, XpsElement root, double w, double h) {
         float hp = (float) (h * POINTS);
         double[] bleed = XpsXml.rect(XpsXml.attr(root, "BleedBox"));
         double[] content = XpsXml.rect(XpsXml.attr(root, "ContentBox"));
@@ -348,16 +347,16 @@ final class XpsRenderer {
         }
     }
 
-    private Scope resources(Element holder, Scope parent, String part) throws IOException {
-        Element prop = child(holder, holder.getLocalName() + ".Resources");
+    private Scope resources(XpsElement holder, Scope parent, String part) throws IOException {
+        XpsElement prop = child(holder, holder.getLocalName() + ".Resources");
         if (prop == null) {
             return parent;
         }
-        Element dict = XpsXml.child(prop, "ResourceDictionary");
+        XpsElement dict = XpsXml.child(prop, "ResourceDictionary");
         if (dict == null) {
             return parent;
         }
-        Map<String, Element> map = new HashMap<>();
+        Map<String, XpsElement> map = new HashMap<>();
         String source = XpsXml.attr(dict, "Source");
         if (source != null) {
             String target = OfficeZip.resolve(part, source);
@@ -365,7 +364,7 @@ final class XpsRenderer {
                 map.putAll(remote(target));
             }
         }
-        for (Element e : XpsXml.elements(dict)) {
+        for (XpsElement e : XpsXml.elements(dict)) {
             String key = XpsXml.key(e);
             if (key != null) {
                 map.put(key, e);
@@ -374,26 +373,26 @@ final class XpsRenderer {
         return map.isEmpty() ? parent : new Scope(parent, map);
     }
 
-    private Map<String, Element> remote(String part) throws IOException {
+    private Map<String, XpsElement> remote(String part) throws IOException {
         String key = part.toLowerCase(Locale.ROOT);
-        Map<String, Element> known = dictionaries.get(key);
+        Map<String, XpsElement> known = dictionaries.get(key);
         if (known != null) {
-            for (Element e : known.values()) {
-                owners.putIfAbsent(e.getOwnerDocument(), part);
+            for (XpsElement e : known.values()) {
+                owners.putIfAbsent(e.root(), part);
                 break;
             }
             return known;
         }
-        Map<String, Element> map = new HashMap<>();
+        Map<String, XpsElement> map = new HashMap<>();
         dictionaries.put(key, map);
         if (dictionaries.size() > 10_000 || !pkg.exists(part)) {
             return map;
         }
         try {
-            org.w3c.dom.Document dom = pkg.xml(part);
+            XpsElement dom = pkg.xml(part);
             owners.put(dom, part);
-            Element root = dom.getDocumentElement();
-            for (Element e : XpsXml.elements(root)) {
+            XpsElement root = dom;
+            for (XpsElement e : XpsXml.elements(root)) {
                 String k = XpsXml.key(e);
                 if (k != null) {
                     map.put(k, e);
@@ -407,11 +406,11 @@ final class XpsRenderer {
         return map;
     }
 
-    private void children(Element parent, Scope scope, Ctx ctx) throws IOException {
+    private void children(XpsElement parent, Scope scope, Ctx ctx) throws IOException {
         XpsXml.each(parent, e -> element(e, scope, ctx));
     }
 
-    private void element(Element e, Scope scope, Ctx ctx) throws IOException {
+    private void element(XpsElement e, Scope scope, Ctx ctx) throws IOException {
         String n = e.getLocalName();
         if (n == null || n.indexOf('.') >= 0) {
             return;
@@ -431,14 +430,14 @@ final class XpsRenderer {
         }
     }
 
-    private static double opacity(Element e) {
+    private static double opacity(XpsElement e) {
         double o = XpsXml.number(XpsXml.attr(e, "Opacity"), 1);
         return Math.max(0, Math.min(1, o));
     }
 
-    private final Map<Element, Map<String, Element>> props = new IdentityHashMap<>();
+    private final Map<XpsElement, Map<String, XpsElement>> props = new IdentityHashMap<>();
 
-    private Element child(Element e, String name) {
+    private XpsElement child(XpsElement e, String name) {
         String n = e.getLocalName();
         if (!"Canvas".equals(n) && !"FixedPage".equals(n)) {
             return XpsXml.child(e, name);
@@ -466,7 +465,7 @@ final class XpsRenderer {
 
     private final Map<String, Map<String, String>> propertyNames = new HashMap<>();
 
-    private Element property(Element e, String name) {
+    private XpsElement property(XpsElement e, String name) {
         String owner = e.getLocalName();
         Map<String, String> known = propertyNames.get(owner);
         if (known == null) {
@@ -478,14 +477,14 @@ final class XpsRenderer {
             full = owner + "." + name;
             known.put(name, full);
         }
-        Element holder = child(e, full);
+        XpsElement holder = child(e, full);
         return holder == null ? null : XpsXml.firstElement(holder);
     }
 
-    private AffineTransform transform(Element e, String name, Scope scope) {
-        Element own = property(e, name);
+    private AffineTransform transform(XpsElement e, String name, Scope scope) {
+        XpsElement own = property(e, name);
         String v = own == null ? XpsXml.attr(e, name) : null;
-        Element t = null;
+        XpsElement t = null;
         if (v != null) {
             String key = XpsXml.staticResource(v);
             if (key == null) {
@@ -508,10 +507,10 @@ final class XpsRenderer {
         }
     };
 
-    private XpsGeometry geometry(Element e, String name, Scope scope) throws IOException {
-        Element own = property(e, name);
+    private XpsGeometry geometry(XpsElement e, String name, Scope scope) throws IOException {
+        XpsElement own = property(e, name);
         String v = own == null ? XpsXml.attr(e, name) : null;
-        Element g;
+        XpsElement g;
         if (v != null) {
             String key = XpsXml.staticResource(v);
             if (key == null) {
@@ -548,11 +547,11 @@ final class XpsRenderer {
         }
     }
 
-    record Brush(String kind, XpsColor color, Element element, double opacity, Scope scope) {}
+    record Brush(String kind, XpsColor color, XpsElement element, double opacity, Scope scope) {}
 
     private final Map<String, XpsColor> colors = new HashMap<>();
 
-    private XpsColor color(String v, Element e) {
+    private XpsColor color(String v, XpsElement e) {
         if (v == null || !v.startsWith("#")) {
             return XpsColor.parse(v, owner(e), profiles);
         }
@@ -566,10 +565,10 @@ final class XpsRenderer {
         return known;
     }
 
-    private Brush brush(Element e, String name, Scope scope) {
-        Element own = property(e, name);
+    private Brush brush(XpsElement e, String name, Scope scope) {
+        XpsElement own = property(e, name);
         String v = own == null ? XpsXml.attr(e, name) : null;
-        Element b;
+        XpsElement b;
         if (v != null) {
             String key = XpsXml.staticResource(v);
             if (key == null) {
@@ -597,7 +596,7 @@ final class XpsRenderer {
         };
     }
 
-    private boolean clip(Element e, Scope scope, Ctx ctx) throws IOException {
+    private boolean clip(XpsElement e, Scope scope, Ctx ctx) throws IOException {
         XpsGeometry g = geometry(e, "Clip", scope);
         if (g == null) {
             return true;
@@ -609,7 +608,7 @@ final class XpsRenderer {
         return true;
     }
 
-    private void canvas(Element e, Scope scope, Ctx ctx) throws IOException {
+    private void canvas(XpsElement e, Scope scope, Ctx ctx) throws IOException {
         Scope local = resources(e, scope, ctx.part);
         double opacity = opacity(e);
         if (opacity <= 0) {
@@ -769,7 +768,7 @@ final class XpsRenderer {
         ctx.ops.name(ctx.ops.resource(COSName.EXT_G_STATE, "Gs", gs)).op("gs\n");
     }
 
-    private void path(Element e, Scope scope, Ctx ctx) throws IOException {
+    private void path(XpsElement e, Scope scope, Ctx ctx) throws IOException {
         double opacity = opacity(e);
         if (opacity <= 0) {
             return;
@@ -849,7 +848,7 @@ final class XpsRenderer {
         }
     }
 
-    private static Rectangle2D painted(XpsGeometry g, Element e, boolean stroked, double pad) {
+    private static Rectangle2D painted(XpsGeometry g, XpsElement e, boolean stroked, double pad) {
         Rectangle2D b = g.fill.getCurrentPoint() == null ? null : g.fill.getBounds2D();
         if (stroked && g.strokeDiffers() && g.stroke.getCurrentPoint() != null) {
             Rectangle2D s = g.stroke.getBounds2D();
@@ -923,7 +922,7 @@ final class XpsRenderer {
         }
     }
 
-    private static double thickness(Element e) {
+    private static double thickness(XpsElement e) {
         double t = XpsXml.number(XpsXml.attr(e, "StrokeThickness"), 1);
         return t >= 0 && t < 1e6 ? t : 1;
     }
@@ -943,7 +942,7 @@ final class XpsRenderer {
         };
     }
 
-    private static boolean dashed(Element e, double t) {
+    private static boolean dashed(XpsElement e, double t) {
         double[] dash = XpsXml.numbers(XpsXml.attr(e, "StrokeDashArray"));
         if (dash.length == 0 || dash.length > 512) {
             return false;
@@ -962,7 +961,7 @@ final class XpsRenderer {
         return anyPositive && sum * t >= 0.05;
     }
 
-    private static boolean ownCaps(Element e) {
+    private static boolean ownCaps(XpsElement e) {
         double t = thickness(e);
         if (t <= 0 || dashed(e, t)) {
             return false;
@@ -972,7 +971,7 @@ final class XpsRenderer {
         return start != end || start == 3;
     }
 
-    private Caps strokeStyle(Element e, XpsOps ops) throws IOException {
+    private Caps strokeStyle(XpsElement e, XpsOps ops) throws IOException {
         double t = thickness(e);
         if (t <= 0) {
             return null;
@@ -1129,7 +1128,7 @@ final class XpsRenderer {
         return out;
     }
 
-    private void stroke(Element e, Brush brush, Shape shape, double opacity, Ctx ctx) throws IOException {
+    private void stroke(XpsElement e, Brush brush, Shape shape, double opacity, Ctx ctx) throws IOException {
         XpsOps ops = ctx.ops;
         if (brush.kind().equals("SolidColorBrush")) {
             double a = brush.color().alpha() * brush.opacity() * opacity;
@@ -1256,12 +1255,12 @@ final class XpsRenderer {
 
     record Stop(double offset, float[] rgb, float alpha) {}
 
-    private List<Stop> stops(Element brush) {
+    private List<Stop> stops(XpsElement brush) {
         String n = brush.getLocalName();
-        Element holder = XpsXml.child(brush, n + ".GradientStops");
+        XpsElement holder = XpsXml.child(brush, n + ".GradientStops");
         List<Stop> raw = new ArrayList<>();
         if (holder != null) {
-            for (Element s : XpsXml.children(holder, "GradientStop")) {
+            for (XpsElement s : XpsXml.children(holder, "GradientStop")) {
                 XpsColor c = XpsColor.parse(XpsXml.attr(s, "Color"), owner(s), profiles);
                 if (c == null) {
                     continue;
@@ -1410,7 +1409,7 @@ final class XpsRenderer {
             Brush solid) {}
 
     private Shade shade(Brush brush, Rectangle2D sb, double opacity) {
-        Element b = brush.element();
+        XpsElement b = brush.element();
         List<Stop> stops = stops(b);
         if (stops.isEmpty()) {
             return null;
@@ -1609,7 +1608,7 @@ final class XpsRenderer {
             double[] viewport, String mode, double alpha) {}
 
     private Tile tileSource(Brush brush, double opacity, Ctx ctx) throws IOException {
-        Element b = brush.element();
+        XpsElement b = brush.element();
         double[] viewbox = XpsXml.rect(XpsXml.attr(b, "Viewbox"));
         double[] viewport = XpsXml.rect(XpsXml.attr(b, "Viewport"));
         if (viewbox == null || viewport == null || !(viewbox[2] > 0 && viewbox[3] > 0 && viewport[2] > 0
@@ -1635,7 +1634,7 @@ final class XpsRenderer {
             if (ctx.depth >= MAX_VISUAL_DEPTH) {
                 return null;
             }
-            Element visual;
+            XpsElement visual;
             Scope visualScope = brush.scope();
             String v = XpsXml.attr(b, "Visual");
             if (v != null) {
@@ -1757,7 +1756,7 @@ final class XpsRenderer {
         }
     }
 
-    private COSStream visual(Element visual, Scope scope, double[] viewbox, Ctx ctx) throws IOException {
+    private COSStream visual(XpsElement visual, Scope scope, double[] viewbox, Ctx ctx) throws IOException {
         VisualKey key = new VisualKey(visual, viewbox[0], viewbox[1], viewbox[2], viewbox[3]);
         COSStream known = visuals.get(key);
         if (known != null) {
@@ -1785,7 +1784,7 @@ final class XpsRenderer {
 
     private record Placed(int gid, double x, double y, double advance, String text) {}
 
-    private void glyphs(Element e, Scope scope, Ctx ctx) throws IOException {
+    private void glyphs(XpsElement e, Scope scope, Ctx ctx) throws IOException {
         double opacity = opacity(e);
         if (opacity <= 0) {
             return;
@@ -1903,12 +1902,12 @@ final class XpsRenderer {
         }
     }
 
-    private String owner(Element e) {
-        return owners.get(e.getOwnerDocument());
+    private String owner(XpsElement e) {
+        return owners.get(e.root());
     }
 
-    private String base(Element e, Ctx ctx) {
-        String owner = owners.get(e.getOwnerDocument());
+    private String base(XpsElement e, Ctx ctx) {
+        String owner = owners.get(e.root());
         return owner != null ? owner : ctx.part;
     }
 
