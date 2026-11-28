@@ -142,6 +142,8 @@ final class BoxCss {
 
     private static final int MAX_SHORTHANDS = 1024;
 
+    private static final int MAX_SHORTHAND_LENGTH = 128;
+
     private static final Map<String, Shorthand> SHORTHANDS = new ConcurrentHashMap<>();
 
     static Shorthand shorthand(String all) {
@@ -167,7 +169,7 @@ final class BoxCss {
             }
         }
         Shorthand parsed = new Shorthand(width, style, color);
-        if (SHORTHANDS.size() < MAX_SHORTHANDS) {
+        if (all.length() <= MAX_SHORTHAND_LENGTH && SHORTHANDS.size() < MAX_SHORTHANDS) {
             SHORTHANDS.put(all, parsed);
         }
         return parsed;

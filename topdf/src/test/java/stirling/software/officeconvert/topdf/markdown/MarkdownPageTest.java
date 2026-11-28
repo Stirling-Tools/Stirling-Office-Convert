@@ -257,10 +257,28 @@ class MarkdownPageTest {
             "![".repeat(100_000) + "\n", "_".repeat(50_000) + "@" + "a-".repeat(50_000) + "\n",
             "$$\n" + "\\begin{pmatrix}".repeat(1_200) + "\n$$\n", "$$\n\\begin{matrix}" + "a&\\\\".repeat(6_000) + "\n$$\n",
             "<p name=x ".repeat(30_000) + "\n", "<img src=http://a ".repeat(30_000) + "\n",
-            "<details " + "<details".repeat(30_000) + "\n"};
+            "<details " + "<details".repeat(30_000) + "\n", "text " + "$".repeat(100_000) + "x\n"};
         for (String input : cases) {
             assertTimeoutPreemptively(Duration.ofSeconds(4), () -> assertTrue(MarkdownPage.html(input).contains("</body>")),
                     input.substring(0, 12));
         }
+    }
+
+    @Test
+    void aSparseMatrixIsNotPaddedOut() {
+        String md = "$$\n\\begin{matrix}" + "&".repeat(5_999) + "\\\\".repeat(5_999) + "x\\end{matrix}\n$$\n";
+        String html = assertTimeoutPreemptively(Duration.ofSeconds(4), () -> MarkdownPage.html(md));
+        assertTrue(html.length() < 1_000_000, String.valueOf(html.length()));
+        assertTrue(html.contains("\\begin{matrix}"), html.substring(0, 200));
+    }
+
+    @Test
+    void aMultiLineHeadingKeepsTheSpaceInItsAnchor() {
+        assertTrue(body("Foo\nbar\n===\n").contains("<h1 id=\"foo-bar\">"));
+    }
+
+    @Test
+    void runsOfDollarsStayText() {
+        assertTrue(body("Costs $$$ and $x$\n").contains("$$$"));
     }
 }

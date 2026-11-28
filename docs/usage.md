@@ -962,6 +962,8 @@ further; the JDK default is 240 MB.
 
 ### Unreleased
 
+- `OfficeToPdf.Format` has a new value, `MARKDOWN`, which `Format.of` returns for `.md` and `.markdown`. A caller with
+  an exhaustive `switch` over `Format` needs a case for it.
 - Word 97-2003 `.doc` output is removed: `OfficeConvert.Format.of("x.doc")` throws `IllegalArgumentException`,
   `OfficeConvert.convert` to a `.doc` name throws `UnsupportedFormatException`, and the CLI's `--format doc` exits
   with status 2. Write `.docx` or `.rtf` instead.

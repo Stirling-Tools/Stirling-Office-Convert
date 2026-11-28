@@ -937,6 +937,14 @@ class HtmlLayoutTest {
     }
 
     @Test
+    void aSpanWithNormalLineHeightKeepsItsOwnHeightInAFixedLine() throws IOException {
+        Laid l = lay("""
+                <html><body style="font-size:11pt"><div style="line-height:18pt"><span style="font-size:48pt;
+                line-height:normal">Big<br>Again</span></div></body></html>""");
+        assertTrue(l.word("Again").top() - l.word("Big").top() > 48, l.word("Again").top() + " vs " + l.word("Big").top());
+    }
+
+    @Test
     void brokenPictureWithoutAltKeepsAnIconSizedBox() throws IOException {
         Laid l = lay("<html><body style=\"font-size:8pt\"><p>A<img src=\"missing.png\">B</p></body></html>");
         float a = l.words().getFirst().left();

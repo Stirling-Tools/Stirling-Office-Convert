@@ -1,6 +1,7 @@
 package stirling.software.officeconvert.topdf.html;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -295,5 +296,13 @@ class HtmlTablesTest {
         Table t = table("<table><tr><td><img src='' alt='Stats' width='655'></td><td>"
                 + "text ".repeat(80) + "</td></tr></table>");
         assertTrue(t.columnWidths.get(0) < 200, t.columnWidths.toString());
+    }
+
+    @Test
+    void aHyphenBeforeANoBreakSpaceIsNotABreak() {
+        assertTrue(HtmlTables.hyphenBreak("abc-def", 3));
+        assertFalse(HtmlTables.hyphenBreak("abc-\u00a0def", 3));
+        assertFalse(HtmlTables.hyphenBreak("abc-\u202fdef", 3));
+        assertFalse(HtmlTables.hyphenBreak("abc\u00a0-def", 4));
     }
 }

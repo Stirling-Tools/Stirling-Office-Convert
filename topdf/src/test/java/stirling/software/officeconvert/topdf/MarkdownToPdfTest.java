@@ -8,6 +8,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -23,9 +25,12 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
+import org.apache.pdfbox.pdmodel.interactive.action.PDActionGoTo;
 import org.apache.pdfbox.pdmodel.interactive.action.PDActionURI;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotation;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationLink;
+import org.apache.pdfbox.pdmodel.interactive.documentnavigation.destination.PDDestination;
+import org.apache.pdfbox.pdmodel.interactive.documentnavigation.destination.PDPageXYZDestination;
 import org.apache.pdfbox.pdmodel.interactive.documentnavigation.outline.PDOutlineItem;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.junit.jupiter.api.Test;
@@ -93,10 +98,21 @@ class MarkdownToPdfTest {
     }
 
     @Test
-    void markdownNamesConvertAsMarkup() {
-        assertEquals(Format.HTML, Format.of(Path.of("README.md")));
-        assertEquals(Format.HTML, Format.of(Path.of("notes.markdown")));
+    void markdownNamesHaveTheirOwnFormat() {
+        assertEquals(Format.MARKDOWN, Format.of(Path.of("README.md")));
+        assertEquals(Format.MARKDOWN, Format.of(Path.of("notes.markdown")));
         assertTrue(Format.recognises(Path.of("a.MD")));
+    }
+
+    @Test
+    void aMarkdownStreamIsReadAsMarkdown() throws IOException {
+        ByteArrayOutputStream pdf = new ByteArrayOutputStream();
+        byte[] md = DOC.getBytes(StandardCharsets.UTF_8);
+        OfficeToPdf.convert(new ByteArrayInputStream(md), Format.of(Path.of("guide.md")), pdf, OPTIONS);
+        try (PDDocument doc = Loader.loadPDF(pdf.toByteArray())) {
+            assertEquals(List.of("0:Widget", "1:Setup", "2:Deep dive"), outline(doc));
+            assertFalse(new PDFTextStripper().getText(doc).contains("# Widget"));
+        }
     }
 
     @Test
@@ -211,15 +227,40 @@ class MarkdownToPdfTest {
         String md = "<details>\n<summary>Contents</summary>\n\n- [Answer](#answer)\n</details>\n\n"
                 + "<h3 name=\"answer\">The answer</h3>\n\nForty-two.\n";
         try (PDDocument doc = convert(write("faq.md", md), OPTIONS)) {
-            int internal = 0;
+            List<PDPageXYZDestination> targets = new ArrayList<>();
             for (PDAnnotation a : doc.getPage(0).getAnnotations()) {
                 if (a instanceof PDAnnotationLink link && !(link.getAction() instanceof PDActionURI)) {
-                    internal++;
+                    PDDestination d = link.getDestination();
+                    if (d == null && link.getAction() instanceof PDActionGoTo go) {
+                        d = go.getDestination();
+                    }
+                    assertTrue(d instanceof PDPageXYZDestination, String.valueOf(d));
+                    targets.add((PDPageXYZDestination) d);
                 }
             }
-            assertEquals(1, internal);
+            assertEquals(1, targets.size());
+            PDPageXYZDestination target = targets.getFirst();
+            assertEquals(0, target.retrievePageNumber());
+            float heading = top(doc, "The answer");
+            assertTrue(Math.abs(target.getTop() - heading) < 30, target.getTop() + " vs " + heading);
             assertTrue(new PDFTextStripper().getText(doc).contains("Answer"));
         }
+    }
+
+    private static float top(PDDocument doc, String text) throws IOException {
+        float height = doc.getPage(0).getMediaBox().getHeight();
+        float[] y = {-1};
+        PDFTextStripper stripper = new PDFTextStripper() {
+            @Override
+            protected void writeString(String line, List<org.apache.pdfbox.text.TextPosition> positions) {
+                if (y[0] < 0 && line.contains(text)) {
+                    y[0] = height - positions.getFirst().getYDirAdj();
+                }
+            }
+        };
+        stripper.getText(doc);
+        assertTrue(y[0] >= 0, text);
+        return y[0];
     }
 
     @Test

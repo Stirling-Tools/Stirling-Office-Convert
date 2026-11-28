@@ -408,7 +408,8 @@ final class HtmlTables {
         return sum;
     }
 
-    private static final Pattern WORDS = Pattern.compile("\\s+|(?<=[^\\s(\\-]-)(?=[^\\s\\-!),.:;?\\]}])");
+    private static final Pattern WORDS = Pattern.compile(
+            "\\s+|(?<=[^\\s(\\-\u00a0\u202f]-)(?=[^\\s\\-!),.:;?\\]}\u00a0\u202f])");
 
     static boolean hyphenBreak(String text, int at) {
         if (at < 1 || at + 1 >= text.length()) {
@@ -416,8 +417,8 @@ final class HtmlTables {
         }
         char before = text.charAt(at - 1);
         char after = text.charAt(at + 1);
-        return !Character.isWhitespace(before) && before != '(' && before != '-' && !Character.isWhitespace(after)
-                && "-!),.:;?]}".indexOf(after) < 0;
+        return !Character.isWhitespace(before) && "(-\u00a0\u202f".indexOf(before) < 0
+                && !Character.isWhitespace(after) && "-!),.:;?]}\u00a0\u202f".indexOf(after) < 0;
     }
 
     private static final class CellWidths {
@@ -520,7 +521,8 @@ final class HtmlTables {
                 if (block || tag.equals("br") || tag.equals("table")) {
                     into.lineEnd();
                 }
-                if (tag.equals("img") && element.attr("src").isBlank() && !element.attr("alt").isBlank()) {
+                if (tag.equals("img") && element.attr("src").isBlank() && element.attr("srcset").isBlank()
+                        && !element.attr("alt").isBlank()) {
                     into.text("[" + element.attr("alt").strip() + "]", look.child(declared, room, true));
                 } else if (!tag.equals("table") && !tag.equals("br")) {
                     measureChildren(element, look.child(declared, room, !block), room, into, depth + 1);

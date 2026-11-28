@@ -11,6 +11,8 @@ final class TexHtml {
 
     private static final int MAX_LENGTH = 20_000;
 
+    static final int MAX_CELLS = 10_000;
+
     private static final Map<String, String> SYMBOLS = Map.ofEntries(
             Map.entry("alpha", "α"), Map.entry("beta", "β"), Map.entry("gamma", "γ"), Map.entry("delta", "δ"),
             Map.entry("epsilon", "ϵ"), Map.entry("varepsilon", "ε"), Map.entry("zeta", "ζ"), Map.entry("eta", "η"),
@@ -96,6 +98,8 @@ final class TexHtml {
     private final boolean block;
 
     private int i;
+
+    private long[] cells = {0};
 
     private TexHtml(String s, boolean block) {
         this.s = s;
@@ -462,8 +466,16 @@ final class TexHtml {
             return;
         }
         int columns = 0;
+        long written = 0;
         for (List<String> r : rows) {
             columns = Math.max(columns, r.size());
+            written += r.size();
+        }
+        long padded = (long) rows.size() * columns;
+        cells[0] += padded;
+        if (cells[0] > MAX_CELLS || padded > 4 * written + 64) {
+            out.append(escape("\\begin{" + env + "}" + body + "\\end{" + env + "}"));
+            return;
         }
         String fence = "<td class=\"fence\" rowspan=\"" + rows.size() + "\" style=\"font-size: "
                 + Math.min(MAX_FENCE_ROWS, Math.max(1, rows.size())) * 1.2f + "em\">";
@@ -489,6 +501,7 @@ final class TexHtml {
 
     private String cell(String tex, int depth) {
         TexHtml t = new TexHtml(tex, block);
+        t.cells = cells;
         StringBuilder b = new StringBuilder();
         t.sequence(b, depth + 1, false);
         return b.toString();

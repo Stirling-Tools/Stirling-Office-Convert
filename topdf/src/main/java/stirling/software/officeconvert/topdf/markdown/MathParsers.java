@@ -3,6 +3,7 @@ package stirling.software.officeconvert.topdf.markdown;
 import java.util.Set;
 
 import org.commonmark.node.Block;
+import org.commonmark.node.Text;
 import org.commonmark.parser.SourceLine;
 import org.commonmark.parser.beta.InlineContentParser;
 import org.commonmark.parser.beta.InlineContentParserFactory;
@@ -55,9 +56,15 @@ final class MathParsers {
     }
 
     private static ParsedInline span(Scanner sc, int[] steps) {
+        Position start = sc.position();
         int n = sc.matchMultiple('$');
+        steps[0] += n;
         if (n > 2) {
-            return ParsedInline.none();
+            sc.setPosition(start);
+            for (int i = 0; i < n - 2; i++) {
+                sc.next();
+            }
+            return ParsedInline.of(new Text("$".repeat(n - 2)), sc.position());
         }
         Position from = sc.position();
         char first = sc.peek();
@@ -79,6 +86,7 @@ final class MathParsers {
             }
             Position to = sc.position();
             int m = sc.matchMultiple('$');
+            steps[0] += m;
             if (m != n) {
                 continue;
             }

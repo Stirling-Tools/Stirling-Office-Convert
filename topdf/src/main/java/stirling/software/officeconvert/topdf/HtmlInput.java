@@ -38,18 +38,18 @@ final class HtmlInput {
     private HtmlInput() {}
 
     static boolean is(Path source, Format requested) throws IOException {
-        if (requested != null && requested != Format.HTML && requested != Format.DOCX) {
+        if (requested != null && !html(requested) && requested != Format.DOCX) {
             return false;
         }
         byte[] head = head(source);
         if (zip(head) || ole2(head)) {
             return false;
         }
-        return requested == Format.HTML || named(source) || sniff(head);
+        return html(requested) || named(source) || sniff(head);
     }
 
     static boolean packaged(Path source, Format requested) throws IOException {
-        if (requested != Format.HTML && requested != Format.EPUB && !zipNamed(source)) {
+        if (!html(requested) && requested != Format.EPUB && !zipNamed(source)) {
             return false;
         }
         return zip(head(source));
@@ -103,7 +103,7 @@ final class HtmlInput {
         if (markdown(source, requested)) {
             return renderMarkdown(source, sink, options, renderer);
         }
-        if (requested == null || requested == Format.HTML) {
+        if (requested == null || html(requested)) {
             if (MobiBook.is(source)) {
                 return renderBook(read(source, 3, MobiBook::read), sink, options, renderer);
             }
@@ -126,8 +126,13 @@ final class HtmlInput {
         return render(source, sink, options, renderer, options.htmlAssets().session(), options.zoom());
     }
 
+    private static boolean html(Format requested) {
+        return requested == Format.HTML || requested == Format.MARKDOWN;
+    }
+
     private static boolean markdown(Path source, Format requested) throws IOException {
-        if (requested != null && requested != Format.HTML || !MarkdownPage.named(source)) {
+        boolean named = (requested == null || requested == Format.HTML) && MarkdownPage.named(source);
+        if (requested != Format.MARKDOWN && !named) {
             return false;
         }
         byte[] head = head(source);

@@ -25,12 +25,14 @@ import org.commonmark.ext.task.list.items.TaskListItemMarker;
 import org.commonmark.node.AbstractVisitor;
 import org.commonmark.node.BlockQuote;
 import org.commonmark.node.Code;
+import org.commonmark.node.HardLineBreak;
 import org.commonmark.node.Heading;
 import org.commonmark.node.Image;
 import org.commonmark.node.ListBlock;
 import org.commonmark.node.ListItem;
 import org.commonmark.node.Node;
 import org.commonmark.node.Paragraph;
+import org.commonmark.node.SoftLineBreak;
 import org.commonmark.node.Text;
 import org.commonmark.parser.Parser;
 import org.commonmark.renderer.NodeRenderer;
@@ -151,6 +153,16 @@ public final class MarkdownPage {
             @Override
             public void visit(Code code) {
                 b.append(code.getLiteral());
+            }
+
+            @Override
+            public void visit(SoftLineBreak softLineBreak) {
+                b.append(' ');
+            }
+
+            @Override
+            public void visit(HardLineBreak hardLineBreak) {
+                b.append(' ');
             }
         });
         return b.toString();

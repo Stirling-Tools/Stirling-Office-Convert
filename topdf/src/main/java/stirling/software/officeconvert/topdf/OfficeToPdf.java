@@ -64,7 +64,8 @@ public final class OfficeToPdf {
         TSV,
         HTML,
         EPUB,
-        JSON;
+        JSON,
+        MARKDOWN;
 
         public static Format of(Path file) {
             Objects.requireNonNull(file, "file");
@@ -79,7 +80,8 @@ public final class OfficeToPdf {
                         "sylk", "dif", "dbf", "numbers", "wk1", "wks", "wk3", "wk4", "123" -> XLSX;
                 case "csv" -> CSV;
                 case "tsv", "tab" -> TSV;
-                case "html", "htm", "xhtml", "zip", "htmlz", "mobi", "azw3", "azw", "prc", "pdb", "fb2", "fbz", "md", "markdown" -> HTML;
+                case "html", "htm", "xhtml", "zip", "htmlz", "mobi", "azw3", "azw", "prc", "pdb", "fb2", "fbz" -> HTML;
+                case "md", "markdown" -> MARKDOWN;
                 case "epub" -> EPUB;
                 case "json" -> JSON;
                 case "ppt", "pps", "pot" -> PPT;

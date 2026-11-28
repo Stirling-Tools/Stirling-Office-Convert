@@ -462,7 +462,9 @@ final class Flow {
             return null;
         }
         RunStyle s = look.run();
-        float space = Measure.width("\u00a0", s);
+        RunStyle plain = new RunStyle(s.font(), s.size(), false, false, false, false, s.rgb(), -1, 0, false, 0,
+                s.scale(), false, -1);
+        float space = Measure.width("\u00a0", plain);
         RunStyle g = new RunStyle(s.font(), s.size(), false, false, false, false, s.rgb(), -1, 0, false,
                 Math.min(MAX_INLINE_GAP, pt) - space, s.scale(), false, -1);
         return new Inline.Text("\u00a0", g, null, -1);
@@ -1538,8 +1540,12 @@ final class Flow {
         para.inlines.addAll(pendingEdges);
         pendingEdges.clear();
         if (in instanceof Inline.Text t && !t.text().isBlank() && para.lineRule != Paragraph.LineRule.EXACT) {
-            float line = look.linePoints > 0 ? look.linePoints : look.lineMultiple * look.size;
-            float own = para.lineRule == Paragraph.LineRule.AT_LEAST ? para.lineHeight : 0;
+            boolean fixed = para.lineRule == Paragraph.LineRule.AT_LEAST;
+            RunStyle rs = t.style();
+            float line = look.linePoints > 0 ? look.linePoints
+                    : look.lineMultiple > 0 ? look.lineMultiple * look.size
+                    : fixed ? Glyphs.lineHeight(rs.size(), rs.font(), rs.bold(), rs.italic()) : 0;
+            float own = fixed ? para.lineHeight : 0;
             if (line > own + 0.01f) {
                 in = new Inline.Text(t.text(), t.style().withLineHeight(line), t.link(), t.anchorPage());
             }

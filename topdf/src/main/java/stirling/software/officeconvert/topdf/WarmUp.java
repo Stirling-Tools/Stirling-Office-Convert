@@ -23,7 +23,6 @@ import stirling.software.officeconvert.topdf.OfficeToPdf.Format;
 import stirling.software.officeconvert.topdf.OfficeToPdf.Options;
 import stirling.software.officeconvert.topdf.font.FontLibrary;
 import stirling.software.officeconvert.topdf.io.PictureDecoder;
-import stirling.software.officeconvert.topdf.markdown.MarkdownPage;
 import stirling.software.officeconvert.topdf.pdf.PageSize;
 import stirling.software.officeconvert.topdf.pdf.PdfCanvas;
 import stirling.software.officeconvert.topdf.pdf.PdfOutput;
@@ -40,9 +39,6 @@ final class WarmUp {
                 tmp = Files.createTempFile("office-warm-up-", "." + f.name().toLowerCase(Locale.ROOT));
                 Files.write(tmp, sample(f));
                 OfficeToPdf.render(tmp, f, OutputStream.nullOutputStream(), Options.defaults().maxPages(2));
-                if (f == Format.HTML) {
-                    MarkdownPage.html(MARKDOWN.getBytes(StandardCharsets.UTF_8));
-                }
             } catch (IOException | RuntimeException ignored) {
                 // warming up is only an optimisation
             } finally {
@@ -80,6 +76,9 @@ final class WarmUp {
     private static final String RELS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/";
 
     static byte[] sample(Format format) throws IOException {
+        if (format == Format.MARKDOWN) {
+            return MARKDOWN.getBytes(StandardCharsets.UTF_8);
+        }
         if (format == Format.HTML) {
             return ("<!DOCTYPE html><html><body><h1>Warm up</h1><p>Warm <b>up</b></p><ul><li>Warm up</li></ul>"
                     + "<table border=\"1\"><tr><th>Warm</th><td>up</td></tr></table></body></html>")
