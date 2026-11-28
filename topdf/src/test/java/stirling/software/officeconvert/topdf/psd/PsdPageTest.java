@@ -698,6 +698,45 @@ class PsdPageTest {
     }
 
     @Test
+    void aSatinShadesWhereTheShiftedCopiesOfTheLayerDisagree() throws IOException {
+        PsdFixture f = new PsdFixture(16, 16);
+        f.hasMerged = false;
+        f.flat(255).flat(255).flat(255);
+        Desc satin = new Desc("ChFX").bool("enab", true).bool("present", true).en("Md  ", "BlnM", "Nrml")
+                .obj("Clr ", rgb(0, 0, 0)).unit("Opct", "#Prc", 100).bool("Invr", false).unit("lagl", "#Ang", 90)
+                .unit("Dstn", "#Pxl", 3).unit("blur", "#Pxl", 0);
+        byte[] d = new Desc("null").bool("masterFXSwitch", true).obj("ChFX", satin).bytes(true);
+        byte[] fx = new byte[d.length + 4];
+        System.arraycopy(d, 0, fx, 4, d.length);
+        f.layers.add(new PsdFixture.Layer().rect(2, 2, 14, 14).fill(-1, 255).fill(0, 200).fill(1, 200).fill(2, 200)
+                .block("lfx2", fx));
+        OfficeToPdf.Result r = convert(f, "satin.psd");
+        assertFalse(r.warnings().stream().anyMatch(w -> w.contains("satin")), r.warnings().toString());
+        try (PDDocument pdf = open("satin.psd")) {
+            byte[] s = samples(image(pdf.getPage(0)));
+            assertEquals(0, s[(3 * 16 + 8) * 3] & 0xFF);
+            assertEquals(200, s[(8 * 16 + 8) * 3] & 0xFF);
+            assertEquals(255, s[(1 * 16 + 8) * 3] & 0xFF);
+        }
+    }
+
+    @Test
+    void aRestrictedChannelKeepsWhatIsBelowTheLayer() throws IOException {
+        PsdFixture f = new PsdFixture(2, 1);
+        f.hasMerged = false;
+        f.flat(255).flat(255).flat(255);
+        f.layers.add(new PsdFixture.Layer().rect(0, 0, 1, 2).fill(-1, 255).fill(0, 255).fill(1, 255).fill(2, 255));
+        f.layers.add(new PsdFixture.Layer().rect(0, 0, 1, 2).fill(-1, 255).fill(0, 0).fill(1, 0).fill(2, 0)
+                .block("brst", new byte[] {0, 0, 0, 2}));
+        convert(f, "restricted.psd");
+        try (PDDocument pdf = open("restricted.psd")) {
+            byte[] s = samples(image(pdf.getPage(0)));
+            assertArrayEquals(new int[] {0, 0, 255}, ints(s, 0));
+            assertArrayEquals(new int[] {0, 0, 255}, ints(s, 3));
+        }
+    }
+
+    @Test
     void aChokedInnerShadowThickensInsideTheEdge() throws IOException {
         PsdFixture f = new PsdFixture(16, 16);
         f.hasMerged = false;

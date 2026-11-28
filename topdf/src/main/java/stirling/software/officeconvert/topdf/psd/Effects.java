@@ -28,7 +28,7 @@ final class Effects {
 
     record Found(Overlay overlay, LayerEffects.Stroke stroke, LayerEffects.Shadow shadow, LayerEffects.Bevel bevel,
             LayerEffects.Shadow glow, Descriptor glowGradient, LayerEffects.Shadow innerShadow,
-            LayerEffects.Shadow innerGlow) {}
+            LayerEffects.Shadow innerGlow, LayerEffects.Shadow satin) {}
 
     static Found scan(Source.Cursor c, long len, Set<String> into) throws IOException {
         byte[] b = new byte[(int) Math.min(len, MAX_SCAN)];
@@ -53,6 +53,7 @@ final class Effects {
         Descriptor glowGradient = null;
         LayerEffects.Shadow innerShadow = null;
         LayerEffects.Shadow innerGlow = null;
+        LayerEffects.Shadow satin = null;
         for (Map.Entry<String, String> e : NAMES.entrySet()) {
             Object v = d.get(e.getKey());
             List<Object> all = new ArrayList<>();
@@ -115,6 +116,12 @@ final class Effects {
                             bounded(fx.number("Ckmt", 0), 100, 0) / 100, !"SrcC".equals(fx.enumValue("glwS")));
                     continue;
                 }
+                if (e.getValue().equals("satin") && satin == null && color != null) {
+                    satin = new LayerEffects.Shadow(color, opacity, mode, fx.number("lagl", 19), false,
+                            bounded(fx.number("Dstn", 11), 250, 11), bounded(fx.number("blur", 14), 250, 14), 0,
+                            fx.flag("Invr", true));
+                    continue;
+                }
                 if (e.getValue().equals("bevel and emboss") && bevel == null) {
                     bevel = bevel(fx);
                     if (bevel != null) {
@@ -124,7 +131,7 @@ final class Effects {
                 into.add(e.getValue());
             }
         }
-        return new Found(overlay, stroke, shadow, bevel, glow, glowGradient, innerShadow, innerGlow);
+        return new Found(overlay, stroke, shadow, bevel, glow, glowGradient, innerShadow, innerGlow, satin);
     }
 
     private static LayerEffects.Bevel bevel(Descriptor fx) {

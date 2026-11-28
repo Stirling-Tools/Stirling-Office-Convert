@@ -839,6 +839,31 @@ final class Composer {
     }
 
     private void item(Node base, float[] dest) throws IOException {
+        int restricted = base.layer.restricted & ((1 << n) - 1);
+        if (restricted == 0) {
+            draw(base, dest);
+            return;
+        }
+        float[] before = buffer();
+        System.arraycopy(dest, 0, before, 0, width * stride);
+        try {
+            draw(base, dest);
+        } finally {
+            for (int x = 0; x < width; x++) {
+                int at = x * stride;
+                if (before[at + n] > 0) {
+                    for (int i = 0; i < n; i++) {
+                        if ((restricted & 1 << i) != 0) {
+                            dest[at + i] = before[at + i];
+                        }
+                    }
+                }
+            }
+            release(before);
+        }
+    }
+
+    private void draw(Node base, float[] dest) throws IOException {
         Layers.Layer l = base.layer;
         if (base instanceof Adjust a) {
             if (base.clipped.isEmpty()) {
@@ -1393,7 +1418,8 @@ final class Composer {
         }
         if (!(node instanceof Pixels || node instanceof Group) || node == top || node.layer.hidden
                 || node.layer.stroke == null && node.layer.shadow == null && node.layer.bevel == null
-                        && node.layer.glow == null && node.layer.innerShadow == null && node.layer.innerGlow == null) {
+                        && node.layer.glow == null && node.layer.innerShadow == null && node.layer.innerGlow == null
+                        && node.layer.satin == null) {
             return;
         }
         Layers.Layer l = node.layer;
@@ -1446,12 +1472,16 @@ final class Composer {
             if (l.innerGlow != null) {
                 effects.add("inner glow");
             }
+            if (l.satin != null) {
+                effects.add("satin");
+            }
             l.stroke = null;
             l.shadow = null;
             l.bevel = null;
             l.glow = null;
             l.innerShadow = null;
             l.innerGlow = null;
+            l.satin = null;
             return;
         }
         budget[0] -= area;
@@ -1486,7 +1516,7 @@ final class Composer {
             close(copy);
         }
         node.fx = LayerEffects.build(alpha, x0, y0, w, h, l.stroke, l.shadow, l.bevel, l.glow, l.innerShadow,
-                l.innerGlow, doc.globalAngle,
+                l.innerGlow, l.satin, doc.globalAngle,
                 l.fillOpacity >= 255);
     }
 
@@ -1627,6 +1657,10 @@ final class Composer {
     private void drawBevel(float[] dest, Node node, float layerOpacity, float[] clip) {
         LayerEffects fx = node.fx;
         Layers.Layer l = node.layer;
+        if (fx != null && l.satin != null && fx.satin != null) {
+            drawEffect(dest, fx, fx.satin, l.satin.color(), l.satin.opacity(), l.satin.blend(), layerOpacity, null,
+                    clip);
+        }
         if (fx != null && l.innerShadow != null && fx.innerShadow != null) {
             drawEffect(dest, fx, fx.innerShadow, l.innerShadow.color(), l.innerShadow.opacity(), l.innerShadow.blend(),
                     layerOpacity, null, clip);

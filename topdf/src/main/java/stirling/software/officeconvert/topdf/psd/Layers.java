@@ -88,6 +88,8 @@ final class Layers {
         LayerEffects.Shadow glow;
         Descriptor glowGradient;
         LayerEffects.Shadow innerShadow;
+
+        LayerEffects.Shadow satin;
         LayerEffects.Shadow innerGlow;
         float[] solid;
         boolean vectorMask;
@@ -96,6 +98,8 @@ final class Layers {
         byte[] vector;
         boolean fill;
         int knockout;
+
+        int restricted;
         final List<Layer> children = new ArrayList<>();
         boolean group;
         int blendRangeFlags;
@@ -164,7 +168,7 @@ final class Layers {
         long open = planes * (40L << 10);
         long caches = planes * doc.width * 4L;
         long strips = vectors * 2 * doc.width * VectorMask.STRIP;
-        long fx = effects ? LayerEffects.MAX_PIXELS * 30 + LayerEffects.MAX_PIXELS * 4 * 7 : 0;
+        long fx = effects ? LayerEffects.MAX_PIXELS * 30 + LayerEffects.MAX_PIXELS * 4 * 8 : 0;
         return buffers + open + caches + strips + blobs * 4 + fx + (64L << 20);
     }
 
@@ -332,8 +336,10 @@ final class Layers {
                 g.glow = l.glow;
                 g.glowGradient = l.glowGradient;
                 g.innerShadow = l.innerShadow;
+                g.satin = l.satin;
                 g.innerGlow = l.innerGlow;
                 g.knockout = l.knockout;
+                g.restricted = l.restricted;
                 g.blendClipped = l.blendClipped;
                 g.artboard = l.artboard;
                 current = stack.pop();
@@ -504,6 +510,13 @@ final class Layers {
             l.blendClipped = c.u8() != 0;
         } else if (key == tag("knko") && len >= 1) {
             l.knockout = c.u8();
+        } else if (key == tag("brst") && len >= 4) {
+            for (long i = 0; i + 4 <= Math.min(len, 64); i += 4) {
+                int ch = c.i32();
+                if (ch >= 0 && ch < 31) {
+                    l.restricted |= 1 << ch;
+                }
+            }
         } else if (key == tag("vstk") && len > 4 && len <= Adjustments.MAX_BYTES && keep(len)) {
             byte[] d = payload(c, len);
             l.vectorStroke = light ? null : Descriptor.read(d, 4);
@@ -515,7 +528,7 @@ final class Layers {
             Effects.Found found = Effects.scan(c, len, l.effects);
             if (found != null) {
                 effects |= found.stroke() != null || found.shadow() != null || found.bevel() != null
-                        || found.glow() != null || found.innerShadow() != null || found.innerGlow() != null;
+                        || found.glow() != null || found.innerShadow() != null || found.innerGlow() != null || found.satin() != null;
                 l.overlay = found.overlay();
                 l.stroke = found.stroke();
                 l.shadow = found.shadow();
@@ -523,6 +536,7 @@ final class Layers {
                 l.glow = found.glow();
                 l.glowGradient = found.glowGradient();
                 l.innerShadow = found.innerShadow();
+                l.satin = found.satin();
                 l.innerGlow = found.innerGlow();
             }
         } else if (key == tag("lrFX")) {

@@ -40,6 +40,8 @@ final class LayerEffects {
 
     byte[] innerGlow;
 
+    byte[] satin;
+
     private LayerEffects(int left, int top, int width, int height, byte[] stroke, byte[] shadow, boolean strokeUnder) {
         this.left = left;
         this.top = top;
@@ -71,7 +73,8 @@ final class LayerEffects {
     }
 
     static LayerEffects build(float[] alpha, int left, int top, int width, int height, Stroke stroke, Shadow shadow,
-            Bevel bevel, Shadow glow, Shadow innerShadow, Shadow innerGlow, double globalAngle, boolean opaque) {
+            Bevel bevel, Shadow glow, Shadow innerShadow, Shadow innerGlow, Shadow satin, double globalAngle,
+            boolean opaque) {
         byte[] s = null;
         boolean under = false;
         if (stroke != null && stroke.size() > 0) {
@@ -135,6 +138,17 @@ final class LayerEffects {
                 spread[i] = alpha[i] * clamp(innerGlow.conceal() ? 2 * b : 1 - 2 * b);
             }
             fx.innerGlow = bytes(spread);
+        }
+        if (satin != null) {
+            float[] one = soft(alpha, width, height, satin, 0);
+            Shadow back = new Shadow(satin.color(), satin.opacity(), satin.blend(), satin.angle() + 180, false,
+                    satin.distance(), satin.size(), 0, satin.conceal());
+            float[] two = soft(alpha, width, height, back, 0);
+            for (int i = 0; i < one.length; i++) {
+                float v = Math.abs(one[i] - two[i]);
+                one[i] = alpha[i] * clamp(satin.conceal() ? 1 - v : v);
+            }
+            fx.satin = bytes(one);
         }
         return fx;
     }
