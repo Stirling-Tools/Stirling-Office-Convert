@@ -144,12 +144,11 @@ final class XpsTiff {
         Deflater deflater = new Deflater(5);
         try (OutputStream out = new DeflaterOutputStream(stream.createRawOutputStream(), deflater, 1 << 16)) {
             byte[] line = new byte[stride + 1];
-            byte[] trial = new byte[stride + 1];
             for (int y = 0; y < h; y++) {
                 if ((y & 63) == 0 && Thread.currentThread().isInterrupted()) {
                     throw new InterruptedIOException("The conversion was stopped");
                 }
-                filter(raw, y * stride, y == 0 ? -1 : (y - 1) * stride, stride, spp, line, trial);
+                filter(raw, y * stride, y == 0 ? -1 : (y - 1) * stride, stride, spp, line);
                 out.write(line);
             }
         } finally {
@@ -160,29 +159,40 @@ final class XpsTiff {
         return image;
     }
 
-    private static void filter(byte[] raw, int at, int above, int stride, int bpp, byte[] line, byte[] trial) {
-        long best = Long.MAX_VALUE;
-        for (int type = 0; type <= 2; type++) {
-            if (type == 2 && above < 0) {
-                break;
-            }
-            long sum = 0;
-            trial[0] = (byte) type;
+    private static void filter(byte[] raw, int at, int above, int stride, int bpp, byte[] line) {
+        long none = 0;
+        for (int i = 0; i < stride; i++) {
+            none += Math.abs(raw[at + i]);
+        }
+        long sub = 0;
+        for (int i = 0; i < stride; i++) {
+            int ref = i >= bpp ? raw[at + i - bpp] : 0;
+            sub += Math.abs((byte) (raw[at + i] - ref));
+        }
+        long up = Long.MAX_VALUE;
+        if (above >= 0) {
+            up = 0;
             for (int i = 0; i < stride; i++) {
-                int cur = raw[at + i] & 0xFF;
-                int ref = switch (type) {
-                    case 1 -> i >= bpp ? raw[at + i - bpp] & 0xFF : 0;
-                    case 2 -> raw[above + i] & 0xFF;
-                    default -> 0;
-                };
-                byte b = (byte) (cur - ref);
-                trial[i + 1] = b;
-                sum += Math.abs(b);
+                up += Math.abs((byte) (raw[at + i] - raw[above + i]));
             }
-            if (sum < best) {
-                best = sum;
-                System.arraycopy(trial, 0, line, 0, stride + 1);
-            }
+        }
+        int type = 0;
+        long best = none;
+        if (sub < best) {
+            type = 1;
+            best = sub;
+        }
+        if (up < best) {
+            type = 2;
+        }
+        line[0] = (byte) type;
+        for (int i = 0; i < stride; i++) {
+            int ref = switch (type) {
+                case 1 -> i >= bpp ? raw[at + i - bpp] : 0;
+                case 2 -> raw[above + i];
+                default -> 0;
+            };
+            line[i + 1] = (byte) (raw[at + i] - ref);
         }
     }
 
