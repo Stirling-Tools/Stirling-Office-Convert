@@ -116,7 +116,7 @@ final class Presentation {
             out.put("vertical-align", valign);
         }
         if (e.hasAttr("bgcolor")) {
-            out.put("background-color", e.attr("bgcolor"));
+            putColor(out, "background-color", e.attr("bgcolor"));
         }
         String background = e.attr("background").strip();
         if (!background.isEmpty() && BACKGROUND_ELEMENTS.contains(e.normalName())) {
@@ -131,7 +131,7 @@ final class Presentation {
         }
         if ("font".equals(e.normalName())) {
             if (e.hasAttr("color")) {
-                out.put("color", e.attr("color"));
+                putColor(out, "color", e.attr("color"));
             }
             if (e.hasAttr("face")) {
                 out.put("font-family", e.attr("face"));
@@ -142,8 +142,75 @@ final class Presentation {
             cellPadding(e, out);
         }
         if ("body".equals(e.normalName()) && e.hasAttr("text")) {
-            out.put("color", e.attr("text"));
+            putColor(out, "color", e.attr("text"));
         }
+    }
+
+    private static void putColor(Map<String, String> out, String property, String value) {
+        String c = legacyColor(value);
+        if (c != null) {
+            out.put(property, c);
+        }
+    }
+
+    static String legacyColor(String value) {
+        String s = value.strip();
+        if (s.isEmpty() || s.equalsIgnoreCase("transparent")) {
+            return null;
+        }
+        Integer named = NamedColors.get(s.toLowerCase(Locale.ROOT));
+        if (named != null) {
+            return Css.hex(named);
+        }
+        if (s.length() == 4 && s.charAt(0) == '#' && hexDigits(s.substring(1))) {
+            int r = Character.digit(s.charAt(1), 16) * 17;
+            int g = Character.digit(s.charAt(2), 16) * 17;
+            int b = Character.digit(s.charAt(3), 16) * 17;
+            return Css.hex(r << 16 | g << 8 | b);
+        }
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < s.length() && sb.length() < 128; ) {
+            int cp = s.codePointAt(i);
+            i += Character.charCount(cp);
+            sb.append(cp > 0xFFFF ? "00" : Character.digit(cp, 16) >= 0 && cp < 128 ? String.valueOf((char) cp) : "0");
+        }
+        if (sb.length() > 128) {
+            sb.setLength(128);
+        }
+        if (s.charAt(0) == '#') {
+            sb.deleteCharAt(0);
+        }
+        while (sb.length() == 0 || sb.length() % 3 != 0) {
+            sb.append('0');
+        }
+        int len = sb.length() / 3;
+        String[] parts = {sb.substring(0, len), sb.substring(len, 2 * len), sb.substring(2 * len)};
+        if (len > 8) {
+            for (int i = 0; i < 3; i++) {
+                parts[i] = parts[i].substring(len - 8);
+            }
+            len = 8;
+        }
+        while (len > 2 && parts[0].charAt(0) == '0' && parts[1].charAt(0) == '0' && parts[2].charAt(0) == '0') {
+            for (int i = 0; i < 3; i++) {
+                parts[i] = parts[i].substring(1);
+            }
+            len--;
+        }
+        int rgb = 0;
+        for (String part : parts) {
+            rgb = rgb << 8 | Integer.parseInt(part.substring(0, Math.min(2, len)), 16);
+        }
+        return Css.hex(rgb);
+    }
+
+    private static boolean hexDigits(String s) {
+        for (int i = 0; i < s.length(); i++) {
+            if (Character.digit(s.charAt(i), 16) < 0 || s.charAt(i) >= 128) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static void cellPadding(Element cell, Map<String, String> out) {

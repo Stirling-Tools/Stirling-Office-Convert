@@ -17,6 +17,19 @@ class CssTest {
     private static final float VIEWPORT = 602;
 
     @Test
+    void presentationalColoursFollowTheLegacyParsingRules() {
+        assertEquals("#3dffff", Presentation.legacyColor("3D#ffffff"));
+        assertEquals("#ffffff", Presentation.legacyColor("ffffff"));
+        assertEquals("#ff0000", Presentation.legacyColor(" Red "));
+        assertEquals("#11aa22", Presentation.legacyColor("#1a2"));
+        assertEquals("#000000", Presentation.legacyColor("#"));
+        assertEquals("#c00000", Presentation.legacyColor("chucknorris"));
+        assertEquals("#0ab00d", Presentation.legacyColor("#0a0b0c0d"));
+        assertNull(Presentation.legacyColor("transparent"));
+        assertNull(Presentation.legacyColor("  "));
+    }
+
+    @Test
     void mediaQueriesAnswerAsAPrintedPage() {
         assertTrue(Media.matches("", VIEWPORT));
         assertTrue(Media.matches("print", VIEWPORT));

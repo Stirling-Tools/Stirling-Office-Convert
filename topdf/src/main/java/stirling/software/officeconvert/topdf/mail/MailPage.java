@@ -296,10 +296,30 @@ public final class MailPage {
 
     static Element pre(String text) {
         Element pre = new Element("pre").attr("style", "white-space:pre-wrap;overflow-wrap:anywhere;word-wrap:break-word;"
-                + "font-family:'Courier New',Courier,monospace;font-size:13px;line-height:normal;margin:0 0 8px 0;"
+                + "font-family:monospace;font-size:12.67px;line-height:18px;margin:0 0 8px 0;"
                 + "color:#1f1f1f;background:transparent;text-align:left");
-        pre.text(text.replace("\r\n", "\n").replace('\r', '\n'));
+        pre.text(expandTabs(text.replace("\r\n", "\n").replace('\r', '\n')));
         return pre;
+    }
+
+    static String expandTabs(String text) {
+        if (text.indexOf('\t') < 0 || text.length() > MAX_HTML_CHARS / 8) {
+            return text;
+        }
+        StringBuilder sb = new StringBuilder(text.length() + 64);
+        int column = 0;
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (c == '\t') {
+                int spaces = 8 - column % 8;
+                sb.repeat(' ', spaces);
+                column += spaces;
+            } else {
+                sb.append(c);
+                column = c == '\n' ? 0 : Character.isLowSurrogate(c) ? column : column + 1;
+            }
+        }
+        return sb.toString();
     }
 
     static String shownSender(Mail mail) {
@@ -362,7 +382,7 @@ public final class MailPage {
         if (value == null && !label.startsWith("Attachment")) {
             return null;
         }
-        Element row = box.appendElement("div").attr("style", BOX + "margin:0;padding:1px 0;");
+        Element row = box.appendElement("div").attr("style", BOX + "margin:0;padding:0;");
         row.appendElement("span").attr("style", "font-weight:bold;color:#5f5f5f;" + FONT).text(label + ":");
         row.appendText(" ");
         if (value != null) {

@@ -172,6 +172,26 @@ class HtmlLayoutTest {
     }
 
     @Test
+    void blankLinesTakeTheHeightOfTheirOwnText() throws IOException {
+        Laid l = lay("""
+                <html><body><pre style="font-size:9px;line-height:12px">one
+                two
+
+                three</pre></body></html>""");
+        float line = l.word("two").top() - l.word("one").top();
+        assertEquals(9f, line, 0.2f, l.words().toString());
+        assertEquals(2 * line, l.word("three").top() - l.word("two").top(), 0.2f, l.words().toString());
+    }
+
+    @Test
+    void anImageInputIsDrawnAsItsPicture() throws IOException {
+        Laid l = lay("""
+                <html><body><form><input type="IMAGE" src="http://example.invalid/b.png" alt="Website Maintenance">
+                </form><p>Next</p></body></html>""");
+        assertTrue(l.text().contains("Website Maintenance"), l.text());
+    }
+
+    @Test
     void flexRowItemsKeepTheirPlacesOnTheLine() throws IOException {
         Laid l = lay("""
                 <html><head><style>

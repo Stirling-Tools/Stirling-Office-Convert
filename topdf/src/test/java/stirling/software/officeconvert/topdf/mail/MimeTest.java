@@ -15,6 +15,12 @@ import org.junit.jupiter.api.Test;
 class MimeTest {
 
     @Test
+    void plainTextTabsStopEveryEightColumns() {
+        assertEquals("a       b\n        c\nabcdefgh        d", MailPage.expandTabs("a\tb\n\tc\nabcdefgh\td"));
+        assertEquals("no tabs", MailPage.expandTabs("no tabs"));
+    }
+
+    @Test
     void encodedWordsJoinAcrossCharsetSplitsAndKeepPlainGaps() {
         assertEquals("Grüße aus Köln", MimeWords.decode("=?UTF-8?Q?Gr=C3=BC?= =?UTF-8?B?w59l?= aus =?ISO-8859-1?Q?K=F6ln?=",
                 StandardCharsets.UTF_8));

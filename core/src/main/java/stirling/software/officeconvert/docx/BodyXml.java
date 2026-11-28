@@ -247,6 +247,7 @@ final class BodyXml {
         String openLink = null;
         String openMath = null;
         Inline.Text afterMath = null;
+        RunStyle lineStyle = null;
         for (Inline in : inlines) {
             String math = in instanceof Inline.Text t && t.style() != null ? t.style().math() : null;
             if (afterMath != null && !Objects.equals(math, openMath)) {
@@ -286,13 +287,23 @@ final class BodyXml {
                 openLink = link;
             }
             switch (in) {
-                case Inline.Text t -> runs.textRun(sb, t.text(), t.style(), base);
+                case Inline.Text t -> {
+                    runs.textRun(sb, t.text(), t.style(), base);
+                    lineStyle = t.style();
+                }
                 case Inline.Tab tab -> {
                     sb.append("<w:r>");
                     runs.rPr(sb, tab.style(), base);
                     sb.append("<w:tab/></w:r>");
+                    lineStyle = tab.style();
                 }
-                case Inline.Break br -> sb.append("<w:r><w:br/></w:r>");
+                case Inline.Break br -> {
+                    sb.append("<w:r>");
+                    if (lineStyle != null) {
+                        runs.rPr(sb, lineStyle.withMath(null), base);
+                    }
+                    sb.append("<w:br/></w:r>");
+                }
                 case Inline.ColumnBreak cb -> sb.append("<w:r><w:br w:type=\"column\"/></w:r>");
                 case Inline.PageBreak pb -> sb.append("<w:r><w:br w:type=\"page\"/></w:r>");
                 case Inline.PageNumber pn -> runs.field(sb, pn.total() ? "NUMPAGES" : "PAGE", pn.style(), base);

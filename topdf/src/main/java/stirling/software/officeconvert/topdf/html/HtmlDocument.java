@@ -190,6 +190,9 @@ public final class HtmlDocument {
         // One bulk read: the parser's small reads are slow on network and container file systems
         byte[] bytes = Files.readAllBytes(source);
         Document doc = Jsoup.parse(new ByteArrayInputStream(bytes), null, "");
+        for (Element image : doc.select("input[type=image]")) {
+            image.tagName("img");
+        }
         Element baseTag = doc.selectFirst("base[href]");
         linked.rebase(baseTag == null ? null : baseTag.attr("href"));
         Map<String, String> declared = new Cascade(doc, viewportPx(JsonModel.defaultPage()), linked).page();
