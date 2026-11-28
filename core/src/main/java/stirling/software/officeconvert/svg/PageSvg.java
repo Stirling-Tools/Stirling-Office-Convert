@@ -1512,6 +1512,9 @@ final class PageSvg extends PDFGraphicsStreamEngine {
     protected void showFontGlyph(Matrix trm, PDFont font, int code, Vector displacement) throws IOException {
         PDGraphicsState gs = getGraphicsState();
         RenderingMode mode = gs.getTextState().getRenderingMode();
+        if (hidden.active() && !mode.isClip()) {
+            return;
+        }
         AffineTransform glyphToSvg = new AffineTransform(out.toSvg);
         glyphToSvg.concatenate(trm.createAffineTransform());
         if (mode.isClip() && font instanceof PDVectorFont vector) {
